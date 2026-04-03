@@ -1,0 +1,265 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────
+# 네트워크: leafy-net (서비스) / mgmt-net (관리)
+# 수집기(Node Exporter, cAdvisor, Fluentd)만 양쪽 연결
+# ─────────────────────────────────────────────
+networks:
+  leafy-net:
+    driver: bridge
+  mgmt-net:
+    driver: bridge
+
+# ─────────────────────────────────────────────
+# 볼륨: 컨테이너 재시작 시 데이터 영속성 확보
+# ─────────────────────────────────────────────
+volumes:
+  postgres_data:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+  ollama_data:
+
+services:
+
+  # ════════════════════════════════════════════
+  # leafy-net: 모니터링 대상 서비스 레이어
+  # ════════════════════════════════════════════
+
+  frontend:
+    image: gicks/leafy-frontend:latest
+    container_name: leafy-frontend
+    ports:
+      - "80:80"
+    networks:
+      - leafy-net
+    depends_on:
+      - backend
+    restart: unless-stopped
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "localhost:24224"
+        tag: "frontend"
+
+  backend:
+    image: gicks/leafy-backend:latest
+    container_name: leafy-backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/leafy
+      SPRING_DATASOURCE_USERNAME: leafy
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-leafy_secret}
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,prometheus,metrics
+      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+      MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED: "true"
+    networks:
+      - leafy-net
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "localhost:24224"
+        tag: "backend"
+
+  db:
+    image: postgres:16-alpine
+    container_name: leafy-db
+    environment:
+      POSTGRES_DB: leafy
+      POSTGRES_USER: leafy
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-leafy_secret}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./leafy/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - leafy-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leafy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ════════════════════════════════════════════
+  # 수집기: leafy-net + mgmt-net 브릿지 역할
+  # ════════════════════════════════════════════
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    networks:
+      - mgmt-net
+    restart: unless-stopped
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - mgmt-net
+    restart: unless-stopped
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: nginx-exporter
+    command:
+      - "--nginx.scrape-uri=http://frontend:80/stub_status"
+    networks:
+      - leafy-net
+      - mgmt-net
+    depends_on:
+      - frontend
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://leafy:${DB_PASSWORD:-leafy_secret}@db:5432/leafy?sslmode=disable"
+    networks:
+      - leafy-net
+      - mgmt-net
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  fluentd:
+    build: ./leafy/fluentd
+    container_name: fluentd
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    volumes:
+      - ./leafy/fluentd/fluent.conf:/fluentd/etc/fluent.conf
+    networks:
+      - leafy-net
+      - mgmt-net
+    restart: unless-stopped
+
+  # ════════════════════════════════════════════
+  # mgmt-net: 모니터링 저장/시각화 레이어
+  # ════════════════════════════════════════════
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    networks:
+      - mgmt-net
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    networks:
+      - mgmt-net
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - mgmt-net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3000:3000"
+    networks:
+      - mgmt-net
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+
+  # ════════════════════════════════════════════
+  # mgmt-net: AIOps 핵심 엔진
+  # ════════════════════════════════════════════
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - mgmt-net
+    restart: unless-stopped
+
+  pipeline:
+    build: ./aiops/pipeline
+    container_name: aiops-pipeline
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090
+      LOKI_URL: http://loki:3100
+      OLLAMA_URL: http://ollama:11434
+      ALERTMANAGER_URL: http://alertmanager:9093
+      REMEDIATION_URL: http://remediation:8001
+    networks:
+      - mgmt-net
+    depends_on:
+      - prometheus
+      - loki
+      - ollama
+    restart: unless-stopped
+
+  remediation:
+    build: ./aiops/remediation
+    container_name: aiops-remediation
+    environment:
+      PIPELINE_URL: http://pipeline:8000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - mgmt-net
+    depends_on:
+      - pipeline
+    restart: unless-stopped

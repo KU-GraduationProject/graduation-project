@@ -1,0 +1,62 @@
+groups:
+  - name: aiops-alerts
+    rules:
+
+      - alert: HighCpuUsage
+        expr: rate(container_cpu_usage_seconds_total[2m]) > 0.5
+        for: 1m
+        labels:
+          severity: warning
+          category: infra
+        annotations:
+          summary: "컨테이너 CPU 사용률 50% 초과"
+          container: "{{ $labels.container_label_com_docker_compose_service }}"
+
+      - alert: HighMemoryUsage
+        expr: >
+          container_memory_usage_bytes
+          / container_spec_memory_limit_bytes > 0.7
+        for: 1m
+        labels:
+          severity: warning
+          category: infra
+        annotations:
+          summary: "컨테이너 메모리 사용률 70% 초과"
+
+      - alert: ContainerRestarted
+        expr: increase(container_last_seen[5m]) < 0
+        for: 0m
+        labels:
+          severity: critical
+          category: infra
+        annotations:
+          summary: "컨테이너 재시작 감지"
+
+      - alert: HighNetworkReceive
+        expr: rate(container_network_receive_bytes_total[1m]) > 1e7
+        for: 30s
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "네트워크 수신량 급증 (잠재적 DDoS/스캔)"
+
+      - alert: HighNginxErrorRate
+        expr: >
+          rate(nginx_http_requests_total{status=~"4..|5.."}[2m])
+          / rate(nginx_http_requests_total[2m]) > 0.1
+        for: 1m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "Nginx 에러율 10% 초과"
+
+      - alert: HighPostgresConnections
+        expr: pg_stat_activity_count > 80
+        for: 1m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "PostgreSQL 동시 연결 수 과다"
