@@ -175,6 +175,8 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=30d"
       - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
     networks:
       - mgmt-net
     restart: unless-stopped
@@ -186,6 +188,8 @@ services:
       - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
+    ports:
+      - "9093:9093"
     networks:
       - mgmt-net
     restart: unless-stopped
