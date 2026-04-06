@@ -1,0 +1,125 @@
+"""
+category1_infra/cpu_stress.py
+─────────────────────────────
+leafy-backend 컨테이너 안에서 stress-ng(없으면 Python 순수 루프)로
+CPU 고갈 시뮬레이션을 실행하고, 시작/종료 시간을 anomaly_log.json에 기록한다.
+"""
+
+import docker
+import json
+import os
+import sys
+import time
+from datetime import datetime, timezone
+
+# ── 경로 설정 ──────────────────────────────────────────────────────────────────
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_PATH   = os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_log.json")
+LOG_PATH   = os.path.normpath(LOG_PATH)
+
+CONTAINER_NAME = "leafy-backend"
+STRESS_DURATION = 60          # 컨테이너 내 스트레스 지속 시간(초)
+CPU_WORKERS     = 0           # 0 = 논리 CPU 수만큼 자동
+
+
+# ── 로그 유틸 ──────────────────────────────────────────────────────────────────
+def _load_log() -> list:
+    if os.path.exists(LOG_PATH) and os.path.getsize(LOG_PATH) > 0:
+        with open(LOG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
+def _save_log(records: list) -> None:
+    os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+    with open(LOG_PATH, "w", encoding="utf-8") as f:
+        json.dump(records, f, indent=2, ensure_ascii=False)
+
+
+def record_event(scenario: str, start: str, end: str, status: str, detail: str = "") -> None:
+    records = _load_log()
+    records.append({
+        "scenario": scenario,
+        "category": "infra",
+        "start_time": start,
+        "end_time":   end,
+        "status":     status,
+        "detail":     detail,
+    })
+    _save_log(records)
+    print(f"[LOG] {scenario} | {status} | {start} → {end}")
+
+
+# ── 스트레스 명령 선택 ──────────────────────────────────────────────────────────
+def _build_stress_cmd(workers: int, duration: int) -> str:
+    w = workers if workers > 0 else "$(nproc)"
+    # stress-ng 우선, 없으면 dd로 CPU 점유
+    # dd if=/dev/zero of=/dev/null: 커널 데이터 복사를 무한 반복해 CPU를 점유.
+    # w개의 dd 프로세스를 백그라운드로 띄운 뒤 duration 초 후 모두 종료한다.
+    dd_loop = (
+        f"PIDS=''; "
+        f"for i in $(seq 1 {w}); do "
+        f"  dd if=/dev/zero of=/dev/null bs=1M & PIDS=\"$PIDS $!\"; "
+        f"done; "
+        f"sleep {duration}; "
+        f"kill $PIDS 2>/dev/null; "
+        f"wait"
+    )
+    return (
+        f"if command -v stress-ng >/dev/null 2>&1; then "
+        f"  stress-ng --cpu {w} --timeout {duration}s --metrics-brief; "
+        f"elif command -v stress >/dev/null 2>&1; then "
+        f"  stress --cpu {w} --timeout {duration}; "
+        f"else "
+        f"  {dd_loop}; "
+        f"fi"
+    )
+
+
+# ── 메인 ───────────────────────────────────────────────────────────────────────
+def main():
+    scenario = "cpu_stress"
+    client = docker.from_env()
+
+    print(f"[*] 시나리오 시작: {scenario}")
+    print(f"[*] 대상 컨테이너: {CONTAINER_NAME}")
+    print(f"[*] 스트레스 지속: {STRESS_DURATION}초")
+
+    start_time = datetime.now(timezone.utc).isoformat()
+
+    try:
+        container = client.containers.get(CONTAINER_NAME)
+    except docker.errors.NotFound:
+        end_time = datetime.now(timezone.utc).isoformat()
+        record_event(scenario, start_time, end_time, "error",
+                     f"컨테이너 '{CONTAINER_NAME}' 를 찾을 수 없습니다.")
+        print(f"[!] 컨테이너 '{CONTAINER_NAME}' 없음. 종료.", file=sys.stderr)
+        sys.exit(1)
+
+    cmd = _build_stress_cmd(CPU_WORKERS, STRESS_DURATION)
+    print(f"[*] exec 명령 전송 중...")
+
+    try:
+        exit_code, output = container.exec_run(
+            cmd=["sh", "-c", cmd],
+            stdout=True,
+            stderr=True,
+            stream=False,
+        )
+        output_str = output.decode("utf-8", errors="replace") if output else ""
+        status = "success" if exit_code == 0 else f"exit_code={exit_code}"
+        print(f"[*] 완료 (exit={exit_code})")
+        if output_str.strip():
+            print(f"[OUTPUT]\n{output_str.strip()}")
+    except Exception as e:
+        status = "error"
+        output_str = str(e)
+        print(f"[!] exec 실패: {e}", file=sys.stderr)
+
+    end_time = datetime.now(timezone.utc).isoformat()
+    record_event(scenario, start_time, end_time, status, output_str[:500])
+    print(f"[*] 시나리오 종료: {scenario}")
+
+
+if __name__ == "__main__":
+    main()

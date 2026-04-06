@@ -1,0 +1,98 @@
+[
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-06T07:08:50.823961+00:00",
+    "end_time": "2026-04-06T07:08:50.928191+00:00",
+    "status": "exit_code=127",
+    "detail": "sh: python3: not found\n"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-06T07:11:37.631254+00:00",
+    "end_time": "2026-04-06T07:11:37.638033+00:00",
+    "status": "error",
+    "detail": "409 Client Error for http+docker://localnpipe/v1.51/containers/1abadf9f2c567d57c8701c400d14d46a76a34577f7d999c6fa3c33bfacb14b99/exec: Conflict (\"Container 1abadf9f2c567d57c8701c400d14d46a76a34577f7d999c6fa3c33bfacb14b99 is restarting, wait until the container is running\")"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-06T07:12:24.937099+00:00",
+    "end_time": "2026-04-06T07:12:24.944648+00:00",
+    "status": "error",
+    "detail": "409 Client Error for http+docker://localnpipe/v1.51/containers/1abadf9f2c567d57c8701c400d14d46a76a34577f7d999c6fa3c33bfacb14b99/exec: Conflict (\"Container 1abadf9f2c567d57c8701c400d14d46a76a34577f7d999c6fa3c33bfacb14b99 is restarting, wait until the container is running\")"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-06T07:18:51.122027+00:00",
+    "end_time": "2026-04-06T07:18:51.128272+00:00",
+    "status": "error",
+    "detail": "409 Client Error for http+docker://localnpipe/v1.51/containers/b3d4421663a53c1ae8c96bff3da46c83ff8dd8d3126f2cafcdaa87bdabcf6c7c/exec: Conflict (\"Container b3d4421663a53c1ae8c96bff3da46c83ff8dd8d3126f2cafcdaa87bdabcf6c7c is restarting, wait until the container is running\")"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-06T07:30:55.410250+00:00",
+    "end_time": "2026-04-06T07:30:55.847884+00:00",
+    "status": "exit_code=137",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-06T07:38:51.328097+00:00",
+    "end_time": "2026-04-06T07:38:51.338740+00:00",
+    "status": "error",
+    "detail": "409 Client Error for http+docker://localnpipe/v1.51/containers/c8df6b025955e4c78dfc4bbf2c1f616b98f1b5a31b315bf5ac77eaafae035dbf/exec: Conflict (\"Container c8df6b025955e4c78dfc4bbf2c1f616b98f1b5a31b315bf5ac77eaafae035dbf is restarting, wait until the container is running\")"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-06T08:12:58.690598+00:00",
+    "end_time": "2026-04-06T08:12:58.699818+00:00",
+    "status": "error",
+    "detail": "409 Client Error for http+docker://localnpipe/v1.51/containers/6797e628da2f7200474b27eac0bbddc0c64155a4857af1a627327f22031d23e3/exec: Conflict (\"Container 6797e628da2f7200474b27eac0bbddc0c64155a4857af1a627327f22031d23e3 is restarting, wait until the container is running\")"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-06T08:21:57.656683+00:00",
+    "end_time": "2026-04-06T08:22:04.359573+00:00",
+    "status": "exit_code=137",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-06T08:27:15.803371+00:00",
+    "end_time": "2026-04-06T08:28:15.795794+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "memory_leak_restart",
+    "category": "infra",
+    "start_time": "2026-04-06T08:32:11.407069+00:00",
+    "end_time": "2026-04-06T08:35:14.624905+00:00",
+    "status": "partial_error",
+    "detail": "[{\"cycle\": 1, \"cycle_start\": \"2026-04-06T08:32:11.411253+00:00\", \"state_before\": \"running\", \"state_after\": \"exited\"}, {\"cycle\": 2, \"cycle_start\": \"2026-04-06T08:33:44.609380+00:00\", \"error\": \"409 Client Error for http+docker://localnpipe/v1.51/containers/c1992eb8c5187cdd74d0f0a4f594d98b099b8d03475ad353545fc9bad1716171/kill?signal=SIGKILL: Conflict (\\\"cannot kill container: c1992eb8c5187cdd74d0f0a4f594d98b099b8d03475ad353545fc9bad1716171: container c1992eb8c5187cdd74d0f0a4f594d98b099b8d03475ad353545fc9bad1716171 is not running\\\")\"}, {\"cycle\": 3, \"cycle_start\": \"2026-04-06T08:35:14.616888+00:00\", \"error\": \"409 Client Error for http+docker://localnpipe/v1.51/containers/c1992eb8c5187cdd74d0f0a4f594d98b099b8d03475ad353545fc9bad1716171/kill?signal=SIGKILL: Conflict (\\\"cannot kill container: c199"
+  },
+  {
+    "scenario": "memory_leak_restart",
+    "category": "infra",
+    "start_time": "2026-04-06T08:37:26.600107+00:00",
+    "end_time": "2026-04-06T08:40:29.844475+00:00",
+    "status": "partial_error",
+    "detail": "[{\"cycle\": 1, \"cycle_start\": \"2026-04-06T08:37:26.603801+00:00\", \"state_before\": \"running\", \"state_after\": \"exited\"}, {\"cycle\": 2, \"cycle_start\": \"2026-04-06T08:38:59.828927+00:00\", \"error\": \"409 Client Error for http+docker://localnpipe/v1.51/containers/ff9f604ea56f4d87419da97e4b26546a0a3929a0384ecfcbd438dcff469f7c96/kill?signal=SIGKILL: Conflict (\\\"cannot kill container: ff9f604ea56f4d87419da97e4b26546a0a3929a0384ecfcbd438dcff469f7c96: container ff9f604ea56f4d87419da97e4b26546a0a3929a0384ecfcbd438dcff469f7c96 is not running\\\")\"}, {\"cycle\": 3, \"cycle_start\": \"2026-04-06T08:40:29.837285+00:00\", \"error\": \"409 Client Error for http+docker://localnpipe/v1.51/containers/ff9f604ea56f4d87419da97e4b26546a0a3929a0384ecfcbd438dcff469f7c96/kill?signal=SIGKILL: Conflict (\\\"cannot kill container: ff9f"
+  },
+  {
+    "scenario": "memory_leak_restart",
+    "category": "infra",
+    "start_time": "2026-04-06T08:48:34.388233+00:00",
+    "end_time": "2026-04-06T08:53:44.275204+00:00",
+    "status": "success",
+    "detail": "[{\"cycle\": 1, \"cycle_start\": \"2026-04-06T08:48:34.393155+00:00\", \"state_before\": \"exited\", \"state_after\": \"running\"}, {\"cycle\": 2, \"cycle_start\": \"2026-04-06T08:51:07.762046+00:00\", \"state_before\": \"running\", \"state_after\": \"exited\"}, {\"cycle\": 3, \"cycle_start\": \"2026-04-06T08:52:40.980270+00:00\", \"state_before\": \"exited\", \"state_after\": \"running\"}]"
+  }
+]
