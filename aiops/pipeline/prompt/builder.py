@@ -16,14 +16,14 @@ You MUST respond ONLY with a valid JSON object matching this exact schema:
   "root_cause": "<string: root cause summary in Korean, 2-3 sentences>",
   "action": "<string: recommended remediation command>",
   "threat_level": "<one of: low | medium | high | critical>",
-  "action_risk": "<one of: low | high>",
+  "action_risk": "<one of: low | medium | high>",
   "evidence": ["<string>", ...],
   "confidence": <float 0.0-1.0>
 }
 
 Guidelines:
 - threat_level: low=minor degradation, medium=service slowdown, high=service impact, critical=service down
-- action_risk: low=no service disruption (e.g. log collection, config reload), high=may disrupt service (e.g. container restart, isolation)
+- action_risk: low=no service disruption (e.g. log collection, config reload), medium=approval recommended (e.g. resource scaling, config change), high=may disrupt service (e.g. container restart, isolation)
 - evidence: list 3-5 specific observations from the provided metrics and logs
 - Be concise and precise. No explanation outside the JSON.
 """
@@ -45,7 +45,7 @@ class PromptBuilder:
         lines.append("=== ALERT ===")
         lines.append(f"Name     : {alert.labels.alertname}")
         lines.append(f"Severity : {alert.labels.severity or 'unknown'}")
-        lines.append(f"Container: {alert.labels.container or 'N/A'}")
+        lines.append(f"Container: {alert.annotations.get('container') or 'N/A'}")
         lines.append(f"Time     : {alert.startsAt}")
         if alert.annotations:
             lines.append(f"Annotations: {json.dumps(alert.annotations, ensure_ascii=False)}")

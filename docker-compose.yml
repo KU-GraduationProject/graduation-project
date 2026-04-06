@@ -223,13 +223,6 @@ services:
     container_name: ollama
     volumes:
       - ollama_data:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     networks:
       - mgmt-net
     restart: unless-stopped
@@ -256,6 +249,7 @@ services:
     container_name: aiops-remediation
     environment:
       PIPELINE_URL: http://pipeline:8000
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:

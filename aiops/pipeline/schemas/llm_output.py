@@ -16,8 +16,8 @@ class LLMAnalysisResult(BaseModel):
     threat_level: Literal["low", "medium", "high", "critical"] = Field(
         description="위협 심각도: low/medium/high/critical"
     )
-    action_risk: Literal["low", "high"] = Field(
-        description="조치 위험도: low=즉시 자동실행 가능, high=관리자 승인 필요"
+    action_risk: Literal["low", "medium", "high"] = Field(
+        description="조치 위험도: low=즉시 자동실행 가능, medium=승인 권장(threat_level에 따라 분기), high=관리자 승인 필요"
     )
     evidence: list[str] = Field(
         default=[],

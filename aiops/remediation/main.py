@@ -38,13 +38,21 @@ async def execute_action(request: ActionRequest):
     action_risk = analysis.get("action_risk", "high")
     action = analysis.get("action", "")
 
-    logger.info(f"[Remediation] action_risk={action_risk}, action={action}")
+    threat_level = analysis.get("threat_level", "high")
+    logger.info(f"[Remediation] action_risk={action_risk}, threat_level={threat_level}, action={action}")
     logger.info(f"[Remediation] root_cause={analysis.get('root_cause', 'N/A')}")
 
     if action_risk == "low":
         result = _execute(action, alert)
         return {"status": "executed", "result": result}
-    else:
+    elif action_risk == "medium":
+        if threat_level == "low":
+            notifier.send_alert_only(alert, analysis)
+            return {"status": "alert_only", "message": "Medium-risk action with low threat: notified only"}
+        else:
+            notifier.send_approval_request(alert, analysis)
+            return {"status": "pending_approval", "message": "Medium-risk action logged for manual review"}
+    else:  # high
         notifier.send_approval_request(alert, analysis)
         return {"status": "pending_approval", "message": "High-risk action logged for manual review"}
 

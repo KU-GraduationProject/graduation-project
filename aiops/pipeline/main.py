@@ -6,13 +6,15 @@ AlertManager 웹훅 수신 → 데이터 수집 → 프롬프트 조립 → LLM 
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 from datetime import datetime
+import json
 import logging
+
+import httpx
 
 from collector.metrics import MetricsCollector
 from collector.logs import LogsCollector
 from prompt.builder import PromptBuilder
 from schemas.llm_output import LLMAnalysisResult
-import httpx
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,7 +26,6 @@ app = FastAPI(title="AIOps Pipeline", version="0.1.0")
 class AlertLabel(BaseModel):
     alertname: str
     severity: str | None = None
-    container: str | None = None
     instance: str | None = None
 
 class Alert(BaseModel):
@@ -75,13 +76,14 @@ async def analyze_alerts(alerts: list[Alert]):
 
             # 1. 이상 시점 전후 N분 데이터 수집
             alert_time = datetime.fromisoformat(alert.startsAt.replace("Z", "+00:00"))
+            container = alert.annotations.get("container")
             metrics = await metrics_collector.fetch_around(
-                container=alert.labels.container,
+                container=container,
                 alert_time=alert_time,
                 window_minutes=5,
             )
             logs = await logs_collector.fetch_around(
-                container=alert.labels.container,
+                container=container,
                 alert_time=alert_time,
                 window_minutes=5,
             )
@@ -121,7 +123,6 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
         )
         response.raise_for_status()
         content = response.json()["message"]["content"]
-        import json
         raw = json.loads(content)
         return LLMAnalysisResult(**raw)
 
