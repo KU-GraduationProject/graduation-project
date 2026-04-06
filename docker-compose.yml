@@ -31,6 +31,10 @@ services:
     container_name: leafy-frontend
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - ./certs/leafy.crt:/etc/letsencrypt/live/leafy-pr.com/fullchain.pem:ro
+      - ./certs/leafy.key:/etc/letsencrypt/live/leafy-pr.com/privkey.pem:ro
     networks:
       - leafy-net
     depends_on:
@@ -49,6 +53,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/leafy
       SPRING_DATASOURCE_USERNAME: leafy
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-leafy_secret}
+      JWT_SECRET: ${JWT_SECRET}
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,prometheus,metrics
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
       MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED: "true"

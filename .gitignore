@@ -4,6 +4,10 @@
 ## env ##
 .env
 
+## SSL certificates ##
+certs/*.crt
+certs/*.key
+
 ### macOS ###
 # General
 .DS_Store
