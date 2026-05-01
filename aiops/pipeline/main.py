@@ -4,6 +4,7 @@ AlertManager 웹훅 수신 → 데이터 수집 → 프롬프트 조립 → LLM 
 """
 
 from fastapi import FastAPI, BackgroundTasks
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from datetime import datetime
 from collections import deque
@@ -85,6 +86,56 @@ prompt_builder    = PromptBuilder()
 @app.get("/health")
 async def health():
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+
+
+import re as _re
+
+_SERVICE_PREFIXES = ["leafy-", "aiops-", "graduation-project-"]
+
+def _extract_service(name: str) -> str:
+    """컨테이너 이름에서 서비스명 추출 (scale replica 번호 제거)."""
+    s = name
+    for prefix in _SERVICE_PREFIXES:
+        if s.startswith(prefix):
+            s = s[len(prefix):]
+            break
+    return _re.sub(r"-\d+$", "", s)
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def prometheus_metrics():
+    """컨테이너 ID → 이름/서비스 매핑을 Prometheus 텍스트 포맷으로 노출"""
+    name_lines: list[str] = [
+        "# HELP container_name_info Container ID to name mapping",
+        "# TYPE container_name_info gauge",
+    ]
+    count_map: dict[str, int] = {}
+    try:
+        with httpx.Client(
+            transport=httpx.HTTPTransport(uds=_DOCKER_UDS), timeout=3
+        ) as client:
+            resp = client.get("http://localhost/containers/json")
+            for c in resp.json():
+                cid  = c.get("Id", "")
+                name = (c.get("Names") or [""])[0].lstrip("/")
+                if not (cid and name):
+                    continue
+                service = _extract_service(name)
+                name_lines.append(
+                    f'container_name_info{{id="/docker/{cid}",name="{name}",service="{service}"}} 1'
+                )
+                count_map[service] = count_map.get(service, 0) + 1
+    except Exception as e:
+        logger.warning(f"[metrics] Docker socket 조회 실패: {e}")
+
+    count_lines = [
+        "# HELP container_service_count Running container count per service",
+        "# TYPE container_service_count gauge",
+    ]
+    for svc, cnt in sorted(count_map.items()):
+        count_lines.append(f'container_service_count{{service="{svc}"}} {cnt}')
+
+    return "\n".join(name_lines + [""] + count_lines) + "\n"
 
 
 @app.get("/results/latest")

@@ -1,6 +1,6 @@
 global:
-  scrape_interval:     15s
-  evaluation_interval: 15s
+  scrape_interval:     5s
+  evaluation_interval: 5s
 
 alerting:
   alertmanagers:
@@ -31,3 +31,8 @@ scrape_configs:
   - job_name: "prometheus"
     static_configs:
       - targets: ["localhost:9090"]
+
+  - job_name: "pipeline-metadata"
+    static_configs:
+      - targets: ["pipeline:8000"]
+    metrics_path: /metrics
