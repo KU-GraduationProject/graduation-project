@@ -94,5 +94,101 @@
     "end_time": "2026-04-06T08:53:44.275204+00:00",
     "status": "success",
     "detail": "[{\"cycle\": 1, \"cycle_start\": \"2026-04-06T08:48:34.393155+00:00\", \"state_before\": \"exited\", \"state_after\": \"running\"}, {\"cycle\": 2, \"cycle_start\": \"2026-04-06T08:51:07.762046+00:00\", \"state_before\": \"running\", \"state_after\": \"exited\"}, {\"cycle\": 3, \"cycle_start\": \"2026-04-06T08:52:40.980270+00:00\", \"state_before\": \"exited\", \"state_after\": \"running\"}]"
+  },
+  {
+    "scenario": "redos_attack",
+    "category": "infra",
+    "start_time": "2026-04-29T08:08:05.154060+00:00",
+    "end_time": "2026-04-29T08:10:05.483758+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 22440, \"slow_responses\": 129, \"errors\": 0, \"payloads\": [\"https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!\", \"http://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!\"]}"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-29T08:35:54.258176+00:00",
+    "end_time": "2026-04-29T08:36:54.342123+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-29T08:48:17.867865+00:00",
+    "end_time": "2026-04-29T08:49:17.955127+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-29T08:53:54.192378+00:00",
+    "end_time": "2026-04-29T08:54:54.282812+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-29T08:57:37.312821+00:00",
+    "end_time": "2026-04-29T08:58:37.415363+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-29T09:05:06.013638+00:00",
+    "end_time": "2026-04-29T09:06:06.097427+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-29T09:07:53.394090+00:00",
+    "end_time": "2026-04-29T09:08:53.491077+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-04-29T09:29:52.386820+00:00",
+    "end_time": "2026-04-29T09:30:52.479758+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "redos_attack",
+    "category": "infra",
+    "start_time": "2026-04-30T09:12:50.939822+00:00",
+    "end_time": "2026-04-30T09:14:50.952827+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 222450, \"slow_responses\": 43, \"errors\": 0, \"target_endpoints\": [\"/home\", \"/\", \"/home?v=1\", \"/home?v=2\", \"/index.html\"], \"workers\": 150}"
+  },
+  {
+    "scenario": "n_plus_one_attack",
+    "category": "security",
+    "start_time": "2026-04-30T09:17:06.174260+00:00",
+    "end_time": "2026-04-30T09:19:09.623457+00:00",
+    "status": "success",
+    "detail": "{\"cycles\": 36, \"queries_ok\": 12960, \"queries_fail\": 2160, \"concurrent_connections\": 60, \"n_plus_one_pattern\": \"my_plant → [growth_record, plant_species, diagnosis_history, schedule]\"}"
+  },
+  {
+    "scenario": "lateral_movement",
+    "category": "security",
+    "start_time": "2026-04-30T10:00:57.431752+00:00",
+    "end_time": "2026-04-30T10:02:09.206635+00:00",
+    "status": "success",
+    "detail": "{\"attacker_container\": \"leafy-attacker-frontend\", \"network\": \"graduation-project_leafy-net\", \"target\": \"leafy-db:5432\", \"attempt_count\": 200, \"exit_code\": 0, \"credentials_tried\": 6, \"recon_queries\": 3, \"note\": \"정상 아키텍처에서 DB 접근은 leafy-backend만 허용. Loki에서 비정상 소스 IP 확인 필요.\"}"
+  },
+  {
+    "scenario": "n_plus_one_attack",
+    "category": "security",
+    "start_time": "2026-05-01T08:53:31.045977+00:00",
+    "end_time": "2026-05-01T08:55:34.510359+00:00",
+    "status": "success",
+    "detail": "{\"cycles\": 32, \"queries_ok\": 11520, \"queries_fail\": 1920, \"concurrent_connections\": 60, \"n_plus_one_pattern\": \"my_plant → [growth_record, plant_species, diagnosis_history, schedule]\"}"
   }
 ]

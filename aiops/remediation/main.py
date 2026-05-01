@@ -58,7 +58,7 @@ async def execute_action(request: ActionRequest):
 
 
 def _execute(action: str, alert: dict) -> str:
-    container_name = alert.get("labels", {}).get("container", "")
+    container_name = alert.get("annotations", {}).get("container", "")
     action_lower = action.lower()
 
     try:

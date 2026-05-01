@@ -13,42 +13,44 @@ Your task is to analyze anomaly data from a containerized service and produce a 
 
 You MUST respond ONLY with a valid JSON object matching this exact schema:
 {
-  "root_cause": "<string: root cause summary in Korean, 2-3 sentences>",
-  "action": "<string: recommended remediation command>",
+  "root_cause": "<string: root cause summary in English, 2-3 sentences>",
+  "action": "<string: recommended remediation action (e.g. 'restart container', 'scale up resources', 'block IP', 'investigate logs')>",
   "threat_level": "<one of: low | medium | high | critical>",
   "action_risk": "<one of: low | medium | high>",
-  "evidence": ["<string>", ...],
+  "evidence": ["<string: specific metric or log observation>", ...],
   "confidence": <float 0.0-1.0>
 }
 
 Guidelines:
 - threat_level: low=minor degradation, medium=service slowdown, high=service impact, critical=service down
 - action_risk: low=no service disruption (e.g. log collection, config reload), medium=approval recommended (e.g. resource scaling, config change), high=may disrupt service (e.g. container restart, isolation)
-- evidence: list 3-5 specific observations from the provided metrics and logs
+- evidence: list 3-5 specific numeric observations from the provided metrics and logs
+- action: describe what to do in plain English, NOT a shell command
 - Be concise and precise. No explanation outside the JSON.
 """
 
 
 class PromptBuilder:
-    def build(self, alert, metrics: dict, logs: list[dict]) -> dict:
+    def build(self, alert, metrics: dict, logs: list[dict], container_name: str | None = None) -> dict:
         """system + user 프롬프트 딕셔너리 반환"""
-        user_content = self._build_user(alert, metrics, logs)
+        user_content = self._build_user(alert, metrics, logs, container_name)
         return {
             "system": SYSTEM_PROMPT,
             "user":   user_content,
         }
 
-    def _build_user(self, alert, metrics: dict, logs: list[dict]) -> str:
+    def _build_user(self, alert, metrics: dict, logs: list[dict], container_name: str | None = None) -> str:
         lines = []
 
         # 알람 정보
+        display_container = container_name or alert.annotations.get("container") or "N/A"
         lines.append("=== ALERT ===")
         lines.append(f"Name     : {alert.labels.alertname}")
         lines.append(f"Severity : {alert.labels.severity or 'unknown'}")
-        lines.append(f"Container: {alert.annotations.get('container') or 'N/A'}")
+        lines.append(f"Container: {display_container}")
         lines.append(f"Time     : {alert.startsAt}")
         if alert.annotations:
-            lines.append(f"Annotations: {json.dumps(alert.annotations, ensure_ascii=False)}")
+            lines.append(f"Summary  : {alert.annotations.get('summary', '')}")
 
         # 메트릭 요약 (최근 값 + 최대값)
         lines.append("\n=== METRICS (5-min window) ===")

@@ -57,8 +57,21 @@ services:
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,prometheus,metrics
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
       MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED: "true"
+      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
+      KAKAO_MAP_API_KEY: ${KAKAO_MAP_API_KEY}
+      AWS_ACCESS_KEY: ${AWS_ACCESS_KEY:-dummy}
+      AWS_SECRET_KEY: ${AWS_SECRET_KEY:-dummy}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      CLOUDFRONT_URL: ${CLOUDFRONT_URL:-https://leafy-s3-bucket.s3.ap-northeast-2.amazonaws.com}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-leafy-s3-bucket}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      PLANT_ID_API_KEY: ${PLANT_ID_API_KEY:-dummy_plant_id_api_key}
+      OPEN_WEATHER_API_KEY: ${OPEN_WEATHER_API_KEY:-dummy_open_weather_api_key}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-dummy_openai_api_key}
     networks:
       - leafy-net
+      - mgmt-net
     depends_on:
       db:
         condition: service_healthy
@@ -245,6 +258,10 @@ services:
       OLLAMA_URL: http://ollama:11434
       ALERTMANAGER_URL: http://alertmanager:9093
       REMEDIATION_URL: http://remediation:8001
+    ports:
+      - "8000:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - mgmt-net
     depends_on:
@@ -259,6 +276,8 @@ services:
     environment:
       PIPELINE_URL: http://pipeline:8000
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+    ports:
+      - "8001:8001"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
