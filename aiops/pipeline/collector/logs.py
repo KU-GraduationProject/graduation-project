@@ -22,7 +22,7 @@ class LogsCollector:
         start_ns = int((alert_time - timedelta(minutes=window_minutes)).timestamp() * 1e9)
         end_ns   = int((alert_time + timedelta(minutes=window_minutes)).timestamp() * 1e9)
 
-        label_filter = f'{{container="{container}"}}' if container else '{}'
+        label_filter = f'{{container="{container}"}}' if container else '{container=~".+"}'
 
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(
