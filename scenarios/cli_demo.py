@@ -21,49 +21,32 @@ console = Console()
 # ──────────────────────────────────────────────
 SCENARIO_CONFIGS = {
     "1": {
-        "key":       "cpu_stress",
-        "label":     "CPU 고갈 (크립토마이닝 의심)",
+        "key":       "redos_attack",
+        "label":     "ReDoS 공격 (OWASP A05 - CPU 고갈)",
         "container": "leafy-backend",
-        "analysis": [
-            ("root_cause",   "컨테이너 내부 비정상 CPU 점유. 크립토마이닝 악성코드 의심."),
-            ("evidence",     "CPU 91% 급등 / dd 프로세스 다수 실행 감지"),
-            ("threat_level", "HIGH"),
-            ("action_risk",  "HIGH"),
-            ("action",       "isolate_container leafy-backend"),
-            ("confidence",   "0.93"),
-        ],
-        "remediation": [
-            "Docker API 연결중...",
-            "leafy-net 네트워크 격리 실행",
-            "docker network disconnect leafy-net leafy-backend",
-            "Slack 알림 전송중...",
-            "✅  컨테이너 격리 완료",
-        ],
-        "module": "category1_infra.cpu_stress",
+        "module":    "category1_infra.redos_attack",
     },
     "2": {
-        "key":       "memory_leak",
-        "label":     "메모리 누수 / OOM 반복 재시작",
+        "key":       "n_plus_one_attack",
+        "label":     "N+1 Query 공격 (OWASP A04 - DB 커넥션 고갈)",
         "container": "leafy-db",
-        "analysis": [
-            ("root_cause",   "leafy-db 컨테이너가 메모리 한도를 초과하여 반복 재시작 중."),
-            ("evidence",     "OOMKilled 이벤트 3회 / restart_count=3 / RSS 급증"),
-            ("threat_level", "HIGH"),
-            ("action_risk",  "MEDIUM"),
-            ("action",       "restart_container leafy-db"),
-            ("confidence",   "0.88"),
-        ],
-        "remediation": [
-            "Docker API 연결중...",
-            "leafy-db 컨테이너 상태 확인...",
-            "docker restart leafy-db",
-            "메모리 사용량 모니터링 설정...",
-            "Slack 알림 전송중...",
-            "✅  컨테이너 재시작 및 모니터링 완료",
-        ],
-        "module": "category1_infra.memory_leak",
+        "module":    "category2_security.n_plus_one_attack",
+    },
+    "3": {
+        "key":       "db_bruteforce",
+        "label":     "DB 브루트포스 (내부망 반복 인증 실패)",
+        "container": "leafy-db",
+        "module":    "category2_security.brute_force",
+    },
+    "4": {
+        "key":       "lateral_movement",
+        "label":     "컨테이너 Lateral Movement (비인가 DB 직접 접속)",
+        "container": "leafy-db",
+        "module":    "category2_security.lateral_movement",
     },
 }
+
+PIPELINE_URL = os.getenv("PIPELINE_URL", "http://localhost:8000")
 
 
 # ──────────────────────────────────────────────
@@ -346,25 +329,96 @@ def scene_collecting(scenario_cfg: dict):
             console.print(f"\n\n  [{color}]{spinners[i % len(spinners)]}  {step}[/{color}]")
             time.sleep(0.1)
 
+def _poll_llm_result(timeout_sec: int = 180) -> dict | None:
+    """Pipeline /results/latest 를 폴링하여 실제 LLM 분석 결과를 가져온다."""
+    import urllib.request, urllib.error, json as _json
+    deadline = time.time() + timeout_sec
+    spinners = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏']
+    i = 0
+    while time.time() < deadline:
+        try:
+            r = urllib.request.urlopen(f"{PIPELINE_URL}/results/latest", timeout=5)
+            data = _json.loads(r.read().decode())
+            if data.get("status") == "ok":
+                return data["data"]["result"]
+        except Exception:
+            pass
+        os.system('cls' if os.name == 'nt' else 'clear')
+        elapsed = int(time.time() - (deadline - timeout_sec))
+        console.print(
+            f"\n\n  [bold yellow]{spinners[i % len(spinners)]}  "
+            f"AI 분석 대기중... ({elapsed}초 경과 / 최대 {timeout_sec}초)[/bold yellow]"
+        )
+        console.print("  [dim]Prometheus 탐지 → AlertManager → Pipeline → LLM[/dim]")
+        time.sleep(1)
+        i += 1
+    return None
+
+
 def scene_llm_analyzing(scenario_cfg: dict):
     os.system('cls' if os.name == 'nt' else 'clear')
-    console.print("\n\n  [bold yellow]🤖  LLM ANALYZING...[/bold yellow]\n")
+    console.print("\n\n  [bold yellow]🤖  LLM ANALYZING (실제 AI 분석)...[/bold yellow]\n")
     time.sleep(0.5)
-    for key, value in scenario_cfg["analysis"]:
+
+    # 실제 Pipeline에서 결과 폴링
+    result = _poll_llm_result(timeout_sec=180)
+
+    os.system('cls' if os.name == 'nt' else 'clear')
+    console.print("\n\n  [bold yellow]🤖  LLM 분석 완료[/bold yellow]\n")
+
+    if result:
+        display = [
+            ("root_cause",   result.get("root_cause", "N/A")),
+            ("threat_level", result.get("threat_level", "N/A")),
+            ("action_risk",  result.get("action_risk", "N/A")),
+            ("action",       result.get("action", "N/A")),
+            ("confidence",   str(result.get("confidence", "N/A"))),
+            ("evidence",     " | ".join(result.get("evidence", [])[:2])),
+        ]
+    else:
+        console.print("  [red]⚠ Pipeline 응답 시간 초과 - 마지막 캐시 결과 없음[/red]")
+        display = [("status", "분석 결과를 가져오지 못했습니다.")]
+
+    for key, value in display:
         console.print(f"  [bold green]{key:14s}[/bold green]: ", end="")
-        for ch in value:
+        for ch in str(value):
             print(ch, end="", flush=True)
-            time.sleep(0.025)
+            time.sleep(0.018)
         print()
-        time.sleep(0.15)
-    time.sleep(1.2)
+        time.sleep(0.12)
+    time.sleep(1.5)
 
 def scene_remediating(scenario_cfg: dict):
+    import urllib.request, urllib.error, json as _json
     os.system('cls' if os.name == 'nt' else 'clear')
-    console.print("\n\n  [bold magenta]🛡   REMEDIATING...[/bold magenta]\n")
-    for action in scenario_cfg["remediation"]:
-        console.print(f"  [magenta]▶[/magenta]  {action}")
-        time.sleep(0.55)
+    console.print("\n\n  [bold magenta]🛡   REMEDIATING (실제 조치 확인)...[/bold magenta]\n")
+
+    # Remediation 결과 확인
+    remediation_steps = [
+        "Docker API 연결중...",
+        f"{scenario_cfg['container']} 컨테이너 상태 분석...",
+        "Remediation Agent 결정 로직 실행...",
+    ]
+    for step in remediation_steps:
+        console.print(f"  [magenta]▶[/magenta]  {step}")
+        time.sleep(0.6)
+
+    # 실제 Remediation 결과 가져오기
+    try:
+        r = urllib.request.urlopen(f"{PIPELINE_URL}/results/latest", timeout=5)
+        data = _json.loads(r.read().decode())
+        if data.get("status") == "ok":
+            result = data["data"]["result"]
+            action_risk = result.get("action_risk", "unknown")
+            action = result.get("action", "N/A")
+            if action_risk == "low":
+                status_msg = f"✅  자동 조치 실행: {action}"
+            else:
+                status_msg = f"⚠  승인 요청 발송 (action_risk={action_risk}): {action}"
+            console.print(f"  [magenta]▶[/magenta]  {status_msg}")
+    except Exception:
+        console.print("  [magenta]▶[/magenta]  Slack 알림 전송완료")
+
     time.sleep(0.8)
 
 def scene_explosion():

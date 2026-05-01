@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 SCRIPT_DIR     = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH       = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_log.json"))
 
-CONTAINER_NAME = "leafy-db"
+CONTAINER_NAME = "leafy-backend"  # 메모리 누수 → OOMKill 시뮬레이션 대상
 RESTART_COUNT  = 3        # 재시작 반복 횟수
 CYCLE_SECONDS  = 90       # 재시작 주기(초)
 
