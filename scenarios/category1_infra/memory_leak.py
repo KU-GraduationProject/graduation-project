@@ -12,6 +12,8 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from common.verifier import ScenarioVerifier
 
 # ── 설정 ───────────────────────────────────────────────────────────────────────
 SCRIPT_DIR     = os.path.dirname(os.path.abspath(__file__))
@@ -55,7 +57,19 @@ def record_event(scenario: str, start: str, end: str, status: str, detail: str =
 def main():
     scenario = "memory_leak_restart"
     client = docker.from_env()
+    # ── verifier 초기화 ──
+    verifier = ScenarioVerifier(
+        scenario_name="memory_leak",
+        alert_name="ContainerRestarted",
+        hypothesis="컨테이너 강제 재시작 시 ContainerRestarted 즉시 FIRING",
+        steady_state_query='changes(container_start_time_seconds{id=~"/docker/.+"}[5m])',
+        steady_state_threshold=1.0,
+    )
 
+    verifier.check_steady_state()
+    verifier.print_hypothesis()
+    verifier.check_repeat_interval()
+    verifier.start_timer()
     print(f"[*] 시나리오 시작: {scenario}")
     print(f"[*] 대상 컨테이너: {CONTAINER_NAME}")
     print(f"[*] 재시작 횟수: {RESTART_COUNT}회 / 주기: {CYCLE_SECONDS}초")
@@ -92,17 +106,10 @@ def main():
 
             state_before = container.status
 
-            if state_before == "running":
-                # 정상 running 상태 → SIGKILL로 강제 종료
-                container.kill(signal="SIGKILL")
-                print(f"  → SIGKILL 전송 완료 (이전 상태: {state_before})")
-            else:
-                # running이 아닌 경우 → docker restart로 재시작
-                print(f"  → 컨테이너가 running 아님({state_before}), docker restart 사용")
-                container.restart()
-                print(f"  → docker restart 완료")
+            container.restart(timeout=0)   # 즉시 강제 재시작
+            print(f"  → 강제 재시작 완료 (이전 상태: {state_before})")
 
-            time.sleep(3)  # Docker 데몬이 재시작 정책 처리할 시간
+            time.sleep(3)
 
             container.reload()
             state_after = container.status
@@ -129,6 +136,10 @@ def main():
     detail = json.dumps(events, ensure_ascii=False)
     record_event(scenario, start_time, end_time, final_status, detail[:800])
     print(f"\n[*] 시나리오 종료: {scenario}")
+
+    # ── 4단계: Alert 발화 확인 ──
+    result = verifier.verify(timeout=60)
+    verifier.log_result(result)
 
 
 if __name__ == "__main__":

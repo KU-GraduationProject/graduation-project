@@ -18,12 +18,16 @@ import urllib.error
 import urllib.parse
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from common.verifier import ScenarioVerifier
+
 
 # ── 설정 ───────────────────────────────────────────────────────────────────────
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH     = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_log.json"))
 
-TARGET_BASE = os.getenv("TARGET_URL", "http://leafy-frontend:80")
+TARGET_BASE = os.getenv("TARGET_URL", "http://localhost:80")
 WORKERS      = 60       # 동시 요청 스레드 수
 DURATION_SEC = 120      # 공격 지속 시간(초)
 
@@ -83,7 +87,23 @@ def _send_one() -> tuple[int, float]:
 
 # ── 메인 ───────────────────────────────────────────────────────────────────────
 def main():
-    scenario   = "http_flood"
+    scenario = "http_flood"
+
+    # ── verifier 초기화 ──
+    verifier = ScenarioVerifier(
+        scenario_name="http_flood",
+        alert_name="HighNetworkReceive",
+        hypothesis="http_flood 실행 중 HighNetworkReceive 또는 HighNginxErrorRate FIRING",
+        steady_state_query='rate(container_network_receive_bytes_total{id=~"/docker/.+"}[1m])',
+        steady_state_threshold=1e5,
+    )
+
+    verifier.check_steady_state()
+    verifier.print_hypothesis()
+    verifier.check_repeat_interval()
+    verifier.start_timer()
+
+    # ── 기존 공격 코드 (그대로) ──
     start_time = datetime.now(timezone.utc).isoformat()
     deadline   = time.time() + DURATION_SEC
 
@@ -129,6 +149,9 @@ def main():
     print(f"\n[*] 완료: 총 {total}건 전송")
     print(f"[*] Prometheus alert 확인: http://localhost:9090/alerts")
 
+    # ── 4단계: Alert 발화 확인 ──
+    result = verifier.verify(timeout=180)   # 60 → 180으로 변경
+    verifier.log_result(result)
 
 if __name__ == "__main__":
     main()

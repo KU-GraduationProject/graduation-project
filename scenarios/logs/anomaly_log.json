@@ -415,5 +415,141 @@
     "failure_reason": "",
     "timestamp": "2026-05-12T14:28:02.919539+00:00",
     "category": "verification"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-12T14:39:37.559891+00:00",
+    "end_time": "2026-05-12T14:41:40.758500+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 4080, \"errors\": 4080, \"status_counts\": {\"0\": 4080}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "alert_name": "HighNetworkReceive",
+    "success": false,
+    "mttd_seconds": null,
+    "failure_reason": "메트릭 값(271.8143)이 임계값(10000000.0)에 미달",
+    "timestamp": "2026-05-12T14:41:40.795558+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-12T14:44:09.805883+00:00",
+    "end_time": "2026-05-12T14:46:09.971515+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 4920, \"errors\": 104, \"status_counts\": {\"200\": 4816, \"0\": 104}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "alert_name": "HighNetworkReceive",
+    "success": false,
+    "mttd_seconds": null,
+    "failure_reason": "메트릭 값(270.0734)이 임계값(10000000.0)에 미달",
+    "timestamp": "2026-05-12T14:46:10.016803+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-12T14:57:04.568613+00:00",
+    "end_time": "2026-05-12T14:59:10.279535+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 5640, \"errors\": 102, \"status_counts\": {\"200\": 5538, \"0\": 102}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "alert_name": "HighNetworkReceive",
+    "success": false,
+    "mttd_seconds": null,
+    "failure_reason": "원인 미상 — Prometheus 쿼리 확인 필요",
+    "timestamp": "2026-05-12T14:59:18.417442+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-12T15:21:13.172559+00:00",
+    "end_time": "2026-05-12T15:23:19.112561+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 6420, \"errors\": 118, \"status_counts\": {\"200\": 6302, \"0\": 118}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "alert_name": "HighNetworkReceive",
+    "success": false,
+    "mttd_seconds": null,
+    "failure_reason": "Alert이 AlertManager에 존재하지만 Prometheus에서 FIRING 아님 (repeat_interval 문제 가능)",
+    "timestamp": "2026-05-12T15:23:19.165269+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-12T15:31:41.439203+00:00",
+    "end_time": "2026-05-12T15:33:44.841790+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 5280, \"errors\": 88, \"status_counts\": {\"200\": 5192, \"0\": 88}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "alert_name": "HighNetworkReceive",
+    "success": true,
+    "mttd_seconds": 123.4,
+    "failure_reason": "",
+    "timestamp": "2026-05-12T15:33:44.880809+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "memory_leak_restart",
+    "category": "infra",
+    "start_time": "2026-05-12T15:42:21.773611+00:00",
+    "end_time": "2026-05-12T15:46:32.430194+00:00",
+    "status": "success",
+    "detail": "[{\"cycle\": 1, \"cycle_start\": \"2026-05-12T15:42:21.779490+00:00\", \"state_before\": \"running\", \"state_after\": \"exited\"}, {\"cycle\": 2, \"cycle_start\": \"2026-05-12T15:43:55.252020+00:00\", \"state_before\": \"exited\", \"state_after\": \"running\"}, {\"cycle\": 3, \"cycle_start\": \"2026-05-12T15:46:28.954982+00:00\", \"state_before\": \"running\", \"state_after\": \"exited\"}]"
+  },
+  {
+    "scenario": "memory_leak",
+    "alert_name": "ContainerRestarted",
+    "success": false,
+    "mttd_seconds": null,
+    "failure_reason": "메트릭 값(0.0000)이 임계값(1.0)에 미달",
+    "timestamp": "2026-05-12T15:46:32.452620+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "memory_leak_restart",
+    "category": "infra",
+    "start_time": "2026-05-12T16:03:48.953112+00:00",
+    "end_time": "2026-05-12T16:08:01.077517+00:00",
+    "status": "success",
+    "detail": "[{\"cycle\": 1, \"cycle_start\": \"2026-05-12T16:03:48.963871+00:00\", \"state_before\": \"exited\", \"state_after\": \"running\"}, {\"cycle\": 2, \"cycle_start\": \"2026-05-12T16:06:22.780904+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}, {\"cycle\": 3, \"cycle_start\": \"2026-05-12T16:07:56.814677+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}]"
+  },
+  {
+    "scenario": "memory_leak",
+    "alert_name": "ContainerRestarted",
+    "success": false,
+    "mttd_seconds": null,
+    "failure_reason": "메트릭 값(0.0000)이 임계값(1.0)에 미달",
+    "timestamp": "2026-05-12T16:08:01.124872+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "memory_leak_restart",
+    "category": "infra",
+    "start_time": "2026-05-12T16:35:38.785382+00:00",
+    "end_time": "2026-05-12T16:38:50.783781+00:00",
+    "status": "success",
+    "detail": "[{\"cycle\": 1, \"cycle_start\": \"2026-05-12T16:35:38.789988+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}, {\"cycle\": 2, \"cycle_start\": \"2026-05-12T16:37:12.770703+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}, {\"cycle\": 3, \"cycle_start\": \"2026-05-12T16:38:46.806188+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}]"
+  },
+  {
+    "scenario": "memory_leak",
+    "alert_name": "ContainerRestarted",
+    "success": false,
+    "mttd_seconds": null,
+    "failure_reason": "메트릭 값(0.0000)이 임계값(1.0)에 미달",
+    "timestamp": "2026-05-12T16:38:50.834389+00:00",
+    "category": "verification"
   }
 ]
