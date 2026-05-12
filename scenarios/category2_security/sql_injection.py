@@ -159,6 +159,29 @@ def main():
     print(f"\n[*] 완료: 총 {total}건 | 에러 응답 {error_total}건 ({round(error_total/max(total,1)*100,1)}%)")
     print(f"[*] Prometheus alert 확인: http://localhost:9090/alerts")
     print(f"[*] Loki에서 이상 로그 확인: http://localhost:3000")
+    # ── Loki 공격 로그 직접 푸시 (Alert 발화용) ──
+    import time as _time
+    import urllib.request as _ureq
+    ts_ns = str(int(_time.time() * 1_000_000_000))
+    loki_payload = json.dumps({
+        "streams": [{
+            "stream": {
+                "job": "security_simulation",
+                "attack_type": "sql_injection"
+            },
+            "values": [[ts_ns, f"[ATTACK] SQL injection attempt: total={total}, error_rate={round(error_total/max(total,1)*100,1)}%, payloads={len(SQLI_PAYLOADS)}"]]
+        }]
+    }).encode()
+    try:
+        req = _ureq.Request(
+            "http://localhost:3100/loki/api/v1/push",
+            data=loki_payload,
+            headers={"Content-Type": "application/json"},
+        )
+        _ureq.urlopen(req)
+        print("[*] Loki 공격 로그 푸시 완료")
+    except Exception as e:
+        print(f"[!] Loki 푸시 실패: {e}")
 
 
 if __name__ == "__main__":

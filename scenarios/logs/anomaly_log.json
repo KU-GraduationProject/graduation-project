@@ -350,5 +350,70 @@
     "end_time": "2026-05-12T07:53:14.584549+00:00",
     "status": "success",
     "detail": "[{\"command\": \"env\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"KAKAO_REST_API_KEY=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nHOSTNAME=19a9be20325a\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nPLANT_ID_API_KEY=***MASKED***\\nSHLVL=1\\nHOME=/root\\nAWS_SECRET_KEY=***MASKED***\\nS3_BUCKET_NAME=leafy-s3-buck\"}, {\"command\": \"cat /proc/1/environ | tr '\\\\0' '\\\\n'\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/default-jvm/bin\\nHOSTNAME=19a9be20325a\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nMANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS=always\\nAWS_ACCESS_KEY=***MASKED***\\nKAKAO_REST_API_KEY=***MASKED***\\nAWS_REGI\"}, {\""
+  },
+  {
+    "scenario": "secret_dump",
+    "category": "security",
+    "start_time": "2026-05-12T09:20:21.559721+00:00",
+    "end_time": "2026-05-12T09:20:21.746735+00:00",
+    "status": "success",
+    "detail": "[{\"command\": \"env\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"KAKAO_REST_API_KEY=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nHOSTNAME=d6a279596212\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nPLANT_ID_API_KEY=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nSHLVL=1\\nHOME=/root\\nAWS_SECRET_KEY=***MASKED***\\nS3_BUCKET_NAME=leafy-s3-buck\"}, {\"command\": \"cat /proc/1/environ | tr '\\\\0' '\\\\n'\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/default-jvm/bin\\nHOSTNAME=d6a279596212\\nMANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED=true\\nAWS_REGION=ap-northeast-2\\nKAKAO_CLIENT_SECRET=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nS\"}, {\"c"
+  },
+  {
+    "scenario": "secret_dump",
+    "category": "security",
+    "start_time": "2026-05-12T09:21:11.886585+00:00",
+    "end_time": "2026-05-12T09:21:12.121336+00:00",
+    "status": "success",
+    "detail": "[{\"command\": \"env\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"KAKAO_REST_API_KEY=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nHOSTNAME=d6a279596212\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nPLANT_ID_API_KEY=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nSHLVL=1\\nHOME=/root\\nAWS_SECRET_KEY=***MASKED***\\nS3_BUCKET_NAME=leafy-s3-buck\"}, {\"command\": \"cat /proc/1/environ | tr '\\\\0' '\\\\n'\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/default-jvm/bin\\nHOSTNAME=d6a279596212\\nMANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED=true\\nAWS_REGION=ap-northeast-2\\nKAKAO_CLIENT_SECRET=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nS\"}, {\"c"
+  },
+  {
+    "scenario": "secret_dump",
+    "category": "security",
+    "start_time": "2026-05-12T09:22:29.176187+00:00",
+    "end_time": "2026-05-12T09:22:29.370639+00:00",
+    "status": "success",
+    "detail": "[{\"command\": \"env\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"KAKAO_REST_API_KEY=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nHOSTNAME=d6a279596212\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nPLANT_ID_API_KEY=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nSHLVL=1\\nHOME=/root\\nAWS_SECRET_KEY=***MASKED***\\nS3_BUCKET_NAME=leafy-s3-buck\"}, {\"command\": \"cat /proc/1/environ | tr '\\\\0' '\\\\n'\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/default-jvm/bin\\nHOSTNAME=d6a279596212\\nMANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED=true\\nAWS_REGION=ap-northeast-2\\nKAKAO_CLIENT_SECRET=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nS\"}, {\"c"
+  },
+  {
+    "scenario": "secret_dump",
+    "category": "security",
+    "start_time": "2026-05-12T09:25:26.583121+00:00",
+    "end_time": "2026-05-12T09:25:26.805600+00:00",
+    "status": "success",
+    "detail": "[{\"command\": \"env\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"KAKAO_REST_API_KEY=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nHOSTNAME=d6a279596212\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nPLANT_ID_API_KEY=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nSHLVL=1\\nHOME=/root\\nAWS_SECRET_KEY=***MASKED***\\nS3_BUCKET_NAME=leafy-s3-buck\"}, {\"command\": \"cat /proc/1/environ | tr '\\\\0' '\\\\n'\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/default-jvm/bin\\nHOSTNAME=d6a279596212\\nMANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED=true\\nAWS_REGION=ap-northeast-2\\nKAKAO_CLIENT_SECRET=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nS\"}, {\"c"
+  },
+  {
+    "scenario": "lateral_movement",
+    "category": "security",
+    "start_time": "2026-05-12T09:42:57.960635+00:00",
+    "end_time": "2026-05-12T09:44:23.859649+00:00",
+    "status": "success",
+    "detail": "{\"attacker_container\": \"leafy-attacker-frontend\", \"network\": \"graduation-project_leafy-net\", \"target\": \"leafy-db:5432\", \"attempt_count\": 200, \"exit_code\": 0, \"credentials_tried\": 6, \"recon_queries\": 3, \"note\": \"정상 아키텍처에서 DB 접근은 leafy-backend만 허용. Loki에서 비정상 소스 IP 확인 필요.\"}"
+  },
+  {
+    "scenario": "sql_injection",
+    "category": "security",
+    "start_time": "2026-05-12T09:49:27.211723+00:00",
+    "end_time": "2026-05-12T09:51:34.236037+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 4880, \"error_responses\": 4056, \"error_rate_pct\": 83.1, \"status_counts\": {\"404\": 4056, \"200\": 779, \"0\": 45}, \"payloads_used\": 13, \"note\": \"JPA Prepared Statement로 실제 주입 차단됨. 에러율/로그 이상 탐지 시나리오.\"}"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-12T14:26:56.087762+00:00",
+    "end_time": "2026-05-12T14:28:02.892849+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 66.8,
+    "failure_reason": "",
+    "timestamp": "2026-05-12T14:28:02.919539+00:00",
+    "category": "verification"
   }
 ]

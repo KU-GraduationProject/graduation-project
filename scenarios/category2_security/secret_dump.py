@@ -135,8 +135,31 @@ def main():
     final_status = "success" if any_success else "failed"
     detail = json.dumps(results, ensure_ascii=False)
     record_event(scenario, start_time, end_time, final_status, detail[:800])
-    print(f"\n[*] 시나리오 종료: {scenario} | 환경변수 덤프 {'성공' if any_success else '실패'}")
+    # ── Loki 공격 로그 직접 푸시 (Alert 발화용) ──
+    import time as _time
+    import urllib.request as _ureq
+    ts_ns = str(int(_time.time() * 1_000_000_000))
+    loki_payload = json.dumps({
+        "streams": [{
+            "stream": {
+                "job": "security_simulation",
+                "attack_type": "secret_dump"
+            },
+            "values": [[ts_ns, f"[ATTACK] printenv executed: env_vars_exposed={any_success}, commands={len(DUMP_COMMANDS)}"]]
+        }]
+    }).encode()
+    try:
+        req = _ureq.Request(
+            "http://localhost:3100/loki/api/v1/push",
+            data=loki_payload,
+            headers={"Content-Type": "application/json"},
+        )
+        _ureq.urlopen(req)
+        print("[*] Loki 공격 로그 푸시 완료")
+    except Exception as e:
+        print(f"[!] Loki 푸시 실패: {e}")
 
+    print(f"\n[*] 시나리오 종료: {scenario} | 환경변수 덤프 {'성공' if any_success else '실패'}")
 
 if __name__ == "__main__":
     main()

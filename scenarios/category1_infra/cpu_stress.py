@@ -11,6 +11,8 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from common.verifier import ScenarioVerifier
 
 # ── 경로 설정 ──────────────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -81,6 +83,28 @@ def main():
     scenario = "cpu_stress"
     client = docker.from_env()
 
+    # ── verifier 초기화 ──
+    verifier = ScenarioVerifier(
+        scenario_name="cpu_stress",
+        alert_name="HighCpuUsage",
+        hypothesis="cpu_stress 실행 2분 내 HighCpuUsage FIRING",
+        steady_state_query='rate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[2m])',
+        steady_state_threshold=0.5,
+    )
+
+    # 1단계: Steady State 확인
+    verifier.check_steady_state()
+
+    # 2단계: Hypothesis 출력
+    verifier.print_hypothesis()
+
+    # repeat_interval 사전 체크
+    verifier.check_repeat_interval()
+
+    # 3단계: 타이머 시작
+    verifier.start_timer()
+
+    # ── 기존 공격 코드 (그대로) ──
     print(f"[*] 시나리오 시작: {scenario}")
     print(f"[*] 대상 컨테이너: {CONTAINER_NAME}")
     print(f"[*] 스트레스 지속: {STRESS_DURATION}초")
@@ -120,6 +144,11 @@ def main():
     record_event(scenario, start_time, end_time, status, output_str[:500])
     print(f"[*] 시나리오 종료: {scenario}")
 
+    # ── 4단계: Alert 발화 확인 + MTTD 측정 ──
+    result = verifier.verify(timeout=120)
+
+    # ── 5단계: 결과 기록 ──
+    verifier.log_result(result)
 
 if __name__ == "__main__":
     main()
