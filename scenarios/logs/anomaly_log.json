@@ -190,5 +190,61 @@
     "end_time": "2026-05-01T08:55:34.510359+00:00",
     "status": "success",
     "detail": "{\"cycles\": 32, \"queries_ok\": 11520, \"queries_fail\": 1920, \"concurrent_connections\": 60, \"n_plus_one_pattern\": \"my_plant → [growth_record, plant_species, diagnosis_history, schedule]\"}"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-06T10:10:19.307316+00:00",
+    "end_time": "2026-05-06T10:10:30.963670+00:00",
+    "status": "exit_code=137",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-06T10:19:21.562245+00:00",
+    "end_time": "2026-05-06T10:19:38.941176+00:00",
+    "status": "exit_code=137",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-06T10:20:58.944373+00:00",
+    "end_time": "2026-05-06T10:21:48.010702+00:00",
+    "status": "exit_code=137",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-06T10:34:41.939955+00:00",
+    "end_time": "2026-05-06T10:34:48.396585+00:00",
+    "status": "exit_code=137",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-06T10:47:24.128715+00:00",
+    "end_time": "2026-05-06T10:48:05.787323+00:00",
+    "status": "exit_code=137",
+    "detail": ""
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-06T10:53:09.000554+00:00",
+    "end_time": "2026-05-06T10:55:09.086638+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 99660, \"errors\": 0, \"status_counts\": {\"502\": 74875, \"200\": 24785}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-06T10:55:58.727724+00:00",
+    "end_time": "2026-05-06T10:57:58.805285+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 62880, \"errors\": 0, \"status_counts\": {\"502\": 47112, \"200\": 15768}, \"workers\": 60, \"duration_sec\": 120}"
   }
 ]

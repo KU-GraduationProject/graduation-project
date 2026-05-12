@@ -1,17 +1,17 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import Any, Literal
 
-
 class LLMAnalysisResult(BaseModel):
     """
     LLM(Llama-3.1)이 출력해야 할 JSON 구조.
     Remediation Agent가 이 스키마를 기반으로 분기 처리.
     """
-
     root_cause: str = Field(
+        default="분석 실패 — 수동 확인 필요",  # ← 기본값 추가
         description="Root cause summary (2-3 sentences)"
     )
     action: str = Field(
+        default="manual investigation required",  # ← 기본값 추가
         description="Recommended remediation action (e.g. 'restart container leafy-backend')"
     )
     threat_level: Literal["low", "medium", "high", "critical"] = Field(
@@ -40,7 +40,6 @@ class LLMAnalysisResult(BaseModel):
             if isinstance(item, str):
                 result.append(item)
             elif isinstance(item, dict):
-                # {'cpu_usage': 'peak=13.5'} → 'cpu_usage: peak=13.5'
                 parts = [f"{k}: {val}" for k, val in item.items()]
                 result.append(", ".join(parts))
             else:

@@ -300,7 +300,8 @@ def scene_creeper_approach():
             for line in CREEPER_EMOJI:
                 t.append(" " * pad + line + "\n")
             live.update(t)
-            time.sleep(0.08)
+            time.sleep(0.4)
+
 
 def scene_attack_detected():
     for _ in range(5):

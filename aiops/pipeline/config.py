@@ -6,7 +6,7 @@ class Settings:
     loki_url: str = os.getenv("LOKI_URL", "http://loki:3100")
     ollama_url: str = os.getenv("OLLAMA_URL", "http://ollama:11434")
     remediation_url: str = os.getenv("REMEDIATION_URL", "http://remediation:8001")
-    llm_model: str = os.getenv("LLM_MODEL", "llama3.1:8b")
-
+    llm_model: str = os.getenv("LLM_MODEL", "llama3.1:8b")  # ← 3b → 8b
 
 settings = Settings()
+

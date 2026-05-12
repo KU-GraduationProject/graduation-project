@@ -40,9 +40,9 @@ def _resolve_container_name(raw: str | None) -> str | None:
             if resp.status_code == 200:
                 name = resp.json().get("Name", "").lstrip("/")
                 return name or raw
-    except Exception:
-        pass
-    return raw
+    except Exception as e:
+        logger.warning(f"[Pipeline] 컨테이너 이름 변환 실패: {raw} | {e}")
+    return None  # ← raw → None 으로 변경
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -279,6 +279,18 @@ async def analyze_alerts(alerts: list[Alert]):
 
         except Exception as e:
             logger.error(f"[Pipeline] 분석 실패 ({alert.labels.alertname}): {e}")
+            try:
+                fallback_result = LLMAnalysisResult(
+                    root_cause="LLM 분석 실패 — 수동 확인 필요",
+                    action="manual investigation required",
+                    threat_level="medium",
+                    action_risk="high",
+                    evidence=[],
+                    confidence=0.0,
+                )
+                await forward_to_remediation(alert, fallback_result)
+            except Exception as fe:
+                logger.error(f"[Pipeline] fallback 전달 실패: {fe}")
 
 
 async def push_to_loki(entry: dict) -> None:
@@ -312,7 +324,7 @@ async def push_to_loki(entry: dict) -> None:
 
 async def call_llm(prompt: dict) -> LLMAnalysisResult:
     """Ollama API 호출 → JSON 파싱"""
-    async with httpx.AsyncClient(timeout=120) as client:
+    async with httpx.AsyncClient(timeout=180) as client:        
         response = await client.post(
             f"{settings.ollama_url}/api/chat",
             json={

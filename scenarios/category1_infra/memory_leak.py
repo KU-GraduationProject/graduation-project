@@ -50,6 +50,7 @@ def record_event(scenario: str, start: str, end: str, status: str, detail: str =
     print(f"[LOG] {scenario} | {status} | {start} → {end}")
 
 
+
 # ── 메인 ───────────────────────────────────────────────────────────────────────
 def main():
     scenario = "memory_leak_restart"

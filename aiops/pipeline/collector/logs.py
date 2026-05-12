@@ -19,10 +19,15 @@ class LogsCollector:
         limit: int = 200,
     ) -> list[dict]:
         """이상 시점 ±window 범위 로그 수집"""
+
+        # ← 이 부분 추가
+        if not container:
+            return []
+
         start_ns = int((alert_time - timedelta(minutes=window_minutes)).timestamp() * 1e9)
         end_ns   = int((alert_time + timedelta(minutes=window_minutes)).timestamp() * 1e9)
 
-        label_filter = f'{{container="{container}"}}' if container else '{container=~".+"}'
+        label_filter = f'{{container="{container}"}}'
 
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(

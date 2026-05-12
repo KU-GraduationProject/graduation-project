@@ -6,7 +6,9 @@ Docker SDK로 컨테이너 ID를 조회해 id 레이블 필터로 전환한다.
 
 import subprocess
 import httpx
+import logging  # ← 추가
 from datetime import datetime, timedelta
+logger = logging.getLogger(__name__)  # ← 추가
 
 
 def _get_container_id(container_name: str) -> str | None:
@@ -42,23 +44,32 @@ class MetricsCollector:
                 label = f'{{id="/docker/{cid}",cpu="total"}}'
                 net_label = f'{{id="/docker/{cid}"}}'
             else:
-                # ID 조회 실패 시 전체 개별 컨테이너 대상
-                label = '{id=~"/docker/.+",cpu="total"}'
-                net_label = '{id=~"/docker/.+"}'
+                # ID 조회 실패 시 호스트 메트릭만 수집
+                logger.warning(f"[MetricsCollector] 컨테이너 ID 조회 실패: {container}")
+                label = None
+                net_label = None
         else:
-            label = '{id=~"/docker/.+",cpu="total"}'
-            net_label = '{id=~"/docker/.+"}'
-
-        mem_label = label.replace(',cpu="total"', '')
-        queries = {
-            "cpu_usage":    f'rate(container_cpu_usage_seconds_total{label}[1m])',
-            "memory_usage": f'container_memory_usage_bytes{mem_label}',
-            "memory_limit": f'container_spec_memory_limit_bytes{mem_label}',
-            "net_rx_bytes": f'rate(container_network_receive_bytes_total{net_label}[1m])',
-            "net_tx_bytes": f'rate(container_network_transmit_bytes_total{net_label}[1m])',
-            "host_cpu":     'avg(rate(node_cpu_seconds_total{mode!="idle"}[1m]))',
-            "host_mem":     'node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes',
-        }
+            label = None
+            net_label = None
+            
+        # 수정
+        if label:
+            mem_label = label.replace(',cpu="total"', '')
+            queries = {
+                "cpu_usage":    f'rate(container_cpu_usage_seconds_total{label}[1m])',
+                "memory_usage": f'container_memory_usage_bytes{mem_label}',
+                "memory_limit": f'container_spec_memory_limit_bytes{mem_label}',
+                "net_rx_bytes": f'rate(container_network_receive_bytes_total{net_label}[1m])',
+                "net_tx_bytes": f'rate(container_network_transmit_bytes_total{net_label}[1m])',
+                "host_cpu":     'avg(rate(node_cpu_seconds_total{mode!="idle"}[1m]))',
+                "host_mem":     'node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes',
+            }
+        else:
+            # 컨테이너 특정 불가 → 호스트 메트릭만 수집
+            queries = {
+                "host_cpu": 'avg(rate(node_cpu_seconds_total{mode!="idle"}[1m]))',
+                "host_mem": 'node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes',
+            }
 
         results = {}
         async with httpx.AsyncClient(timeout=30) as client:

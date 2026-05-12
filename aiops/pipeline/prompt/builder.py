@@ -3,14 +3,10 @@
 system 프롬프트는 JSON 출력 형식을 강제하고,
 user 프롬프트는 실제 이상 데이터를 담는다.
 """
-
 import json
 
-
 SYSTEM_PROMPT = """You are an expert AIOps engineer specializing in Docker container infrastructure analysis.
-
 Your task is to analyze anomaly data from a containerized service and produce a structured Root Cause Analysis (RCA).
-
 You MUST respond ONLY with a valid JSON object matching this exact schema:
 {
   "root_cause": "<string: root cause summary in English, 2-3 sentences>",
@@ -20,15 +16,16 @@ You MUST respond ONLY with a valid JSON object matching this exact schema:
   "evidence": ["<string: specific metric or log observation>", ...],
   "confidence": <float 0.0-1.0>
 }
-
 Guidelines:
 - threat_level: low=minor degradation, medium=service slowdown, high=service impact, critical=service down
 - action_risk: low=no service disruption (e.g. log collection, config reload), medium=approval recommended (e.g. resource scaling, config change), high=may disrupt service (e.g. container restart, isolation)
 - evidence: list 3-5 specific numeric observations from the provided metrics and logs
 - action: describe what to do in plain English, NOT a shell command
 - Be concise and precise. No explanation outside the JSON.
+- METRIC UNITS: cpu_usage is in CPU cores (1.0 = 1 core at 100%, 4.0 = 4 cores at 100%). memory_usage is in bytes. net_rx_bytes and net_tx_bytes are in bytes/s. host_cpu and host_mem are 0.0~1.0 ratio (1.0 = 100%).
 """
 
+MAX_PROMPT_CHARS = 6000  # ← 프롬프트 길이 제한 추가
 
 class PromptBuilder:
     def build(self, alert, metrics: dict, logs: list[dict], container_name: str | None = None) -> dict:
@@ -57,23 +54,31 @@ class PromptBuilder:
         for metric_name, series_list in metrics.items():
             if not series_list:
                 continue
-            for series in series_list[:2]:  # 상위 2개 시리즈만
+            for series in series_list[:5]:  # ← 2개 → 5개로 확장
                 values = [pt["v"] for pt in series.get("values", []) if pt["v"] is not None]
                 if not values:
                     continue
                 latest = values[-1]
                 peak   = max(values)
-                lines.append(f"{metric_name}: latest={latest:.4f}, peak={peak:.4f}, samples={len(values)}")
+                try:
+                    lines.append(f"{metric_name}: latest={latest:.4f}, peak={peak:.4f}, samples={len(values)}")
+                except (ValueError, OverflowError):
+                    lines.append(f"{metric_name}: latest={latest}, peak={peak}, samples={len(values)}")
 
         # 로그 (최대 50줄, 에러/경고 우선)
         lines.append("\n=== LOGS (5-min window, up to 50 lines) ===")
-        error_logs  = [l for l in logs if any(kw in l["line"].lower() for kw in ["error", "exception", "fatal", "warn"])]
-        other_logs  = [l for l in logs if l not in error_logs]
-        selected    = error_logs[:30] + other_logs[:20]
+        error_logs = [l for l in logs if any(kw in l["line"].lower() for kw in ["error", "exception", "fatal", "warn"])]
+        error_set  = set(id(l) for l in error_logs)                    # ← O(n²) 성능 문제 수정
+        other_logs = [l for l in logs if id(l) not in error_set]       # ← O(n²) 성능 문제 수정
+        selected   = error_logs[:30] + other_logs[:20]
         selected.sort(key=lambda x: x["ts"])
-
         for entry in selected:
             lines.append(f"[{entry['labels'].get('container', '?')}] {entry['line'][:200]}")
 
         lines.append("\nAnalyze the above data and respond with JSON only.")
-        return "\n".join(lines)
+
+        # 프롬프트 길이 제한  ← 추가
+        user_content = "\n".join(lines)
+        if len(user_content) > MAX_PROMPT_CHARS:
+            user_content = user_content[:MAX_PROMPT_CHARS] + "\n...(truncated)"
+        return user_content
