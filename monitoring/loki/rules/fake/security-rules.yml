@@ -1,0 +1,43 @@
+groups:
+  - name: security-log-alerts
+    rules:
+
+      - alert: UnauthorizedDBAccess
+        expr: |
+          sum(count_over_time(
+            {container="leafy-db"} |= "authentication failed" [2m]
+          )) > 3
+        for: 0m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "비인가 DB 직접 접속 시도 탐지"
+          container: "leafy-db"
+
+      - alert: SecretDumpAttempt
+        expr: |
+          sum(count_over_time(
+            {container="backend"} |= "printenv" [2m]
+          )) > 0
+        for: 0m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "컨테이너 내부 환경변수 덤프 시도 탐지"
+          container: "leafy-backend"
+
+      - alert: SQLInjectionAttempt
+        expr: |
+          sum(count_over_time(
+            {container="frontend"} |~ "(?i)(union select|or 1=1|drop table|sleep\\()" [2m]
+          )) > 5
+        for: 0m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "SQL Injection 시도 패턴 탐지"
+          container: "leafy-frontend"
+          
