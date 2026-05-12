@@ -246,5 +246,93 @@
     "end_time": "2026-05-06T10:57:58.805285+00:00",
     "status": "success",
     "detail": "{\"total_requests\": 62880, \"errors\": 0, \"status_counts\": {\"502\": 47112, \"200\": 15768}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-12T04:33:36.166284+00:00",
+    "end_time": "2026-05-12T04:35:39.353830+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 2580, \"errors\": 2580, \"status_counts\": {\"0\": 2580}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-12T04:36:39.397242+00:00",
+    "end_time": "2026-05-12T04:38:48.320298+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 3360, \"errors\": 3360, \"status_counts\": {\"0\": 3360}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-12T04:43:03.504175+00:00",
+    "end_time": "2026-05-12T04:45:12.851477+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 3420, \"errors\": 3420, \"status_counts\": {\"0\": 3420}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-12T05:05:08.395073+00:00",
+    "end_time": "2026-05-12T05:07:08.918347+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 4980, \"errors\": 161, \"status_counts\": {\"200\": 4819, \"0\": 161}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-12T05:13:11.899771+00:00",
+    "end_time": "2026-05-12T05:15:12.206962+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 5160, \"errors\": 134, \"status_counts\": {\"200\": 5026, \"0\": 134}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-12T05:17:24.039986+00:00",
+    "end_time": "2026-05-12T05:18:29.193923+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-12T05:29:06.061215+00:00",
+    "end_time": "2026-05-12T05:30:11.056369+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-12T05:49:04.987024+00:00",
+    "end_time": "2026-05-12T05:50:11.121259+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-12T05:51:46.082108+00:00",
+    "end_time": "2026-05-12T05:52:52.237882+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-12T05:54:19.309101+00:00",
+    "end_time": "2026-05-12T05:55:25.807313+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-12T05:57:41.066875+00:00",
+    "end_time": "2026-05-12T05:58:47.354104+00:00",
+    "status": "success",
+    "detail": ""
   }
 ]

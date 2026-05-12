@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH     = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_log.json"))
 
-TARGET_BASE  = os.getenv("TARGET_URL", "https://localhost")
+TARGET_BASE = os.getenv("TARGET_URL", "http://leafy-frontend:80")
 WORKERS      = 60       # 동시 요청 스레드 수
 DURATION_SEC = 120      # 공격 지속 시간(초)
 

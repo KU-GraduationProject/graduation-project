@@ -236,13 +236,18 @@ async def analyze_alerts(alerts: list[Alert]):
 
             # 1. 이상 시점 전후 N분 데이터 수집
             alert_time = datetime.fromisoformat(alert.startsAt.replace("Z", "+00:00"))
+            # 수정
             container_raw = alert.annotations.get("container")
             container = _resolve_container_name(container_raw)
             logger.info(f"[Pipeline] container annotation={container_raw!r} → resolved={container!r}")
+
+            cid = container_raw[len("/docker/"):] if container_raw and container_raw.startswith("/docker/") else None
+
             metrics = await metrics_collector.fetch_around(
                 container=container,
                 alert_time=alert_time,
                 window_minutes=5,
+                container_id=cid,   # ← 추가
             )
             logs = await logs_collector.fetch_around(
                 container=container,

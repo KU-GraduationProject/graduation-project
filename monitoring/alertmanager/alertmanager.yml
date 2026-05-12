@@ -5,7 +5,7 @@ route:
   receiver: aiops-webhook
   group_wait: 10s
   group_interval: 1m
-  repeat_interval: 1h
+  repeat_interval: 1m
 
 receivers:
   - name: aiops-webhook
