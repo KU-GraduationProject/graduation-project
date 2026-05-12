@@ -334,5 +334,21 @@
     "end_time": "2026-05-12T05:58:47.354104+00:00",
     "status": "success",
     "detail": ""
+  },
+  {
+    "scenario": "secret_dump",
+    "category": "security",
+    "start_time": "2026-05-12T07:50:23.765181+00:00",
+    "end_time": "2026-05-12T07:50:24.259918+00:00",
+    "status": "success",
+    "detail": "[{\"command\": \"env\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"KAKAO_REST_API_KEY=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nHOSTNAME=19a9be20325a\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nPLANT_ID_API_KEY=***MASKED***\\nSHLVL=1\\nHOME=/root\\nAWS_SECRET_KEY=***MASKED***\\nS3_BUCKET_NAME=leafy-s3-buck\"}, {\"command\": \"cat /proc/1/environ | tr '\\\\0' '\\\\n'\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/default-jvm/bin\\nHOSTNAME=19a9be20325a\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nMANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS=always\\nAWS_ACCESS_KEY=***MASKED***\\nKAKAO_REST_API_KEY=***MASKED***\\nAWS_REGI\"}, {\""
+  },
+  {
+    "scenario": "secret_dump",
+    "category": "security",
+    "start_time": "2026-05-12T07:53:14.183134+00:00",
+    "end_time": "2026-05-12T07:53:14.584549+00:00",
+    "status": "success",
+    "detail": "[{\"command\": \"env\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"KAKAO_REST_API_KEY=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nHOSTNAME=19a9be20325a\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nPLANT_ID_API_KEY=***MASKED***\\nSHLVL=1\\nHOME=/root\\nAWS_SECRET_KEY=***MASKED***\\nS3_BUCKET_NAME=leafy-s3-buck\"}, {\"command\": \"cat /proc/1/environ | tr '\\\\0' '\\\\n'\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/default-jvm/bin\\nHOSTNAME=19a9be20325a\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nMANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS=always\\nAWS_ACCESS_KEY=***MASKED***\\nKAKAO_REST_API_KEY=***MASKED***\\nAWS_REGI\"}, {\""
   }
 ]
