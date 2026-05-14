@@ -27,9 +27,11 @@ Chaos Engineering 5단계를 코드로 자동화:
     verifier.log_result(result)
 """
 
+import http.client
 import json
 import os
 import time
+import urllib.parse
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
@@ -342,7 +344,41 @@ class ScenarioVerifier:
                 return f"메트릭 값({value:.4f})이 임계값({self.steady_state_threshold})에 미달", value
 
         return "원인 미상 — Prometheus 쿼리 확인 필요", None
+    
+    def check_l7_health(self, host: str, port: int, path: str = "/health") -> bool:
+        """실제 서비스 엔드포인트가 HTTP 200을 반환하는지 확인"""
+        try:
+            conn = http.client.HTTPConnection(host, port, timeout=3)
+            conn.request("GET", path)
+            response = conn.getresponse()
+            return response.status == 200
+        except Exception:
+            return False
 
-
-# ── import 보조 ────────────────────────────────────────────────────────────────
-import urllib.parse
+    # [추가] 4단계-B: MTTR(복구) 검증 및 측정
+    def verify_recovery(self, target_host: str, target_port: int, timeout: int = 300) -> float:
+        """
+        조치 실행 후 알람이 사라지고 L7이 정상화될 때까지 대기.
+        Returns: mttr_seconds (복구 소요 시간)
+        """
+        recovery_start = time.time()
+        deadline = recovery_start + timeout
+        
+        print(f"\n[4-B] 복구 확인 및 MTTR 측정 시작")
+        
+        while time.time() < deadline:
+            # 1. Prometheus 알람 상태 확인 (FIRING이 아니어야 함)
+            is_firing = self._check_alert_firing()
+            # 2. L7 가용성 확인
+            is_healthy = self.check_l7_health(target_host, target_port)
+            
+            if not is_firing and is_healthy:
+                mttr = time.time() - self._start_time  # 시나리오 시작 시점부터의 총 복구 시간
+                print(f"  → 복구 완료 확인! ✅ (MTTR: {mttr:.1f}초)")
+                return round(mttr, 1)
+            
+            print(f"  → 복구 대기 중... (Alert Firing: {is_firing}, L7 Healthy: {is_healthy})")
+            time.sleep(5)
+            
+        print(f"  → 복구 확인 타임아웃 ❌")
+        return -1.0

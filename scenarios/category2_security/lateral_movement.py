@@ -16,6 +16,19 @@ leafy-backend 이외의 소스 IP에서 오는 PostgreSQL 연결 시도는 이�
 AIOps 포인트: 소스 IP 기반으로 "정상 backend 연결"과 "비인가 lateral move"를 구별
 """
 
+"""
+Container Lateral Movement — Unauthorized DB Direct Access
+시나리오 2-B
+
+분류: MITRE ATT&CK TA0008 (Lateral Movement)
+목표 Alert: UnauthorizedDBAccess (Loki 로그 기반 탐지)
+Steady State: leafy-db 접속은 leafy-backend IP에서만 발생
+가설: 프론트엔드 컨테이너에서 DB로 직접 연결 시도 시, Loki 탐지 룰에 의해 2분 내 발화
+성공 기준: 프로젝트 내부 목표 MTTD < 2분, 정상/비정상 소스 IP 구분 성공
+
+침해된 컨테이너가 정상 경로(frontend→backend→db)를 우회하여...
+"""
+
 import json
 import os
 import subprocess

@@ -43,24 +43,24 @@ async def execute_action(request: ActionRequest):
         return {"status": "executed", "result": result}
     elif action_risk == "low" and confidence < 0.7:         # ← 신뢰도 낮으면 Slack
         try:
-            notifier.send_approval_request(alert, analysis)
+            await notifier.send_approval_request(alert, analysis)
         except Exception as e:
             logger.error(f"[Remediation] Slack 전송 실패: {e}")
         return {"status": "low_confidence", "message": "신뢰도 낮음 — 수동 확인 필요"}
     elif action_risk == "medium":
         try:                                                # ← 예외 처리 추가
             if threat_level == "low":
-                notifier.send_alert_only(alert, analysis)
+                await notifier.send_alert_only(alert, analysis)
                 return {"status": "alert_only", "message": "Medium-risk action with low threat: notified only"}
             else:
-                notifier.send_approval_request(alert, analysis)
+                await notifier.send_approval_request(alert, analysis)
                 return {"status": "pending_approval", "message": "Medium-risk action logged for manual review"}
         except Exception as e:
             logger.error(f"[Remediation] Slack 전송 실패: {e}")
             return {"status": "error", "message": f"Slack 전송 실패: {e}"}
     else:  # high
         try:                                                # ← 예외 처리 추가
-            notifier.send_approval_request(alert, analysis)
+            await notifier.send_approval_request(alert, analysis)
         except Exception as e:
             logger.error(f"[Remediation] Slack 전송 실패: {e}")
         return {"status": "pending_approval", "message": "High-risk action logged for manual review"}

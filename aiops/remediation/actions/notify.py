@@ -27,7 +27,7 @@ class Notifier:
             "timestamp":   datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),  # ← timestamp 추가
         }
 
-    def send_approval_request(self, alert: dict, analysis: dict) -> None:
+    async def send_approval_request(self, alert: dict, analysis: dict) -> None:
         """Log a medium/high-risk action request that requires manual approval."""
         data = self._extract_analysis(alert, analysis)  # ← 공통 로직 사용
 
@@ -41,7 +41,7 @@ class Notifier:
             f"  Evidence   : {json.dumps(data['evidence'], ensure_ascii=False)}"
         )
 
-        self._send_slack({
+        await self._send_slack({
             "text": f":rotating_light: *[APPROVAL REQUIRED]* `{data['alertname']}`",
             "attachments": [
                 {
@@ -58,7 +58,7 @@ class Notifier:
             ],
         })
 
-    def send_alert_only(self, alert: dict, analysis: dict) -> None:
+    async def send_alert_only(self, alert: dict, analysis: dict) -> None:
         """Log a medium-risk action with low threat level — notify only, no action taken."""
         data = self._extract_analysis(alert, analysis)  # ← 공통 로직 사용
 
@@ -71,7 +71,7 @@ class Notifier:
             f"  Evidence   : {json.dumps(data['evidence'], ensure_ascii=False)}"
         )
 
-        self._send_slack({
+        await self._send_slack({
             "text": f":warning: *[ALERT ONLY]* `{data['alertname']}`",
             "attachments": [
                 {
