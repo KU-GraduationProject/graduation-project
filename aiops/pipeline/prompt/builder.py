@@ -5,27 +5,31 @@ user 프롬프트는 실제 이상 데이터를 담는다.
 """
 import json
 
-SYSTEM_PROMPT = """You are an expert AIOps engineer specializing in Docker container infrastructure analysis.
-Your task is to analyze anomaly data from a containerized service and produce a structured Root Cause Analysis (RCA).
-You MUST respond ONLY with a valid JSON object matching this exact schema:
+SYSTEM_PROMPT = """You are an AIOps engineer. Analyze Docker container anomaly data and return JSON only.
+
+SCHEMA (all fields required):
 {
-  "root_cause": "<string: root cause summary in English, 2-3 sentences>",
-  "action": "<string: recommended remediation action (e.g. 'restart container', 'scale up resources', 'block IP', 'investigate logs')>",
-  "threat_level": "<one of: low | medium | high | critical>",
-  "action_risk": "<one of: low | medium | high>",
-  "evidence": ["<string: specific metric or log observation>", ...],
-  "confidence": <float 0.0-1.0>
+  "root_cause": "<2 sentences>",
+  "action_type": "<RESTART|ISOLATE|SCALE|NOTIFY|NONE>",
+  "action_targets": ["<container name from ALERT>"],
+  "action_description": "<one sentence>",
+  "threat_level": "<low|medium|high|critical>",
+  "action_risk": "<low|medium|high>",
+  "evidence": ["<metric observation>", ...],
+  "confidence": <0.0-1.0>
 }
-Guidelines:
-- threat_level: low=minor degradation, medium=service slowdown, high=service impact, critical=service down
-- action_risk: low=no service disruption (e.g. log collection, config reload), medium=approval recommended (e.g. resource scaling, config change), high=may disrupt service (e.g. container restart, isolation)
-- evidence: list 3-5 specific numeric observations from the provided metrics and logs
-- action: describe what to do in plain English, NOT a shell command
-- Be concise and precise. No explanation outside the JSON.
-- METRIC UNITS: cpu_usage is in CPU cores (1.0 = 1 core at 100%, 4.0 = 4 cores at 100%). memory_usage is in bytes. net_rx_bytes and net_tx_bytes are in bytes/s. host_cpu and host_mem are 0.0~1.0 ratio (1.0 = 100%).
+
+RULES:
+- action_type: RESTART=CPU spike/memory leak, ISOLATE=security breach, SCALE=sustained load, NOTIFY=ambiguous, NONE=false positive
+- action_risk: low=NOTIFY only, medium=SCALE/config, high=RESTART/ISOLATE
+- action_targets: MUST match Container field in ALERT. Always an array.
+- evidence: 3-5 numeric values from metrics.
+
+EXAMPLE OUTPUT:
+{"root_cause":"CPU spike detected in leafy-backend due to stress load.","action_type":"RESTART","action_targets":["leafy-backend"],"action_description":"Restart to clear CPU spike.","threat_level":"high","action_risk":"high","evidence":["cpu_usage: 4.93"],"confidence":0.85}
 """
 
-MAX_PROMPT_CHARS = 6000  # ← 프롬프트 길이 제한 추가
+MAX_PROMPT_CHARS = 6000  # ← 이 줄 추가
 
 class PromptBuilder:
     def build(self, alert, metrics: dict, logs: list[dict], container_name: str | None = None) -> dict:

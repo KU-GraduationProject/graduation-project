@@ -4,16 +4,16 @@ groups:
 
       - alert: HighCpuUsage
         expr: rate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[2m]) > 0.5
-        for: 30s # ← 1m → 30s 로 변경
+        for: 30s
         labels:
           severity: warning
           category: infra
         annotations:
           summary: "컨테이너 CPU 사용률 50% 초과"
-          container: "{{ $labels.id }}"
+          container: "{{ $labels.name }}"
 
       - alert: HighMemoryUsage
-        expr: 
+        expr: >
           (container_memory_usage_bytes{id=~"/docker/.+"}
           / container_spec_memory_limit_bytes{id=~"/docker/.+"} > 0.7)
           and container_spec_memory_limit_bytes{id=~"/docker/.+"} > 0
@@ -23,7 +23,7 @@ groups:
           category: infra
         annotations:
           summary: "컨테이너 메모리 사용률 70% 초과"
-          container: "{{ $labels.id }}"
+          container: "{{ $labels.name }}"
 
       - alert: ContainerRestarted
         expr: changes(container_start_time_seconds{id=~"/docker/.+"}[5m]) > 0
@@ -33,7 +33,7 @@ groups:
           category: infra
         annotations:
           summary: "컨테이너 재시작 감지"
-          container: "{{ $labels.id }}"
+          container: "{{ $labels.name }}"
 
       - alert: HighNetworkReceive
         expr: rate(container_network_receive_bytes_total{id=~"/docker/.+"}[1m]) > 1e7
@@ -43,7 +43,7 @@ groups:
           category: security
         annotations:
           summary: "네트워크 수신량 급증 (잠재적 DDoS/스캔)"
-          container: "{{ $labels.id }}"
+          container: "{{ $labels.name }}"
 
       - alert: HighNginxErrorRate
         expr: >

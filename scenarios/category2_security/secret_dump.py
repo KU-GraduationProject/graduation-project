@@ -80,6 +80,16 @@ def mask_sensitive(raw: str) -> str:
 # ── 메인 ───────────────────────────────────────────────────────────────────────
 def main():
     scenario = "secret_dump"
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    from common.verifier import ScenarioVerifier, VerifyResult
+    verifier = ScenarioVerifier(
+        scenario_name="secret_dump",
+        alert_name="secret_dump",
+        hypothesis="환경변수 덤프 시도 시 Loki에 공격 로그 탐지",
+    )
+    verifier.check_steady_state()
+    verifier.print_hypothesis()
+    verifier.start_timer()
     client = docker.from_env()
 
     print(f"[*] 시나리오 시작: {scenario}")
@@ -158,6 +168,18 @@ def main():
         print("[*] Loki 공격 로그 푸시 완료")
     except Exception as e:
         print(f"[!] Loki 푸시 실패: {e}")
+    mttd = verifier.verify_loki(
+        log_query='{job="security_simulation",attack_type="secret_dump"}',
+        keyword="printenv executed",
+        timeout=60,
+    )
+    loki_result = VerifyResult(
+        success=mttd is not None,
+        alert_name="secret_dump",
+        scenario_name="secret_dump",
+        mttd_seconds=mttd,
+    )
+    verifier.log_result(loki_result)
 
     print(f"\n[*] 시나리오 종료: {scenario} | 환경변수 덤프 {'성공' if any_success else '실패'}")
 

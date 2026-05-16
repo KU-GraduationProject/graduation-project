@@ -7,6 +7,6 @@ class Settings:
     ollama_url: str = os.getenv("OLLAMA_URL", "http://ollama:11434")
     remediation_url: str = os.getenv("REMEDIATION_URL", "http://remediation:8001")
     llm_model: str = os.getenv("LLM_MODEL", "llama3.1:8b")  # ← 3b → 8b
-
+    llm_timeout: float = float(os.getenv("LLM_TIMEOUT", "120"))  # ← 추가
 settings = Settings()
 

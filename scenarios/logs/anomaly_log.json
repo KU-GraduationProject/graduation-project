@@ -551,5 +551,490 @@
     "failure_reason": "메트릭 값(0.0000)이 임계값(1.0)에 미달",
     "timestamp": "2026-05-12T16:38:50.834389+00:00",
     "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-15T16:44:34.545472+00:00",
+    "end_time": "2026-05-15T16:45:34.493992+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 70.0,
+    "failure_reason": "",
+    "timestamp": "2026-05-15T16:45:44.556104+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-15T16:48:28.098550+00:00",
+    "end_time": "2026-05-15T16:49:28.045961+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 60.0,
+    "failure_reason": "",
+    "timestamp": "2026-05-15T16:49:28.062437+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T01:26:40.601298+00:00",
+    "end_time": "2026-05-16T01:27:40.836149+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 65.2,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T01:27:45.847829+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T01:48:28.655239+00:00",
+    "end_time": "2026-05-16T01:49:29.082695+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 60.4,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T01:49:29.094285+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T02:25:56.761215+00:00",
+    "end_time": "2026-05-16T02:26:57.240037+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 65.5,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T02:27:02.302690+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T02:36:24.785818+00:00",
+    "end_time": "2026-05-16T02:37:25.300867+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 60.5,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T02:37:25.319823+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T02:40:44.483415+00:00",
+    "end_time": "2026-05-16T02:41:44.898147+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 60.4,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T02:41:44.916027+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T02:46:21.116850+00:00",
+    "end_time": "2026-05-16T02:47:21.506249+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 60.4,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T02:47:21.540054+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T02:50:25.351288+00:00",
+    "end_time": "2026-05-16T02:51:25.769958+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 60.4,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T02:51:25.788511+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T02:55:41.599510+00:00",
+    "end_time": "2026-05-16T02:56:41.976857+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 60.4,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T02:56:41.991403+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T10:28:30.333047+00:00",
+    "end_time": "2026-05-16T10:29:29.824936+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 74.5,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T10:29:44.876282+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T10:43:26.374687+00:00",
+    "end_time": "2026-05-16T10:44:26.116728+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 59.7,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T10:44:26.122815+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T10:47:57.707916+00:00",
+    "end_time": "2026-05-16T10:48:57.420115+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 59.7,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T10:48:57.429820+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T10:59:24.719954+00:00",
+    "end_time": "2026-05-16T11:00:24.398887+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 59.7,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T11:00:24.405028+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T11:21:24.069916+00:00",
+    "end_time": "2026-05-16T11:22:23.866841+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 74.9,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T11:22:38.957961+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T11:34:18.249644+00:00",
+    "end_time": "2026-05-16T11:35:18.057499+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 64.8,
+    "mtta_seconds": 112.3,
+    "slack_notified": true,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T11:35:23.087234+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-16T11:54:56.945545+00:00",
+    "end_time": "2026-05-16T11:57:00.728693+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 4860, \"errors\": 140, \"status_counts\": {\"200\": 4720, \"0\": 140}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "alert_name": "HighNetworkReceive",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "메트릭 값(322.2281)이 임계값(100000.0)에 미달",
+    "timestamp": "2026-05-16T11:58:00.934532+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "memory_leak_restart",
+    "category": "infra",
+    "start_time": "2026-05-16T12:02:26.050630+00:00",
+    "end_time": "2026-05-16T12:05:37.867702+00:00",
+    "status": "success",
+    "detail": "[{\"cycle\": 1, \"cycle_start\": \"2026-05-16T12:02:26.055705+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}, {\"cycle\": 2, \"cycle_start\": \"2026-05-16T12:03:59.968493+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}, {\"cycle\": 3, \"cycle_start\": \"2026-05-16T12:05:33.956502+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}]"
+  },
+  {
+    "scenario": "memory_leak",
+    "alert_name": "ContainerRestarted",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "메트릭 값(0.0000)이 임계값(1.0)에 미달",
+    "timestamp": "2026-05-16T12:05:37.912363+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-16T12:08:51.028177+00:00",
+    "end_time": "2026-05-16T12:10:52.753597+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 5520, \"errors\": 115, \"status_counts\": {\"200\": 5405, \"0\": 115}, \"workers\": 60, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "alert_name": "HighCpuUsage",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "메트릭 값(0.0516)이 임계값(0.5)에 미달",
+    "timestamp": "2026-05-16T12:11:52.926145+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-16T12:17:40.525050+00:00",
+    "end_time": "2026-05-16T12:19:45.961155+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 16800, \"errors\": 103, \"status_counts\": {\"200\": 16697, \"0\": 103}, \"workers\": 300, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "alert_name": "HighCpuUsage",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "메트릭 값(0.0575)이 임계값(0.5)에 미달",
+    "timestamp": "2026-05-16T12:20:41.118053+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "memory_leak_restart",
+    "category": "infra",
+    "start_time": "2026-05-16T12:36:51.631353+00:00",
+    "end_time": "2026-05-16T12:40:03.371580+00:00",
+    "status": "success",
+    "detail": "[{\"cycle\": 1, \"cycle_start\": \"2026-05-16T12:36:51.636222+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}, {\"cycle\": 2, \"cycle_start\": \"2026-05-16T12:38:25.533528+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}, {\"cycle\": 3, \"cycle_start\": \"2026-05-16T12:39:59.422176+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}]"
+  },
+  {
+    "scenario": "memory_leak",
+    "alert_name": "memory_leak",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T12:43:04.139446+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "memory_leak_restart",
+    "category": "infra",
+    "start_time": "2026-05-16T12:47:27.293347+00:00",
+    "end_time": "2026-05-16T12:50:39.078282+00:00",
+    "status": "success",
+    "detail": "[{\"cycle\": 1, \"cycle_start\": \"2026-05-16T12:47:27.297657+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}, {\"cycle\": 2, \"cycle_start\": \"2026-05-16T12:49:01.273232+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}, {\"cycle\": 3, \"cycle_start\": \"2026-05-16T12:50:35.183003+00:00\", \"state_before\": \"running\", \"state_after\": \"running\"}]"
+  },
+  {
+    "scenario": "memory_leak",
+    "alert_name": "memory_leak",
+    "success": true,
+    "mttd_seconds": 1.7,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T12:50:39.100484+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-16T13:03:32.635883+00:00",
+    "end_time": "2026-05-16T13:05:34.550041+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 17700, \"errors\": 107, \"status_counts\": {\"200\": 17593, \"0\": 107}, \"workers\": 300, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "alert_name": "HighCpuUsage",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "메트릭 값(0.0630)이 임계값(0.5)에 미달",
+    "timestamp": "2026-05-16T13:06:34.790919+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "redos_attack",
+    "category": "infra",
+    "start_time": "2026-05-16T13:10:59.158705+00:00",
+    "end_time": "2026-05-16T13:13:03.916383+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 13198, \"slow_responses\": 8675, \"errors\": 136, \"target_endpoints\": [\"/api/v1/my-plants\", \"/api/v1/schedules\", \"/api/v1/users/me\", \"/home\", \"/\"], \"workers\": 300}"
+  },
+  {
+    "scenario": "redos_attack",
+    "alert_name": "HighCpuUsage",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "메트릭 값(0.0578)이 임계값(0.5)에 미달",
+    "timestamp": "2026-05-16T13:14:04.176987+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "http_flood",
+    "category": "infra",
+    "start_time": "2026-05-16T13:19:55.540589+00:00",
+    "end_time": "2026-05-16T13:21:58.361944+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 18600, \"errors\": 125, \"status_counts\": {\"200\": 18475, \"0\": 125}, \"workers\": 300, \"duration_sec\": 120}"
+  },
+  {
+    "scenario": "http_flood",
+    "alert_name": "http_flood",
+    "success": true,
+    "mttd_seconds": 0.5,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T13:21:58.503558+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "redos_attack",
+    "category": "infra",
+    "start_time": "2026-05-16T13:23:18.570689+00:00",
+    "end_time": "2026-05-16T13:25:22.532388+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 12000, \"slow_responses\": 7996, \"errors\": 129, \"target_endpoints\": [\"/api/v1/my-plants\", \"/api/v1/schedules\", \"/api/v1/users/me\", \"/home\", \"/\"], \"workers\": 300}"
+  },
+  {
+    "scenario": "redos_attack",
+    "alert_name": "redos_attack",
+    "success": true,
+    "mttd_seconds": 0.4,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T13:25:22.666322+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-16T13:27:21.828820+00:00",
+    "end_time": "2026-05-16T13:28:21.763031+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 60.0,
+    "mtta_seconds": 127.1,
+    "slack_notified": true,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T13:28:21.796299+00:00",
+    "category": "verification"
   }
 ]

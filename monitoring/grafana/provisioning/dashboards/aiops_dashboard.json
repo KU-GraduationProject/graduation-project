@@ -349,7 +349,8 @@
             "type": "loki",
             "uid": "P8E80F9AEF21F6940"
           },
-          "expr": "count_over_time({job=\"aiops-llm\"}[24h])",
+          "expr": "count_over_time({job=\"aiops-llm\"}[$__range])",
+          "queryType": "instant",
           "legendFormat": "분석 건수",
           "refId": "A"
         }

@@ -23,7 +23,8 @@ class ContainerActions:
         """Isolate a container by disconnecting it from leafy-net."""
         container = self.client.containers.get(container_name)
         try:
-            network = self.client.networks.get("leafy-net")
+            # container.py
+            network = self.client.networks.get("graduation-project_leafy-net")
             network.disconnect(container)
             logger.info(f"[ContainerActions] Isolated {container_name} from leafy-net")
         except docker.errors.NotFound:

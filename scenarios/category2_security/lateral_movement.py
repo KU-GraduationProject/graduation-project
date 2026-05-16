@@ -146,6 +146,17 @@ echo "[attacker] 완료"
 # ── 메인 ───────────────────────────────────────────────────────────────────────
 def main():
     scenario   = "lateral_movement"
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    from common.verifier import ScenarioVerifier, VerifyResult
+    verifier = ScenarioVerifier(
+        scenario_name="lateral_movement",
+        alert_name="lateral_movement",
+        hypothesis="비인가 DB 직접 접속 시 Loki에 인증 실패 로그 탐지",
+    )
+    verifier.check_steady_state()
+    verifier.print_hypothesis()
+    verifier.start_timer()
     start_time = datetime.now(timezone.utc).isoformat()
 
     print(f"[*] 시나리오: Container Lateral Movement (비인가 DB 직접 접속)")
@@ -211,6 +222,18 @@ def main():
     print(f"[*] Loki에서 확인: container=leafy-db, 키워드: 'authentication failed' or 'attacker'")
     print(f"[*] 비정상 소스 IP가 leafy-backend IP와 다르면 lateral movement 탐지 성공")
     print(f"[*] Grafana: http://localhost:3000")
+    mttd = verifier.verify_loki(
+        log_query='{container="leafy-db"}',
+        keyword="authentication failed",
+        timeout=180,
+    )
+    loki_result = VerifyResult(
+        success=mttd is not None,
+        alert_name="lateral_movement",
+        scenario_name="lateral_movement",
+        mttd_seconds=mttd,
+    )
+    verifier.log_result(loki_result)
 
 
 if __name__ == "__main__":

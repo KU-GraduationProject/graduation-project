@@ -224,6 +224,8 @@ services:
   loki:
     image: grafana/loki:latest
     container_name: loki
+    ports:
+      - "3100:3100"
     volumes:
       - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml
       - ./monitoring/loki/rules:/loki/rules   # ← 이거 추가

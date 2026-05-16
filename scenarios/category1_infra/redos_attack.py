@@ -13,6 +13,7 @@ AIOps 포인트: 같은 CPU 고갈이라도 컨테이너 식별(frontend vs back
 import ssl
 import json
 import os
+import platform
 import sys
 import time
 import threading
@@ -20,22 +21,24 @@ import urllib.request
 import urllib.error
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from common.verifier import ScenarioVerifier, VerifyResult
 
 # ── 설정 ───────────────────────────────────────────────────────────────────────
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH    = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_log.json"))
 
 TARGET_BASE   = os.getenv("TARGET_URL", "https://localhost")
-WORKERS       = 150         # 동시 요청 스레드 수 (Nginx CPU spike 목표)
+WORKERS       = 300         # 동시 요청 스레드 수 (Nginx CPU spike 목표)
 DURATION_SEC  = 120         # 공격 지속 시간(초)
 
 # 공격 대상 엔드포인트 — 인증 없이 Nginx가 직접 처리하는 정적 경로
 TARGET_ENDPOINTS = [
+    "/api/v1/my-plants",
+    "/api/v1/schedules",
+    "/api/v1/users/me",
     "/home",
     "/",
-    "/home?v=1",
-    "/home?v=2",
-    "/index.html",
 ]
 
 _ssl_ctx = ssl.create_default_context()
@@ -76,7 +79,7 @@ def _send_one(_: str = "") -> tuple[int, float]:
     try:
         req = urllib.request.Request(
             url,
-            headers={"User-Agent": "Mozilla/5.0 (FloodBot/1.0)"},
+            headers={"User-Agent": "ReDoSBot/1.0"},
         )
         r = urllib.request.urlopen(req, context=_ssl_ctx, timeout=5)
         return r.status, (time.time() - t0) * 1000
@@ -91,6 +94,19 @@ def main():
     import random
 
     scenario   = "redos_attack"
+    # 수정 후
+    verifier = ScenarioVerifier(
+        scenario_name="redos_attack",
+        alert_name="HighCpuUsage",
+        hypothesis="redos_attack 실행 중 HighCpuUsage FIRING",
+        steady_state_query='rate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[2m])',
+        steady_state_threshold=0.5,
+    )
+    # verifier 초기화 다음에 추가 필요
+    verifier.check_steady_state()
+    verifier.print_hypothesis()
+    verifier.check_repeat_interval()
+    verifier.start_timer()
     start_time = datetime.now(timezone.utc).isoformat()
     deadline   = time.time() + DURATION_SEC
 
@@ -142,9 +158,29 @@ def main():
     }, ensure_ascii=False)
 
     status = "success" if total > 0 else "error"
+    # 수정 후 — 이렇게 바꿔줘
     record_event(scenario, start_time, end_time, status, detail)
     print(f"\n[*] 완료: 총 {total}건 전송, 지연 응답 {slow}건")
     print(f"[*] Prometheus에서 HighCpuUsage alert 확인: http://localhost:9090/alerts")
+    if platform.system() == "Windows":
+        mttd = verifier.verify_loki(
+            log_query='{container="frontend"}',
+            keyword="ReDoSBot",
+            timeout=180,
+        )
+        loki_result = VerifyResult(
+            success=mttd is not None,
+            alert_name="redos_attack",
+            scenario_name="redos_attack",
+            mttd_seconds=mttd,
+        )
+        verifier.log_result(loki_result)
+    else:
+        result = verifier.verify(timeout=180)
+        mtta = verifier.verify_mtta(timeout=180)
+        result.mtta_seconds = mtta
+        result.slack_notified = mtta is not None
+        verifier.log_result(result)
 
 
 if __name__ == "__main__":

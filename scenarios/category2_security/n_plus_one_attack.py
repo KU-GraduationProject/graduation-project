@@ -16,6 +16,8 @@ import time
 import threading
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from common.verifier import ScenarioVerifier
 
 # ── 설정 ───────────────────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -121,6 +123,17 @@ def _attack_cycle() -> tuple[int, int]:
 # ── 메인 ───────────────────────────────────────────────────────────────────────
 def main():
     scenario   = "n_plus_one_attack"
+    verifier = ScenarioVerifier(
+        scenario_name="n_plus_one_attack",
+        alert_name="HighPostgresConnections",
+        hypothesis="N+1 쿼리 공격 중 HighPostgresConnections FIRING",
+        steady_state_query='pg_stat_activity_count',
+        steady_state_threshold=50.0,
+    )
+    verifier.check_steady_state()
+    verifier.print_hypothesis()
+    verifier.check_repeat_interval()
+    verifier.start_timer()
     start_time = datetime.now(timezone.utc).isoformat()
     deadline   = time.time() + DURATION_SEC
 
@@ -162,6 +175,11 @@ def main():
 
     status = "success" if total_ok > 0 else "error"
     record_event(scenario, start_time, end_time, status, detail)
+    result = verifier.verify(timeout=180)
+    mtta = verifier.verify_mtta(timeout=180)
+    result.mtta_seconds = mtta
+    result.slack_notified = mtta is not None
+    verifier.log_result(result)
     print(f"\n[*] 완료: 총 {cycle}사이클 | 쿼리 {total_ok}건 성공")
     print(f"[*] Prometheus에서 HighPostgresConnections alert 확인: http://localhost:9090/alerts")
 

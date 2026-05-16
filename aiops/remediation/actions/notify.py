@@ -20,7 +20,7 @@ class Notifier:
         return {
             "alertname":   alert.get("labels", {}).get("alertname", "unknown"),
             "threat_level": analysis.get("threat_level", "unknown"),
-            "action":      analysis.get("action", "N/A"),
+            "action": analysis.get("action_description", "N/A"),
             "root_cause":  analysis.get("root_cause", "N/A"),
             "confidence":  analysis.get("confidence", 0.0),
             "evidence":    analysis.get("evidence", []),
@@ -42,20 +42,23 @@ class Notifier:
         )
 
         await self._send_slack({
-            "text": f":rotating_light: *[APPROVAL REQUIRED]* `{data['alertname']}`",
-            "attachments": [
+            "blocks": [
                 {
-                    "color": "danger",
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f":rotating_light: *[APPROVAL REQUIRED]* `{data['alertname']}`"}
+                },
+                {
+                    "type": "section",
                     "fields": [
-                        {"title": "발생 시각",    "value": data['timestamp'], "short": True},  # ← 추가
-                        {"title": "Threat Level", "value": data['threat_level'], "short": True},
-                        {"title": "Confidence",   "value": f"{data['confidence']:.2f}", "short": True},
-                        {"title": "Root Cause",   "value": data['root_cause'], "short": False},
-                        {"title": "Action",       "value": data['action'], "short": False},
-                        {"title": "Evidence",     "value": "\n".join(f"• {e}" for e in data['evidence']), "short": False},
-                    ],
+                        {"type": "mrkdwn", "text": f"*발생 시각*\n{data['timestamp']}"},
+                        {"type": "mrkdwn", "text": f"*Threat Level*\n{data['threat_level']}"},
+                        {"type": "mrkdwn", "text": f"*Confidence*\n{data['confidence']:.2f}"},
+                        {"type": "mrkdwn", "text": f"*Root Cause*\n{data['root_cause']}"},
+                        {"type": "mrkdwn", "text": f"*Action*\n{data['action']}"},
+                        {"type": "mrkdwn", "text": f"*Evidence*\n" + "\n".join(f"• {e}" for e in data['evidence'])},
+                    ]
                 }
-            ],
+            ]
         })
 
     async def send_alert_only(self, alert: dict, analysis: dict) -> None:
@@ -72,19 +75,22 @@ class Notifier:
         )
 
         await self._send_slack({
-            "text": f":warning: *[ALERT ONLY]* `{data['alertname']}`",
-            "attachments": [
+            "blocks": [
                 {
-                    "color": "warning",
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f":warning: *[ALERT ONLY]* `{data['alertname']}`"}
+                },
+                {
+                    "type": "section",
                     "fields": [
-                        {"title": "발생 시각",    "value": data['timestamp'], "short": True},  # ← 추가
-                        {"title": "Threat Level", "value": data['threat_level'], "short": True},
-                        {"title": "Confidence",   "value": f"{data['confidence']:.2f}", "short": True},
-                        {"title": "Root Cause",   "value": data['root_cause'], "short": False},
-                        {"title": "Evidence",     "value": "\n".join(f"• {e}" for e in data['evidence']), "short": False},
-                    ],
+                        {"type": "mrkdwn", "text": f"*발생 시각*\n{data['timestamp']}"},
+                        {"type": "mrkdwn", "text": f"*Threat Level*\n{data['threat_level']}"},
+                        {"type": "mrkdwn", "text": f"*Confidence*\n{data['confidence']:.2f}"},
+                        {"type": "mrkdwn", "text": f"*Root Cause*\n{data['root_cause']}"},
+                        {"type": "mrkdwn", "text": f"*Evidence*\n" + "\n".join(f"• {e}" for e in data['evidence'])},
+                    ]
                 }
-            ],
+            ]
         })
 
     async def _send_slack(self, payload: dict) -> None:  # ← 동기 → 비동기로 변경

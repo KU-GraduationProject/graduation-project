@@ -20,14 +20,17 @@ import urllib.request
 import urllib.error
 import urllib.parse
 from datetime import datetime, timezone
+import sys
 from concurrent.futures import ThreadPoolExecutor
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from common.verifier import ScenarioVerifier
 
 # ── 설정 ───────────────────────────────────────────────────────────────────────
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH    = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_log.json"))
 
 TARGET_BASE  = os.getenv("TARGET_URL", "https://localhost")
-WORKERS      = 40
+WORKERS      = 100
 DURATION_SEC = 120
 
 # SQLi 페이로드: OWASP Testing Guide 기반 실제 공격 패턴
@@ -113,6 +116,17 @@ def _send_sqli() -> tuple[int, float]:
 # ── 메인 ───────────────────────────────────────────────────────────────────────
 def main():
     scenario   = "sql_injection"
+    verifier = ScenarioVerifier(
+        scenario_name="sql_injection",
+        alert_name="HighNginxErrorRate",
+        hypothesis="SQL Injection 공격 중 HighNginxErrorRate FIRING",
+        steady_state_query='rate(nginx_http_requests_total{status=~"4..|5.."}[2m]) / rate(nginx_http_requests_total[2m])',
+        steady_state_threshold=0.1,
+    )
+    verifier.check_steady_state()
+    verifier.print_hypothesis()
+    verifier.check_repeat_interval()
+    verifier.start_timer()
     start_time = datetime.now(timezone.utc).isoformat()
     deadline   = time.time() + DURATION_SEC
 
@@ -182,6 +196,11 @@ def main():
         print("[*] Loki 공격 로그 푸시 완료")
     except Exception as e:
         print(f"[!] Loki 푸시 실패: {e}")
+    result = verifier.verify(timeout=180)
+    mtta = verifier.verify_mtta(timeout=180)
+    result.mtta_seconds = mtta
+    result.slack_notified = mtta is not None
+    verifier.log_result(result)
 
 
 if __name__ == "__main__":

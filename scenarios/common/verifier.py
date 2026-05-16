@@ -44,6 +44,7 @@ LOG_PATH = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_log.
 
 PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
 ALERTMANAGER_URL = os.getenv("ALERTMANAGER_URL", "http://localhost:9093")
+LOKI_URL = os.getenv("LOKI_URL", "http://localhost:3100")
 
 
 # ── 결과 데이터 ────────────────────────────────────────────────────────────────
@@ -55,6 +56,8 @@ class VerifyResult:
     scenario_name: str
     mttd_seconds: float | None = None       # Alert 발화까지 걸린 시간
     mttr_seconds: float | None = None       # LLM 분석 완료까지 걸린 시간 (향후 확장)
+    mtta_seconds: float | None = None
+    slack_notified: bool = False
     steady_state_ok: bool = True
     failure_reason: str = ""
     actual_value: float | None = None       # 실패 시 실제 메트릭 값
@@ -217,6 +220,8 @@ class ScenarioVerifier:
             "alert_name": result.alert_name,
             "success": result.success,
             "mttd_seconds": result.mttd_seconds,
+            "mtta_seconds": result.mtta_seconds,
+            "slack_notified": result.slack_notified,
             "failure_reason": result.failure_reason,
             "timestamp": result.timestamp,
             "category": "verification",
@@ -245,6 +250,9 @@ class ScenarioVerifier:
         if result.success:
             print(f"  결과:        SUCCESS ✅")
             print(f"  MTTD:        {result.mttd_seconds}초")
+            if result.mtta_seconds is not None:
+                print(f"  MTTA:        {result.mtta_seconds}초")
+                print(f"  Slack:       {'전송 완료 ✅' if result.slack_notified else '미전송 ❌'}")
         else:
             print(f"  결과:        FAIL ❌")
             print(f"  실패 원인:   {result.failure_reason}")
@@ -382,3 +390,120 @@ class ScenarioVerifier:
             
         print(f"  → 복구 확인 타임아웃 ❌")
         return -1.0
+
+    def verify_mtta(self, timeout: int = 180, poll_interval: int = 5) -> float | None:
+        """Loki 폴링으로 Slack 전송 완료까지 걸린 시간 측정"""
+        print(f"\n{'='*60}")
+        print(f"[4-B] MTTA 측정 (Slack 알림까지, 최대 {timeout}초)")
+        print(f"{'='*60}")
+        deadline = time.time() + timeout
+        check_count = 0
+        while time.time() < deadline:
+            check_count += 1
+            remaining = int(deadline - time.time())
+            print(f"  → 확인 #{check_count} (남은 시간: {remaining}초)", end="")
+            ts = self._query_loki_slack_sent()
+            if ts is not None:
+                mtta = ts - self._start_time
+                print(f" → Slack 알림 확인! ✅")
+                print(f"\n  ┌─────────────────────────────────┐")
+                print(f"  │  MTTA: {mtta:.1f}초")
+                print(f"  └─────────────────────────────────┘")
+                return round(mtta, 1)
+            print(f" → 대기 중...")
+            time.sleep(poll_interval)
+        print(f"  → MTTA 측정 타임아웃 ❌")
+        return None
+
+    def _query_loki_slack_sent(self) -> float | None:
+        """Loki에서 aiops-llm job 로그 폴링. _start_time 이후 alert_name 매칭 + confidence > 0 확인."""
+        try:
+            start_ns = int(self._start_time * 1_000_000_000)
+            end_ns = int(time.time() * 1_000_000_000)
+            query = '{job="aiops-llm"}'
+            params = urllib.parse.urlencode({
+                "query": query,
+                "start": start_ns,
+                "end": end_ns,
+                "limit": 50,
+                "direction": "forward",
+            })
+            url = f"{LOKI_URL}/loki/api/v1/query_range?{params}"
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            resp = urllib.request.urlopen(req, timeout=5)
+            data = json.loads(resp.read().decode())
+            streams = data.get("data", {}).get("result", [])
+            for stream in streams:
+                labels = stream.get("stream", {})
+                if labels.get("alert") != self.alert_name:
+                    continue
+                for ts_ns, line in stream.get("values", []):
+                    entry = json.loads(line)
+                    if entry.get("result", {}).get("confidence", 0) > 0:
+                        return int(ts_ns) / 1_000_000_000
+            return None
+        except Exception:
+            return None
+
+    def verify_loki(self, log_query: str, keyword: str, timeout: int = 180, poll_interval: int = 5) -> float | None:
+        """
+        Loki 로그 폴링으로 특정 키워드가 포함된 로그가 나타날 때까지 대기.
+        _start_time 이후 로그만 확인.
+        반환: 로그 timestamp (epoch float) or None
+        """
+        print(f"\n{'='*60}")
+        print(f"[4-B] Loki 탐지 대기 (키워드: '{keyword}', 최대 {timeout}초)")
+        print(f"{'='*60}")
+
+        deadline = time.time() + timeout
+        check_count = 0
+
+        while time.time() < deadline:
+            check_count += 1
+            remaining = int(deadline - time.time())
+            print(f"  → 확인 #{check_count} (남은 시간: {remaining}초)", end="")
+
+            ts = self._query_loki_keyword(log_query, keyword)
+            if ts is not None:
+                mttd = ts - self._start_time
+                print(f" → 탐지! ✅")
+                print(f"\n  ┌─────────────────────────────────┐")
+                print(f"  │  MTTD (Loki): {mttd:.1f}초")
+                print(f"  └─────────────────────────────────┘")
+                return round(mttd, 1)
+
+            print(f" → 대기 중...")
+            time.sleep(poll_interval)
+
+        print(f"  → Loki 탐지 타임아웃 ❌")
+        return None
+
+    def _query_loki_keyword(self, log_query: str, keyword: str) -> float | None:
+        """
+        Loki에서 log_query로 조회 후 keyword가 포함된 로그 확인.
+        _start_time 이후 로그만 필터링.
+        반환: 로그 timestamp (epoch float) or None
+        """
+        try:
+            start_ns = int(self._start_time * 1_000_000_000)
+            end_ns = int(time.time() * 1_000_000_000)
+            params = urllib.parse.urlencode({
+                "query": log_query,
+                "start": start_ns,
+                "end": end_ns,
+                "limit": 100,
+                "direction": "forward",
+            })
+            url = f"{LOKI_URL}/loki/api/v1/query_range?{params}"
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            resp = urllib.request.urlopen(req, timeout=5)
+            data = json.loads(resp.read().decode())
+
+            streams = data.get("data", {}).get("result", [])
+            for stream in streams:
+                for ts_ns, line in stream.get("values", []):
+                    if keyword.lower() in line.lower():
+                        return int(ts_ns) / 1_000_000_000
+            return None
+        except Exception:
+            return None

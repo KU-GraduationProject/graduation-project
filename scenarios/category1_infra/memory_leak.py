@@ -9,11 +9,12 @@ OOM/메모리 누수 상황을 시뮬레이션한다.
 import docker
 import json
 import os
+import platform
 import sys
 import time
 from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from common.verifier import ScenarioVerifier
+from common.verifier import ScenarioVerifier, VerifyResult
 
 # ── 설정 ───────────────────────────────────────────────────────────────────────
 SCRIPT_DIR     = os.path.dirname(os.path.abspath(__file__))
@@ -60,10 +61,8 @@ def main():
     # ── verifier 초기화 ──
     verifier = ScenarioVerifier(
         scenario_name="memory_leak",
-        alert_name="ContainerRestarted",
-        hypothesis="컨테이너 강제 재시작 시 ContainerRestarted 즉시 FIRING",
-        steady_state_query='changes(container_start_time_seconds{id=~"/docker/.+"}[5m])',
-        steady_state_threshold=1.0,
+        alert_name="memory_leak",
+        hypothesis="컨테이너 강제 재시작 시 Loki에 재시작 로그 탐지",
     )
 
     verifier.check_steady_state()
@@ -138,8 +137,32 @@ def main():
     print(f"\n[*] 시나리오 종료: {scenario}")
 
     # ── 4단계: Alert 발화 확인 ──
-    result = verifier.verify(timeout=60)
-    verifier.log_result(result)
+    if platform.system() == "Windows":
+        mttd = verifier.verify_loki(
+            log_query='{container="backend"}',
+            keyword="started",
+            timeout=180,
+        )
+        loki_result = VerifyResult(
+            success=mttd is not None,
+            alert_name="memory_leak",
+            scenario_name="memory_leak",
+            mttd_seconds=mttd,
+        )
+        verifier.log_result(loki_result)
+    else:
+        verifier_prom = ScenarioVerifier(
+            scenario_name="memory_leak",
+            alert_name="ContainerRestarted",
+            hypothesis="컨테이너 강제 재시작 시 ContainerRestarted 즉시 FIRING",
+            steady_state_query='changes(container_start_time_seconds{id=~"/docker/.+"}[5m])',
+            steady_state_threshold=1.0,
+        )
+        result = verifier_prom.verify(timeout=60)
+        mtta = verifier_prom.verify_mtta(timeout=180)
+        result.mtta_seconds = mtta
+        result.slack_notified = mtta is not None
+        verifier_prom.log_result(result)
 
 
 if __name__ == "__main__":

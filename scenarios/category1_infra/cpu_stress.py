@@ -147,6 +147,10 @@ def main():
     # ── 4단계: Alert 발화 확인 + MTTD 측정 ──
     result = verifier.verify(timeout=120)
 
+    # ✅ MTTA 측정 추가
+    mtta = verifier.verify_mtta(timeout=180)
+    result.mtta_seconds = mtta
+    result.slack_notified = mtta is not None
     # ── 5단계: 결과 기록 ──
     verifier.log_result(result)
 

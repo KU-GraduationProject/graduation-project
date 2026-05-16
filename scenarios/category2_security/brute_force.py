@@ -22,7 +22,10 @@ import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+import sys
 import threading
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from common.verifier import ScenarioVerifier
 
 # ── 설정 ───────────────────────────────────────────────────────────────────────
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
@@ -132,6 +135,17 @@ echo "[brute-attacker] 완료: $attempt 회 시도"
 # ── 메인 ───────────────────────────────────────────────────────────────────────
 def main():
     scenario   = "db_bruteforce"
+    verifier = ScenarioVerifier(
+        scenario_name="db_bruteforce",
+        alert_name="HighPostgresConnections",
+        hypothesis="DB 브루트포스 공격 중 HighPostgresConnections FIRING",
+        steady_state_query='pg_stat_activity_count',
+        steady_state_threshold=50.0,
+    )
+    verifier.check_steady_state()
+    verifier.print_hypothesis()
+    verifier.check_repeat_interval()
+    verifier.start_timer()
     start_time = datetime.now(timezone.utc).isoformat()
     deadline   = time.time() + DURATION_SEC
 
@@ -175,6 +189,11 @@ def main():
     }, ensure_ascii=False)
 
     record_event(scenario, start_time, end_time, "success", detail)
+    result = verifier.verify(timeout=180)
+    mtta = verifier.verify_mtta(timeout=180)
+    result.mtta_seconds = mtta
+    result.slack_notified = mtta is not None
+    verifier.log_result(result)
     print(f"\n[*] 완료: 연결 점유 {total_holds}회")
     print(f"[*] Loki: container=leafy-db → 'password authentication failed'")
     print(f"[*] Prometheus: HighPostgresConnections alert")

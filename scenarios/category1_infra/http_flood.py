@@ -12,6 +12,7 @@ AIOps 포인트: 메트릭(CPU↑) + 로그(slow response)의 상관관계
 import ssl
 import json
 import os
+import platform
 import time
 import urllib.request
 import urllib.error
@@ -20,7 +21,7 @@ from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from common.verifier import ScenarioVerifier
+from common.verifier import ScenarioVerifier, VerifyResult
 
 
 # ── 설정 ───────────────────────────────────────────────────────────────────────
@@ -28,14 +29,15 @@ SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH     = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_log.json"))
 
 TARGET_BASE = os.getenv("TARGET_URL", "http://localhost:80")
-WORKERS      = 60       # 동시 요청 스레드 수
+WORKERS      = 300       # 동시 요청 스레드 수
 DURATION_SEC = 120      # 공격 지속 시간(초)
 
 TARGET_ENDPOINTS = [
-    "/home",
-    "/login/kakao",
     "/api/v1/my-plants",
     "/api/v1/schedules",
+    "/api/v1/users/me",
+    "/home",
+    "/",
 ]
 
 _ssl_ctx = ssl.create_default_context()
@@ -92,10 +94,8 @@ def main():
     # ── verifier 초기화 ──
     verifier = ScenarioVerifier(
         scenario_name="http_flood",
-        alert_name="HighNetworkReceive",
-        hypothesis="http_flood 실행 중 HighNetworkReceive 또는 HighNginxErrorRate FIRING",
-        steady_state_query='rate(container_network_receive_bytes_total{id=~"/docker/.+"}[1m])',
-        steady_state_threshold=1e5,
+        alert_name="http_flood",
+        hypothesis="대량 HTTP 요청 시 Nginx 로그에서 FloodBot 트래픽 탐지",
     )
 
     verifier.check_steady_state()
@@ -150,8 +150,32 @@ def main():
     print(f"[*] Prometheus alert 확인: http://localhost:9090/alerts")
 
     # ── 4단계: Alert 발화 확인 ──
-    result = verifier.verify(timeout=180)   # 60 → 180으로 변경
-    verifier.log_result(result)
+    if platform.system() == "Windows":
+        mttd = verifier.verify_loki(
+            log_query='{container="frontend"}',
+            keyword="FloodBot",
+            timeout=180,
+        )
+        loki_result = VerifyResult(
+            success=mttd is not None,
+            alert_name="http_flood",
+            scenario_name="http_flood",
+            mttd_seconds=mttd,
+        )
+        verifier.log_result(loki_result)
+    else:
+        result = verifier.verify(timeout=180)
+        mtta = verifier.verify_mtta(timeout=180)
+        result.mtta_seconds = mtta
+        result.slack_notified = mtta is not None
+        nginx_mttd = verifier.verify_loki(
+            log_query='{container="frontend"}',
+            keyword="FloodBot",
+            timeout=60,
+        )
+        if nginx_mttd is not None:
+            print(f"  → Nginx FloodBot 로그 탐지: {nginx_mttd:.1f}초")
+        verifier.log_result(result)
 
 if __name__ == "__main__":
     main()

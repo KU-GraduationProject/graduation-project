@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker exec ollama *)",
+      "Bash(docker exec *)",
+      "Bash(docker run *)",
+      "Bash(python3 *)",
+      "Bash(docker restart grafana *)"
+    ]
+  }
+}
