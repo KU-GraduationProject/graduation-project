@@ -3,7 +3,9 @@ groups:
     rules:
 
       - alert: HighCpuUsage
-        expr: sum(irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s])) > 0.5
+        expr: >
+          sum(irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s]))
+          > 0.5
         for: 30s
         labels:
           severity: warning

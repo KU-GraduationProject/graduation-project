@@ -8,7 +8,7 @@ AlertManager 웹훅 수신 → 데이터 수집 → 프롬프트 조립 → LLM 
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ValidationError  # ✅ Fix: 버그 3
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import deque
 import json
 import asyncio
@@ -76,7 +76,7 @@ def _extract_service(name: str) -> str:
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 @app.get("/metrics", response_class=PlainTextResponse)
 async def prometheus_metrics():
@@ -128,6 +128,24 @@ async def receive_alert(payload: AlertManagerWebhook, background_tasks: Backgrou
 
 # ─── 핵심 파이프라인 (초경량화 완료) ──────────────────────
 
+async def _resolve_top_cpu_container() -> str | None:
+    """Prometheus에서 현재 CPU 사용률이 가장 높은 컨테이너 name 라벨을 반환."""
+    query = 'topk(1, sum(irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s])) by (name))'
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(
+                f"{settings.prometheus_url}/api/v1/query",
+                params={"query": query},
+            )
+            data = resp.json()
+            results = data.get("data", {}).get("result", [])
+            if results:
+                return results[0].get("metric", {}).get("name")
+    except Exception as e:
+        logger.warning(f"[Pipeline] top CPU container 조회 실패: {e}")
+    return None
+
+
 async def analyze_alerts(alerts: list[Alert]):
     now = time.time()
     expired = [k for k, ts in _recent_alerts.items() if now - ts > DEDUP_WINDOW_SEC * 2]
@@ -146,6 +164,11 @@ async def analyze_alerts(alerts: list[Alert]):
         _recent_alerts[dedup_key] = now
 
         try:
+            # HighCpuUsage + container unknown → Prometheus에서 가장 높은 CPU 컨테이너 조회
+            if alert.labels.alertname == "HighCpuUsage" and (not container_name or container_name == "unknown"):
+                container_name = await _resolve_top_cpu_container()
+                logger.info(f"[Pipeline] HighCpuUsage container 자동 조회: {container_name}")
+
             logger.info(f"[Pipeline] 분석 시작: {alert.labels.alertname} | 대상: {container_name}")
             alert_time = datetime.fromisoformat(alert.startsAt.replace("Z", "+00:00"))
 
@@ -163,7 +186,7 @@ async def analyze_alerts(alerts: list[Alert]):
                     confidence=0.0,
                 )
                 entry = {
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "alert_name": alert.labels.alertname,
                     "container": "unknown",
                     "result": fallback_result.model_dump(),
@@ -177,7 +200,20 @@ async def analyze_alerts(alerts: list[Alert]):
                 except Exception: pass
                 continue
 
-            # 1. 메트릭/로그 수집 (더 이상 container_id 파라미터가 필요 없음!)
+            # 1. Slack 즉시 알림 (LLM 전 — MTTA 측정 기준점)
+            early_result = LLMAnalysisResult(
+                root_cause="분석 중 — LLM 처리 대기",
+                action_type="PENDING",
+                action_targets=[],
+                action_description="LLM analysis in progress",
+                threat_level=alert.labels.severity or "warning",
+                action_risk="unknown",
+                evidence=[],
+                confidence=0.0,
+            )
+            await send_slack_notification(alert.labels.alertname, container_name, early_result)
+
+            # 2. 메트릭/로그 수집
             metrics = await metrics_collector.fetch_around(
                 container=container_name,
                 alert_time=alert_time,
@@ -189,7 +225,7 @@ async def analyze_alerts(alerts: list[Alert]):
                 window_minutes=5,
             )
 
-            # 2. 프롬프트 조립
+            # 3. 프롬프트 조립
             prompt = prompt_builder.build(
                 alert=alert,
                 metrics=metrics,
@@ -197,23 +233,22 @@ async def analyze_alerts(alerts: list[Alert]):
                 container_name=container_name,
             )
 
-            # 3. LLM 호출
+            # 4. LLM 호출
             result: LLMAnalysisResult = await call_llm(prompt)
             logger.info(f"[Pipeline] LLM 분석 완료: {result.model_dump()}")
 
-            # 4. 결과 저장
+            # 5. 결과 저장
             entry = {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "alert_name": alert.labels.alertname,
                 "container": container_name,
                 "result": result.model_dump(),
             }
             analysis_history.append(entry)
 
-            # 5. Loki 푸시 & 6. Remediation 전달 & 7. Slack 알림
+            # 6. Loki 푸시 & 7. Remediation 전달
             await push_to_loki(entry)
             await forward_to_remediation(alert, result)
-            await send_slack_notification(alert.labels.alertname, container_name, result)
 
         except Exception as e:
             logger.error(f"[Pipeline] 분석 실패 ({alert.labels.alertname}): {e}")
@@ -324,7 +359,7 @@ async def send_slack_notification(alert_name: str, container: str, result: LLMAn
 async def push_timeline_event(event: str, fields: dict) -> None:
     ts_ns = str(int(time.time() * 1_000_000_000))
     body = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
         "event": event,
         **fields,
     }

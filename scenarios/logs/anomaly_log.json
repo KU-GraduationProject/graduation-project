@@ -2138,5 +2138,73 @@
     "failure_reason": "",
     "timestamp": "2026-05-28T17:54:28.422344+00:00",
     "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-05-28T18:05:39.880051+00:00",
+    "end_time": "2026-05-28T18:05:51.816757+00:00",
+    "status": "success",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "category": "security",
+    "start_time": "2026-05-28T18:05:51.833810+00:00",
+    "end_time": "2026-05-28T18:09:59.609111+00:00",
+    "status": "success",
+    "detail": "{\"mttd\": 36.6, \"mtta\": null}"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 36.6,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-05-28T18:09:59.133837+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-05-28T18:14:56.985271+00:00",
+    "end_time": "2026-05-28T18:15:08.646173+00:00",
+    "status": "success",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-05-28T18:19:33.840491+00:00",
+    "end_time": "2026-05-28T18:20:01.528824+00:00",
+    "status": "success",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "category": "security",
+    "start_time": "2026-05-28T18:20:01.545677+00:00",
+    "end_time": "2026-05-28T18:24:27.492983+00:00",
+    "status": "success",
+    "detail": "{\"mttd\": 0.0, \"mtta\": 172.1}"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 0.0,
+    "mtta_seconds": 172.1,
+    "slack_notified": true,
+    "slack_status": "SUCCESS",
+    "slack_response_code": 200,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-05-28T18:24:27.052996+00:00",
+    "category": "verification"
   }
 ]
