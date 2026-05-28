@@ -3,7 +3,7 @@ groups:
     rules:
 
       - alert: HighCpuUsage
-        expr: max(irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s])) > 0.5
+        expr: sum(irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s])) > 0.5
         for: 30s
         labels:
           severity: warning
@@ -56,7 +56,7 @@ groups:
           container: "leafy-frontend"
 
       - alert: HighPostgresConnections
-        expr: pg_stat_activity_count > 50
+        expr: pg_stat_activity_count > 40
         for: 30s
         labels:
           severity: warning

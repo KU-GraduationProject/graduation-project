@@ -31,7 +31,7 @@ LOG_PATH    = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_l
 
 TARGET_BASE  = os.getenv("TARGET_URL", "https://localhost")
 WORKERS      = 100
-DURATION_SEC = 120
+DURATION_SEC = 300
 
 # SQLi 페이로드: OWASP Testing Guide 기반 실제 공격 패턴
 # JPA Prepared Statement가 막더라도 에러 응답 + 이상 로그가 발생
@@ -201,8 +201,7 @@ def main():
         timeout=60,
     )
 
-    # ── MTTA: Loki 탐지 성공 시 Pipeline 웹훅 전송 ───────────────────────────
-    mtta = None
+    # Loki 탐지 성공 시 Pipeline 웹훅 전송
     if mttd is not None:
         webhook_payload = json.dumps({
             "version": "4",
@@ -229,19 +228,15 @@ def main():
                 headers={"Content-Type": "application/json"},
             )
             _ureq.urlopen(req, timeout=5)
-            print("[*] Pipeline 웹훅 전송 완료 (MTTA 측정 시작)")
+            print("[*] Pipeline 웹훅 전송 완료")
         except Exception as e:
             print(f"[!] Pipeline 웹훅 전송 실패: {e}")
-
-        mtta = verifier.verify_mtta(timeout=180)
 
     loki_result = VerifyResult(
         success=mttd is not None,
         alert_name="SqlInjectionAttempt",
         scenario_name="sql_injection",
         mttd_seconds=mttd,
-        mtta_seconds=mtta,
-        slack_notified=mtta is not None,
     )
     verifier.log_result(loki_result)
 

@@ -21,9 +21,9 @@ LOG_PATH   = os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_log.json")
 LOG_PATH   = os.path.normpath(LOG_PATH)
 
 CONTAINER_NAME = "leafy-backend"
-STRESS_DURATION = 120         # 컨테이너 내 스트레스 지속 시간(초)
+STRESS_DURATION = 300         # 컨테이너 내 스트레스 지속 시간(초)
 CPU_WORKERS     = 0           # 0 = 논리 CPU 수만큼 자동
-CPU_ALERT_QUERY = 'max(irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s]))'
+CPU_ALERT_QUERY = 'sum(irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s]))'
 CPU_ALERT_THRESHOLD = 0.5
 
 
@@ -106,6 +106,7 @@ def main():
 
     # repeat_interval 사전 체크
     verifier.check_repeat_interval()
+    verifier.wait_for_alert_inactive(timeout=90)
 
     # 3단계: 타이머 시작
     verifier.start_timer()
@@ -164,10 +165,6 @@ def main():
     record_event(scenario, start_time, end_time, status, output_str[:500])
     print(f"[*] 시나리오 종료: {scenario}")
 
-    # ✅ MTTA 측정 추가
-    mtta = verifier.verify_mtta(timeout=180)
-    result.mtta_seconds = mtta
-    result.slack_notified = mtta is not None
     # ── 5단계: 결과 기록 ──
     verifier.log_result(result)
 

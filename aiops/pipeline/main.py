@@ -173,6 +173,8 @@ async def analyze_alerts(alerts: list[Alert]):
                 except Exception: pass
                 try: await forward_to_remediation(alert, fallback_result)
                 except Exception: pass
+                try: await send_slack_notification(alert.labels.alertname, "unknown", fallback_result)
+                except Exception: pass
                 continue
 
             # 1. 메트릭/로그 수집 (더 이상 container_id 파라미터가 필요 없음!)
@@ -208,9 +210,10 @@ async def analyze_alerts(alerts: list[Alert]):
             }
             analysis_history.append(entry)
 
-            # 5. Loki 푸시 & 6. Remediation 전달
+            # 5. Loki 푸시 & 6. Remediation 전달 & 7. Slack 알림
             await push_to_loki(entry)
             await forward_to_remediation(alert, result)
+            await send_slack_notification(alert.labels.alertname, container_name, result)
 
         except Exception as e:
             logger.error(f"[Pipeline] 분석 실패 ({alert.labels.alertname}): {e}")
@@ -254,8 +257,93 @@ async def push_to_loki(entry: dict) -> None:
                 headers={"Content-Type": "application/json"},
             )
         logger.info(f"[Pipeline] Loki 푸시 완료: {entry['alert_name']} / {entry['container']}")
+        await push_timeline_event("llm_analysis_completed", {
+            "alert": entry.get("alert_name", "unknown"),
+            "container": entry.get("container", "unknown"),
+            "threat_level": result.get("threat_level", "unknown"),
+            "confidence": result.get("confidence", 0.0),
+            "recommended_action": result.get("action_type", "NONE"),
+            "status": "COMPLETED",
+        })
     except Exception as e:
         logger.warning(f"[Pipeline] Loki 푸시 실패 (무시): {e}")
+
+
+async def send_slack_notification(alert_name: str, container: str, result: LLMAnalysisResult) -> None:
+    if not settings.slack_webhook_url:
+        return
+
+    ts_ns = str(int(time.time() * 1_000_000_000))
+    status = "FAILED"
+    response_code: int | None = None
+
+    try:
+        message = {
+            "text": (
+                f"*🚨 Alert:* `{alert_name}`\n"
+                f"*Container:* `{container}`\n"
+                f"*Root Cause:* {result.root_cause}\n"
+                f"*Threat Level:* {result.threat_level}\n"
+                f"*Action:* {result.action_type}"
+            )
+        }
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                settings.slack_webhook_url,
+                json=message,
+                headers={"Content-Type": "application/json"},
+            )
+        response_code = resp.status_code
+        status = "SUCCESS" if resp.status_code == 200 else "FAILED"
+        logger.info(f"[Pipeline] Slack 전송 완료: {alert_name} / {resp.status_code}")
+    except Exception as e:
+        logger.warning(f"[Pipeline] Slack 전송 실패: {e}")
+
+    log_body = json.dumps({
+        "event": "slack_notification",
+        "alert_name": alert_name,
+        "slack_status": status,
+        "slack_response_code": response_code,
+    }, ensure_ascii=False)
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(
+                f"{settings.loki_url}/loki/api/v1/push",
+                json={
+                    "streams": [{
+                        "stream": {"job": "aiops-slack", "alert": alert_name},
+                        "values": [[ts_ns, log_body]],
+                    }]
+                },
+                headers={"Content-Type": "application/json"},
+            )
+    except Exception as e:
+        logger.warning(f"[Pipeline] Slack Loki 기록 실패 (무시): {e}")
+
+
+async def push_timeline_event(event: str, fields: dict) -> None:
+    ts_ns = str(int(time.time() * 1_000_000_000))
+    body = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "event": event,
+        **fields,
+    }
+    labels = {
+        "job": "aiops-timeline",
+        "event": event,
+        "status": str(fields.get("status", "INFO")),
+    }
+    if fields.get("alert"):
+        labels["alert"] = str(fields["alert"])
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(
+                f"{settings.loki_url}/loki/api/v1/push",
+                json={"streams": [{"stream": labels, "values": [[ts_ns, json.dumps(body, ensure_ascii=False)]]}]},
+                headers={"Content-Type": "application/json"},
+            )
+    except Exception as e:
+        logger.warning(f"[Pipeline] timeline Loki push failed: {e}")
 
 
 async def call_llm(prompt: dict) -> LLMAnalysisResult:

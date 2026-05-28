@@ -20,7 +20,7 @@ SCRIPT_DIR     = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH       = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_log.json"))
 
 CONTAINER_NAME = "leafy-backend"  # 메모리 누수 → OOMKill 시뮬레이션 대상
-RESTART_COUNT  = 3        # 재시작 반복 횟수
+RESTART_COUNT  = 4        # 재시작 반복 횟수
 CYCLE_SECONDS  = 90       # 재시작 주기(초)
 
 
@@ -169,20 +169,14 @@ def main():
         timeout=180,
     )
 
-    mtta = None
     if mttd is not None:
-        sent = _send_pipeline_webhook(_WEBHOOK_PAYLOAD)
-        if sent:
-            print("[*] Pipeline 웹훅 전송 완료 (MTTA 측정 시작)")
-            mtta = verifier.verify_mtta(timeout=180)
+        _send_pipeline_webhook(_WEBHOOK_PAYLOAD)
 
     loki_result = VerifyResult(
         success=mttd is not None,
         alert_name="HighMemoryUsage",
         scenario_name="memory_leak",
         mttd_seconds=mttd,
-        mtta_seconds=mtta,
-        slack_notified=mtta is not None,
     )
     verifier.log_result(loki_result)
 

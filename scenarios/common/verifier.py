@@ -14,6 +14,7 @@ Chaos Engineering 5단계를 코드로 자동화:
 import http.client
 import json
 import os
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -60,6 +61,9 @@ class VerifyResult:
     mttr_seconds: float | None = None
     mtta_seconds: float | None = None
     slack_notified: bool = False
+    slack_status: str = ""
+    slack_response_code: int | None = None
+    slack_response_text: str = ""
     steady_state_ok: bool = True
     failure_reason: str = ""
     actual_value: float | None = None
@@ -104,7 +108,10 @@ class ScenarioVerifier:
         self.metric_unit = metric_unit
         self.metric_scale = metric_scale
         self._start_time: float = 0.0
+        self._alert_firing_time: float | None = None
+        self._last_slack_dispatch: dict = {}
         self._metric_samples: list[tuple[float, float]] = []
+        self._mtta_timeout: int = 180
 
     # ── 1단계: Steady State 확인 ───────────────────────────────────────────────
     def check_steady_state(self) -> bool:
@@ -169,6 +176,8 @@ class ScenarioVerifier:
         fired = False
         mttd_val = 0.0
         alert_state = "NORMAL"
+        _mtta_result: list[float | None] = []
+        _mtta_thread: threading.Thread | None = None
 
         def _make_layout() -> Layout:
             now = time.time()
@@ -229,6 +238,7 @@ class ScenarioVerifier:
                     if alert_state == "FIRING":
                         fired = True
                         mttd_val = now - self._start_time
+                        self._alert_firing_time = now
                         metrics = self._get_realtime_metrics()
                         if metrics:
                             self._metric_samples.append((now - self._start_time, metrics["value"]))
@@ -243,6 +253,10 @@ class ScenarioVerifier:
                 time.sleep(0.3)
 
         if fired:
+            def _run_mtta():
+                _mtta_result.append(self.verify_mtta(timeout=self._mtta_timeout))
+            _mtta_thread = threading.Thread(target=_run_mtta, daemon=True)
+            _mtta_thread.start()
             c = _mttd_color(mttd_val)
             if self._metric_samples:
                 _console.print(Panel(
@@ -256,11 +270,15 @@ class ScenarioVerifier:
                 title="[bold red blink]🚨  ALERT FIRING 감지!  🚨[/bold red blink]",
                 border_style="red",
             ))
+            _mtta_thread.join(timeout=self._mtta_timeout)
+            mtta_val = _mtta_result[0] if (_mtta_result and not _mtta_thread.is_alive()) else None
             return VerifyResult(
                 success=True,
                 alert_name=self.alert_name,
                 scenario_name=self.scenario_name,
                 mttd_seconds=round(mttd_val, 1),
+                mtta_seconds=mtta_val,
+                slack_notified=mtta_val is not None,
             )
 
         _console.print(Panel(
@@ -285,6 +303,16 @@ class ScenarioVerifier:
 
     # ── 5단계: 결과 기록 ───────────────────────────────────────────────────────
     def log_result(self, result: VerifyResult):
+        if self._last_slack_dispatch:
+            result.slack_status = result.slack_status or self._last_slack_dispatch.get("status", "")
+            result.slack_response_code = (
+                result.slack_response_code
+                if result.slack_response_code is not None
+                else self._last_slack_dispatch.get("response_code")
+            )
+            result.slack_response_text = (
+                result.slack_response_text or self._last_slack_dispatch.get("response_text", "")
+            )
         entry = {
             "scenario": result.scenario_name,
             "alert_name": result.alert_name,
@@ -292,6 +320,9 @@ class ScenarioVerifier:
             "mttd_seconds": result.mttd_seconds,
             "mtta_seconds": result.mtta_seconds,
             "slack_notified": result.slack_notified,
+            "slack_status": result.slack_status,
+            "slack_response_code": result.slack_response_code,
+            "slack_response_text": result.slack_response_text,
             "failure_reason": result.failure_reason,
             "timestamp": result.timestamp,
             "category": "verification",
@@ -340,6 +371,11 @@ class ScenarioVerifier:
                 "[green]전송 완료 ✅[/green]" if result.slack_notified else "[red]미전송 ❌[/red]",
             )
 
+        if result.slack_status:
+            table.add_row("Slack 상태", result.slack_status)
+        if result.slack_response_code is not None:
+            table.add_row("Slack 응답", str(result.slack_response_code))
+
         if not result.success:
             if result.failure_reason:
                 table.add_row("실패 원인", f"[red]{result.failure_reason}[/red]")
@@ -369,6 +405,27 @@ class ScenarioVerifier:
             return True
         except Exception:
             return True
+
+    def wait_for_alert_inactive(self, timeout: int = 90, poll_interval: int = 5) -> bool:
+        """시나리오 시작 전 이전 Alert 상태가 사라질 때까지 짧게 대기한다."""
+        _console.rule("[bold cyan]2-B  Alert 상태 확인[/bold cyan]")
+        deadline = time.time() + timeout
+
+        while time.time() < deadline:
+            state = self._get_alert_state()
+            if state == "NORMAL":
+                _console.print(f"  [green]→ {self.alert_name}: inactive ✅[/green]")
+                return True
+            _console.print(
+                f"  [yellow]⚠ 이전 Alert resolve 대기 중... {self.alert_name}: {state}[/yellow]"
+            )
+            time.sleep(poll_interval)
+
+        _console.print(
+            f"  [yellow]⚠ {self.alert_name}가 아직 inactive가 아닙니다. "
+            "MTTD가 짧게 측정될 수 있습니다.[/yellow]"
+        )
+        return False
 
     # ── 실시간 메트릭 조회 ─────────────────────────────────────────────────────
     def _get_realtime_metrics(self) -> dict:
@@ -402,81 +459,70 @@ class ScenarioVerifier:
                 text.append("Prometheus 샘플 수집 대기 중...", style="yellow")
                 return text
             text.append("Prometheus 샘플 준비 중\n", style="yellow")
-            text.append("추이\n", style="bold")
-            text.append("." * 44, style="dim")
-            text.append("\n0s", style="dim")
-            text.append(" " * 36, style="dim")
-            text.append("now\n\n", style="dim")
-            text.append("압력\n", style="bold")
-            text.append("[", style="dim")
-            text.append("-" * 30, style="dim")
-            text.append("]", style="dim")
+            text.append(f"{self.metric_label}\n", style="bold")
+            self._append_pressure_bar(text, 0.0)
+            text.append(f"  {self._format_metric(0.0)}\n", style="dim")
+            if self.steady_state_threshold:
+                text.append("Threshold: ", style="bold")
+                text.append(f"{self._format_metric(self.steady_state_threshold)}\n", style="yellow")
+            text.append("Status: ", style="bold")
+            text.append("WAITING\n", style="yellow")
             text.append("  샘플 0개")
             return text
 
         threshold = self.steady_state_threshold
-        status_style = "red bold" if threshold and value >= threshold else "green bold"
-        status_label = "임계값 초과" if threshold and value >= threshold else "정상 범위"
+        status = "FIRING" if threshold and value >= threshold else "NORMAL"
+        status_style = self._metric_style(value)
         peak = max(v for _, v in self._metric_samples) if self._metric_samples else value
         low = min(v for _, v in self._metric_samples) if self._metric_samples else value
 
-        text.append(f"{self.metric_label}: ", style="bold")
-        text.append(self._format_metric(value), style=status_style)
-        text.append(f"  {status_label}\n", style=status_style)
+        text.append(f"{self.metric_label}\n", style="bold")
+        self._append_pressure_bar(text, value)
+        text.append(f"  {self._format_metric(value)}\n", style=status_style)
         if threshold:
-            text.append("임계값: ", style="bold")
+            text.append("Threshold: ", style="bold")
             text.append(f"{self._format_metric(threshold)}\n", style="yellow")
         text.append("최고/최저: ", style="bold")
         text.append(f"{self._format_metric(peak)} / {self._format_metric(low)}\n\n")
 
-        if self._metric_samples:
-            text.append("추이\n", style="bold")
-            self._append_sparkline(text)
-            text.append("\n")
-            first_t = self._metric_samples[0][0]
-            last_t = self._metric_samples[-1][0]
-            text.append(f"{first_t:.0f}s", style="dim")
-            text.append(" " * 36, style="dim")
-            text.append(f"{last_t:.0f}s\n\n", style="dim")
-
-        text.append("압력\n", style="bold")
-        self._append_pressure_bar(text, value)
+        text.append("Status: ", style="bold")
+        text.append(f"{status}\n", style=status_style)
         text.append(f"  샘플 {len(self._metric_samples)}개")
         return text
 
-    def _append_sparkline(self, text: Text, width: int = 44) -> None:
-        samples = self._metric_samples[-width:]
-        values = [value for _, value in samples]
-        if not values:
-            text.append("데이터 없음", style="dim")
-            return
-
-        lo = min(values)
-        hi = max(values)
-        if self.steady_state_threshold:
-            lo = min(lo, self.steady_state_threshold)
-            hi = max(hi, self.steady_state_threshold)
-        span = hi - lo or 1.0
-        blocks = ".:-=+*#%@"
-        for value in values:
-            idx = min(len(blocks) - 1, max(0, int((value - lo) / span * (len(blocks) - 1))))
-            style = "red bold" if self.steady_state_threshold and value >= self.steady_state_threshold else "cyan"
-            text.append(blocks[idx], style=style)
-
-    def _append_pressure_bar(self, text: Text, value: float, width: int = 30) -> None:
+    def _append_pressure_bar(self, text: Text, value: float, width: int = 20) -> None:
         threshold = self.steady_state_threshold
-        if threshold > 0:
+        if self.metric_unit == "%":
+            ratio = max(0.0, min(self._metric_percent(value) / 100.0, 1.0))
+        elif threshold > 0:
             ratio = max(0.0, min(value / threshold, 1.0))
         else:
             peak = max((v for _, v in self._metric_samples), default=value) or 1.0
             ratio = max(0.0, min(value / peak, 1.0))
 
         filled = int(round(ratio * width))
-        style = "red bold" if threshold and value >= threshold else "green"
+        style = self._metric_style(value)
         text.append("[", style="dim")
-        text.append("#" * filled, style=style)
+        text.append("█" * filled, style=style)
         text.append("-" * (width - filled), style="dim")
         text.append("]", style="dim")
+
+    def _metric_percent(self, value: float | None) -> float:
+        if value is None:
+            return 0.0
+        return max(0.0, min(value * self.metric_scale, 100.0))
+
+    def _metric_style(self, value: float | None) -> str:
+        if self.metric_unit == "%":
+            percent = self._metric_percent(value)
+            if percent >= 80:
+                return "red bold"
+            if percent >= 50:
+                return "yellow bold"
+            return "green"
+        if self.steady_state_threshold and value is not None and value >= self.steady_state_threshold:
+            return "red bold"
+        return "green"
 
     def _format_metric(self, value: float | None) -> str:
         if value is None:
@@ -623,9 +669,13 @@ class ScenarioVerifier:
                 if now - last_check_time >= poll_interval:
                     check_count += 1
                     last_check_time = now
-                    ts = self._query_loki_slack_sent()
-                    if ts is not None:
-                        mtta_val = ts - self._start_time
+                    dispatch = self._query_loki_slack_sent()
+                    if dispatch is not None:
+                        self._last_slack_dispatch = dispatch
+                    if dispatch is not None and dispatch.get("status") == "SUCCESS":
+                        dispatch_ts = dispatch.get("timestamp", time.time())
+                        baseline_ts = self._alert_firing_time or self._start_time
+                        mtta_val = dispatch_ts - baseline_ts
                         found = True
                         break
                 live.update(_render())
@@ -633,22 +683,32 @@ class ScenarioVerifier:
 
         if found:
             c = _mttd_color(mtta_val)
+            code = self._last_slack_dispatch.get("response_code")
             _console.print(Panel(
                 f"[bold]Alert:[/bold]  [yellow]{self.alert_name}[/yellow]\n"
-                f"[bold]MTTA:[/bold]   [{c} bold]{mtta_val:.1f}초[/{c} bold]",
-                title="[bold green]✅  Slack 알림 확인![/bold green]",
+                f"[bold]MTTA:[/bold]   [{c} bold]{mtta_val:.1f}초[/{c} bold]\n"
+                f"[bold]Slack:[/bold]  [green]webhook delivered[/green]"
+                + (f" ([green]{code}[/green])" if code is not None else ""),
+                title="[bold green]✅  Slack notification dispatched[/bold green]",
                 border_style="green",
             ))
             return round(mtta_val, 1)
 
-        _console.print("[yellow]  → MTTA 측정 타임아웃 ❌[/yellow]")
+        if self._last_slack_dispatch:
+            _console.print(
+                "[red]  → Slack webhook failed[/red] "
+                f"(code={self._last_slack_dispatch.get('response_code')}, "
+                f"text={self._last_slack_dispatch.get('response_text')})"
+            )
+        else:
+            _console.print("[yellow]  → MTTA 측정 타임아웃 ❌[/yellow]")
         return None
 
-    def _query_loki_slack_sent(self) -> float | None:
+    def _query_loki_slack_sent(self) -> dict | None:
         try:
             start_ns = int(self._start_time * 1_000_000_000)
             end_ns = int(time.time() * 1_000_000_000)
-            query = '{job="aiops-llm"}'
+            query = '{job="aiops-slack"}'
             params = urllib.parse.urlencode({
                 "query": query,
                 "start": start_ns,
@@ -661,15 +721,28 @@ class ScenarioVerifier:
             resp = urllib.request.urlopen(req, timeout=5)
             data = json.loads(resp.read().decode())
             streams = data.get("data", {}).get("result", [])
+            latest_dispatch = None
             for stream in streams:
                 labels = stream.get("stream", {})
-                if labels.get("alert") != self.alert_name:
+                alert_label = labels.get("alert")
+                if alert_label and alert_label != self.alert_name:
                     continue
                 for ts_ns, line in stream.get("values", []):
                     entry = json.loads(line)
-                    if entry.get("result", {}).get("confidence", 0) > 0:
-                        return int(ts_ns) / 1_000_000_000
-            return None
+                    if entry.get("event") != "slack_notification":
+                        continue
+                    entry_alert = entry.get("alert_name")
+                    if entry_alert and entry_alert != self.alert_name:
+                        continue
+                    latest_dispatch = {
+                        "timestamp": int(ts_ns) / 1_000_000_000,
+                        "status": entry.get("slack_status", entry.get("status", "")),
+                        "response_code": entry.get("slack_response_code"),
+                        "response_text": entry.get("slack_response_text", ""),
+                    }
+                    if latest_dispatch["status"] == "SUCCESS":
+                        return latest_dispatch
+            return latest_dispatch
         except Exception:
             return None
 

@@ -35,7 +35,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "leafy_secret")
 USE_DOCKER_EXEC = True   # leafy-db 포트가 외부 미노출 시 True
 
 CONNECTIONS  = 100   # 동시 DB 연결 수 (HighPostgresConnections: >50 목표)
-DURATION_SEC = 120   # 공격 지속 시간(초)
+DURATION_SEC = 300   # 공격 지속 시간(초)
 HOLD_SLEEP_SEC = 30  # 각 쿼리 사이클 앞에 pg_sleep으로 연결 점유 (Prometheus 스크랩 간격보다 길게)
 
 PROM_URL = os.getenv("PROM_URL", "http://localhost:9090")
@@ -272,10 +272,8 @@ def main():
         timeout=60,
     )
 
-    # ── MTTA: Loki 탐지 성공 시 Pipeline 웹훅 전송 ───────────────────────────
-    mtta = None
     if mttd is not None:
-        sent = _send_pipeline_webhook({
+        _send_pipeline_webhook({
             "version": "4",
             "groupKey": "n_plus_one_attack",
             "status": "firing",
@@ -286,17 +284,12 @@ def main():
                 "startsAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }],
         })
-        if sent:
-            print("[*] Pipeline 웹훅 전송 완료 (MTTA 측정 시작)")
-            mtta = verifier.verify_mtta(timeout=180)
 
     loki_result = VerifyResult(
         success=mttd is not None,
         alert_name="NPlusOneAttack",
         scenario_name="n_plus_one_attack",
         mttd_seconds=mttd,
-        mtta_seconds=mtta,
-        slack_notified=mtta is not None,
     )
     verifier.log_result(loki_result)
 

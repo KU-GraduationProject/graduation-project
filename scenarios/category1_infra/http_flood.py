@@ -29,7 +29,7 @@ LOG_PATH     = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_
 
 TARGET_BASE = os.getenv("TARGET_URL", "http://localhost:80")
 WORKERS      = 300       # 동시 요청 스레드 수
-DURATION_SEC = 120      # 공격 지속 시간(초)
+DURATION_SEC = 300      # 공격 지속 시간(초)
 
 TARGET_ENDPOINTS = [
     "/api/v1/my-plants",
@@ -182,20 +182,14 @@ def main():
         timeout=180,
     )
 
-    mtta = None
     if mttd is not None:
-        sent = _send_pipeline_webhook(_WEBHOOK_PAYLOAD)
-        if sent:
-            print("[*] Pipeline 웹훅 전송 완료 (MTTA 측정 시작)")
-            mtta = verifier.verify_mtta(timeout=180)
+        _send_pipeline_webhook(_WEBHOOK_PAYLOAD)
 
     loki_result = VerifyResult(
         success=mttd is not None,
         alert_name="HttpFlood",
         scenario_name="http_flood",
         mttd_seconds=mttd,
-        mtta_seconds=mtta,
-        slack_notified=mtta is not None,
     )
     verifier.log_result(loki_result)
 

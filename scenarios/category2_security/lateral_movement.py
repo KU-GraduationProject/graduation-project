@@ -47,7 +47,7 @@ DB_NAME       = os.getenv("DB_NAME", "leafy")
 ATTACKER_NAME = "leafy-attacker-frontend"   # 침해된 프론트엔드를 모사하는 컨테이너 이름
 POSTGRES_IMAGE = "postgres:15-alpine"
 
-DURATION_SEC  = 90     # 공격 지속 시간(초)
+DURATION_SEC  = 300    # 공격 지속 시간(초)
 ATTEMPT_COUNT = 200    # 총 접속 시도 횟수
 
 # 공격자가 시도할 자격증명
@@ -245,9 +245,8 @@ def main():
         timeout=180,
     )
 
-    mtta = None
     if mttd is not None:
-        sent = _send_pipeline_webhook({
+        _send_pipeline_webhook({
             "version": "4",
             "groupKey": "lateral_movement",
             "status": "firing",
@@ -258,17 +257,12 @@ def main():
                 "startsAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }],
         })
-        if sent:
-            print("[*] Pipeline 웹훅 전송 완료 (MTTA 측정 시작)")
-            mtta = verifier.verify_mtta(timeout=180)
 
     loki_result = VerifyResult(
         success=mttd is not None,
         alert_name="LateralMovement",
         scenario_name="lateral_movement",
         mttd_seconds=mttd,
-        mtta_seconds=mtta,
-        slack_notified=mtta is not None,
     )
     verifier.log_result(loki_result)
 

@@ -29,7 +29,7 @@ LOG_PATH    = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_l
 
 TARGET_BASE   = os.getenv("TARGET_URL", "https://localhost")
 WORKERS       = 300         # 동시 요청 스레드 수 (Nginx CPU spike 목표)
-DURATION_SEC  = 120         # 공격 지속 시간(초)
+DURATION_SEC  = 300         # 공격 지속 시간(초)
 
 # 공격 대상 엔드포인트 — 인증 없이 Nginx가 직접 처리하는 정적 경로
 TARGET_ENDPOINTS = [
@@ -179,9 +179,8 @@ def main():
         timeout=180,
     )
 
-    mtta = None
     if mttd is not None:
-        sent = _send_pipeline_webhook({
+        _send_pipeline_webhook({
             "version": "4",
             "groupKey": "redos_attack",
             "status": "firing",
@@ -192,17 +191,12 @@ def main():
                 "startsAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }],
         })
-        if sent:
-            print("[*] Pipeline 웹훅 전송 완료 (MTTA 측정 시작)")
-            mtta = verifier.verify_mtta(timeout=180)
 
     loki_result = VerifyResult(
         success=mttd is not None,
         alert_name="ReDoSAttack",
         scenario_name="redos_attack",
         mttd_seconds=mttd,
-        mtta_seconds=mtta,
-        slack_notified=mtta is not None,
     )
     verifier.log_result(loki_result)
 
