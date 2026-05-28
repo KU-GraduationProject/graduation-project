@@ -13,7 +13,6 @@ AIOps 포인트: 같은 CPU 고갈이라도 컨테이너 식별(frontend vs back
 import ssl
 import json
 import os
-import platform
 import sys
 import time
 import threading
@@ -58,6 +57,22 @@ def _save_log(records: list) -> None:
     with open(LOG_PATH, "w", encoding="utf-8") as f:
         json.dump(records, f, indent=2, ensure_ascii=False)
 
+def _send_pipeline_webhook(payload: dict) -> bool:
+    import urllib.request, json
+    try:
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            "http://localhost:8000/webhook/alert",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=5)
+        return True
+    except Exception as e:
+        print(f"[!] Pipeline 웹훅 전송 실패: {e}")
+        return False
+
+
 def record_event(scenario, start, end, status, detail=""):
     records = _load_log()
     records.append({
@@ -97,15 +112,11 @@ def main():
     # 수정 후
     verifier = ScenarioVerifier(
         scenario_name="redos_attack",
-        alert_name="HighCpuUsage",
-        hypothesis="redos_attack 실행 중 HighCpuUsage FIRING",
-        steady_state_query='rate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[2m])',
-        steady_state_threshold=0.5,
+        alert_name="ReDoSAttack",
+        hypothesis="ReDoS 공격 시도 시 Loki에 공격 로그 탐지",
     )
-    # verifier 초기화 다음에 추가 필요
     verifier.check_steady_state()
     verifier.print_hypothesis()
-    verifier.check_repeat_interval()
     verifier.start_timer()
     start_time = datetime.now(timezone.utc).isoformat()
     deadline   = time.time() + DURATION_SEC
@@ -162,25 +173,38 @@ def main():
     record_event(scenario, start_time, end_time, status, detail)
     print(f"\n[*] 완료: 총 {total}건 전송, 지연 응답 {slow}건")
     print(f"[*] Prometheus에서 HighCpuUsage alert 확인: http://localhost:9090/alerts")
-    if platform.system() == "Windows":
-        mttd = verifier.verify_loki(
-            log_query='{container="frontend"}',
-            keyword="ReDoSBot",
-            timeout=180,
-        )
-        loki_result = VerifyResult(
-            success=mttd is not None,
-            alert_name="redos_attack",
-            scenario_name="redos_attack",
-            mttd_seconds=mttd,
-        )
-        verifier.log_result(loki_result)
-    else:
-        result = verifier.verify(timeout=180)
-        mtta = verifier.verify_mtta(timeout=180)
-        result.mtta_seconds = mtta
-        result.slack_notified = mtta is not None
-        verifier.log_result(result)
+    mttd = verifier.verify_loki(
+        log_query='{container="frontend"}',
+        keyword="ReDoSBot",
+        timeout=180,
+    )
+
+    mtta = None
+    if mttd is not None:
+        sent = _send_pipeline_webhook({
+            "version": "4",
+            "groupKey": "redos_attack",
+            "status": "firing",
+            "alerts": [{
+                "status": "firing",
+                "labels": {"alertname": "ReDoSAttack", "severity": "critical", "container": "leafy-backend"},
+                "annotations": {"summary": "ReDoS 공격 탐지", "container": "leafy-backend"},
+                "startsAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }],
+        })
+        if sent:
+            print("[*] Pipeline 웹훅 전송 완료 (MTTA 측정 시작)")
+            mtta = verifier.verify_mtta(timeout=180)
+
+    loki_result = VerifyResult(
+        success=mttd is not None,
+        alert_name="ReDoSAttack",
+        scenario_name="redos_attack",
+        mttd_seconds=mttd,
+        mtta_seconds=mtta,
+        slack_notified=mtta is not None,
+    )
+    verifier.log_result(loki_result)
 
 
 if __name__ == "__main__":

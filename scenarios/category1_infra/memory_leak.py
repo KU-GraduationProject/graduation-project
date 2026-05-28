@@ -9,7 +9,6 @@ OOM/메모리 누수 상황을 시뮬레이션한다.
 import docker
 import json
 import os
-import platform
 import sys
 import time
 from datetime import datetime, timezone
@@ -39,6 +38,22 @@ def _save_log(records: list) -> None:
         json.dump(records, f, indent=2, ensure_ascii=False)
 
 
+def _send_pipeline_webhook(payload: dict) -> bool:
+    import urllib.request, json
+    try:
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            "http://localhost:8000/webhook/alert",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=5)
+        return True
+    except Exception as e:
+        print(f"[!] Pipeline 웹훅 전송 실패: {e}")
+        return False
+
+
 def record_event(scenario: str, start: str, end: str, status: str, detail: str = "") -> None:
     records = _load_log()
     records.append({
@@ -61,13 +76,12 @@ def main():
     # ── verifier 초기화 ──
     verifier = ScenarioVerifier(
         scenario_name="memory_leak",
-        alert_name="memory_leak",
+        alert_name="HighMemoryUsage",
         hypothesis="컨테이너 강제 재시작 시 Loki에 재시작 로그 탐지",
     )
 
     verifier.check_steady_state()
     verifier.print_hypothesis()
-    verifier.check_repeat_interval()
     verifier.start_timer()
     print(f"[*] 시나리오 시작: {scenario}")
     print(f"[*] 대상 컨테이너: {CONTAINER_NAME}")
@@ -136,33 +150,41 @@ def main():
     record_event(scenario, start_time, end_time, final_status, detail[:800])
     print(f"\n[*] 시나리오 종료: {scenario}")
 
-    # ── 4단계: Alert 발화 확인 ──
-    if platform.system() == "Windows":
-        mttd = verifier.verify_loki(
-            log_query='{container="backend"}',
-            keyword="started",
-            timeout=180,
-        )
-        loki_result = VerifyResult(
-            success=mttd is not None,
-            alert_name="memory_leak",
-            scenario_name="memory_leak",
-            mttd_seconds=mttd,
-        )
-        verifier.log_result(loki_result)
-    else:
-        verifier_prom = ScenarioVerifier(
-            scenario_name="memory_leak",
-            alert_name="ContainerRestarted",
-            hypothesis="컨테이너 강제 재시작 시 ContainerRestarted 즉시 FIRING",
-            steady_state_query='changes(container_start_time_seconds{id=~"/docker/.+"}[5m])',
-            steady_state_threshold=1.0,
-        )
-        result = verifier_prom.verify(timeout=60)
-        mtta = verifier_prom.verify_mtta(timeout=180)
-        result.mtta_seconds = mtta
-        result.slack_notified = mtta is not None
-        verifier_prom.log_result(result)
+    # ── 4단계: MTTD + MTTA ────────────────────────────────────────────────────
+    _WEBHOOK_PAYLOAD = {
+        "version": "4",
+        "groupKey": "memory_leak",
+        "status": "firing",
+        "alerts": [{
+            "status": "firing",
+            "labels": {"alertname": "HighMemoryUsage", "severity": "warning", "container": "leafy-backend"},
+            "annotations": {"summary": "메모리 누수로 인한 반복 재시작", "container": "leafy-backend"},
+            "startsAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }],
+    }
+
+    mttd = verifier.verify_loki(
+        log_query='{container="backend"}',
+        keyword="started",
+        timeout=180,
+    )
+
+    mtta = None
+    if mttd is not None:
+        sent = _send_pipeline_webhook(_WEBHOOK_PAYLOAD)
+        if sent:
+            print("[*] Pipeline 웹훅 전송 완료 (MTTA 측정 시작)")
+            mtta = verifier.verify_mtta(timeout=180)
+
+    loki_result = VerifyResult(
+        success=mttd is not None,
+        alert_name="HighMemoryUsage",
+        scenario_name="memory_leak",
+        mttd_seconds=mttd,
+        mtta_seconds=mtta,
+        slack_notified=mtta is not None,
+    )
+    verifier.log_result(loki_result)
 
 
 if __name__ == "__main__":

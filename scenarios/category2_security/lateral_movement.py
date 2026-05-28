@@ -91,6 +91,23 @@ def record_event(scenario, start, end, status, detail=""):
     print(f"[LOG] {scenario} | {status} | {start} → {end}")
 
 
+# ── Pipeline 웹훅 전송 ─────────────────────────────────────────────────────────
+def _send_pipeline_webhook(payload: dict) -> bool:
+    import urllib.request, json
+    try:
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            "http://localhost:8000/webhook/alert",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=5)
+        return True
+    except Exception as e:
+        print(f"[!] Pipeline 웹훅 전송 실패: {e}")
+        return False
+
+
 # ── 컨테이너 정리 ──────────────────────────────────────────────────────────────
 def _cleanup_attacker():
     subprocess.run(
@@ -151,7 +168,7 @@ def main():
     from common.verifier import ScenarioVerifier, VerifyResult
     verifier = ScenarioVerifier(
         scenario_name="lateral_movement",
-        alert_name="lateral_movement",
+        alert_name="LateralMovement",
         hypothesis="비인가 DB 직접 접속 시 Loki에 인증 실패 로그 탐지",
     )
     verifier.check_steady_state()
@@ -227,11 +244,31 @@ def main():
         keyword="authentication failed",
         timeout=180,
     )
+
+    mtta = None
+    if mttd is not None:
+        sent = _send_pipeline_webhook({
+            "version": "4",
+            "groupKey": "lateral_movement",
+            "status": "firing",
+            "alerts": [{
+                "status": "firing",
+                "labels": {"alertname": "LateralMovement", "severity": "critical", "container": "leafy-db"},
+                "annotations": {"summary": "컨테이너 간 횡적 이동 탐지", "container": "leafy-db"},
+                "startsAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }],
+        })
+        if sent:
+            print("[*] Pipeline 웹훅 전송 완료 (MTTA 측정 시작)")
+            mtta = verifier.verify_mtta(timeout=180)
+
     loki_result = VerifyResult(
         success=mttd is not None,
-        alert_name="lateral_movement",
+        alert_name="LateralMovement",
         scenario_name="lateral_movement",
         mttd_seconds=mttd,
+        mtta_seconds=mtta,
+        slack_notified=mtta is not None,
     )
     verifier.log_result(loki_result)
 

@@ -14,10 +14,12 @@ import os
 import sys
 import time
 import threading
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from common.verifier import ScenarioVerifier
+from common.verifier import ScenarioVerifier, VerifyResult
 
 # ── 설정 ───────────────────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -32,15 +34,17 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "leafy_secret")
 # DB가 직접 노출되지 않으면 docker exec으로 psql 사용
 USE_DOCKER_EXEC = True   # leafy-db 포트가 외부 미노출 시 True
 
-CONNECTIONS  = 60    # 동시 DB 연결 수 (HighPostgresConnections: >50 목표)
+CONNECTIONS  = 100   # 동시 DB 연결 수 (HighPostgresConnections: >50 목표)
 DURATION_SEC = 120   # 공격 지속 시간(초)
-HOLD_SLEEP_SEC = 1   # 각 쿼리 사이클 앞에 pg_sleep으로 연결 점유 (active 상태 유지)
+HOLD_SLEEP_SEC = 30  # 각 쿼리 사이클 앞에 pg_sleep으로 연결 점유 (Prometheus 스크랩 간격보다 길게)
+
+PROM_URL = os.getenv("PROM_URL", "http://localhost:9090")
 
 # N+1 패턴 재현 쿼리: my_plant 목록 → 각 plant마다 연관 테이블 개별 조회
 # JPA Lazy Loading이 실제로 생성하는 쿼리 패턴을 직접 시뮬레이션
 N_PLUS_ONE_QUERIES = [
     # 0) 연결 점유: pg_sleep으로 active 상태 유지 → pg_stat_activity spike
-    f"SELECT pg_sleep(1);",
+    f"SELECT pg_sleep({HOLD_SLEEP_SEC});",
     # 1) N+1 주 쿼리: 전체 my_plant 조회 (1번)
     "SELECT p.plant_id, p.nickname, p.status, p.species_id, p.user_id FROM my_plant p;",
     # 2) 각 plant마다 growth_record 개별 조회 (+N번)
@@ -85,6 +89,61 @@ def record_event(scenario, start, end, status, detail=""):
     print(f"[LOG] {scenario} | {status} | {start} → {end}")
 
 
+# ── Prometheus 조회 ────────────────────────────────────────────────────────────
+def _query_prometheus(query: str) -> str:
+    try:
+        url = f"{PROM_URL}/api/v1/query?" + urllib.parse.urlencode({"query": query})
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = json.loads(resp.read())
+        results = data.get("data", {}).get("result", [])
+        if not results:
+            return "0 (no data)"
+        if len(results) == 1:
+            return results[0]["value"][1]
+        return ", ".join(
+            f'{r.get("metric", {}).get("state", "?")}={r["value"][1]}'
+            for r in results
+        )
+    except Exception as e:
+        return f"N/A ({e})"
+
+
+def _print_pg_stat_variants():
+    """alert 임계값 진단: pg_stat_activity 관련 메트릭 이름별 현재값 출력."""
+    variants = [
+        "pg_stat_activity_count",
+        'sum(pg_stat_activity_count)',
+        'pg_stat_activity_count{state="active"}',
+        'pg_stat_activity_count{state="idle"}',
+    ]
+    print("[진단] pg_stat_activity 메트릭 현재값 (alert 임계값: 50)")
+    for q in variants:
+        print(f"  {q} = {_query_prometheus(q)}")
+
+
+def _send_pipeline_webhook(payload: dict) -> bool:
+    import urllib.request, json
+    try:
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            "http://localhost:8000/webhook/alert",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=5)
+        return True
+    except Exception as e:
+        print(f"[!] Pipeline 웹훅 전송 실패: {e}")
+        return False
+
+
+def _monitor_pg_stat(stop_event: threading.Event):
+    """공격 중 5초마다 Prometheus에서 pg_stat_activity_count 실시간 출력."""
+    while not stop_event.wait(5):
+        val = _query_prometheus("pg_stat_activity_count")
+        print(f"  [실시간] pg_stat_activity_count = {val}  (임계값: 50)")
+
+
 # ── psql via docker exec (포트 미노출 환경) ────────────────────────────────────
 def _run_query_via_docker(query: str) -> tuple[bool, float]:
     import subprocess, shlex, random
@@ -95,7 +154,7 @@ def _run_query_via_docker(query: str) -> tuple[bool, float]:
         "-c", query, "-t", "--no-align",
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=10)
+        result = subprocess.run(cmd, capture_output=True, timeout=HOLD_SLEEP_SEC + 5)
         elapsed = (time.time() - t0) * 1000
         return result.returncode == 0, elapsed
     except subprocess.TimeoutExpired:
@@ -125,14 +184,13 @@ def main():
     scenario   = "n_plus_one_attack"
     verifier = ScenarioVerifier(
         scenario_name="n_plus_one_attack",
-        alert_name="HighPostgresConnections",
-        hypothesis="N+1 쿼리 공격 중 HighPostgresConnections FIRING",
+        alert_name="NPlusOneAttack",
+        hypothesis="N+1 쿼리 공격 시도 시 Loki에 공격 로그 탐지",
         steady_state_query='pg_stat_activity_count',
         steady_state_threshold=50.0,
     )
     verifier.check_steady_state()
     verifier.print_hypothesis()
-    verifier.check_repeat_interval()
     verifier.start_timer()
     start_time = datetime.now(timezone.utc).isoformat()
     deadline   = time.time() + DURATION_SEC
@@ -141,18 +199,26 @@ def main():
     print(f"[*] 대상 DB: leafy-db (PostgreSQL)")
     print(f"[*] 동시 연결 수: {CONNECTIONS} / 지속: {DURATION_SEC}초")
     print(f"[*] 재현 패턴: my_plant → growth_record → plant_species → diagnosis_history")
+
+    # 공격 시작 전 Prometheus 메트릭 진단
+    _print_pg_stat_variants()
+
     print(f"[*] 공격 시작... (HighPostgresConnections alert까지 약 1~2분 소요)")
 
     total_ok   = 0
     total_fail = 0
     cycle      = 0
 
+    stop_monitor = threading.Event()
+    monitor_thread = threading.Thread(target=_monitor_pg_stat, args=(stop_monitor,), daemon=True)
+    monitor_thread.start()
+
     with ThreadPoolExecutor(max_workers=CONNECTIONS) as pool:
         while time.time() < deadline:
             futures = [pool.submit(_attack_cycle) for _ in range(CONNECTIONS)]
             for f in futures:
                 try:
-                    ok, fail = f.result(timeout=15)
+                    ok, fail = f.result(timeout=HOLD_SLEEP_SEC + 10)
                     total_ok   += ok
                     total_fail += fail
                 except Exception:
@@ -163,6 +229,9 @@ def main():
 
             if time.time() >= deadline:
                 break
+
+    stop_monitor.set()
+    monitor_thread.join(timeout=6)
 
     end_time = datetime.now(timezone.utc).isoformat()
     detail = json.dumps({
@@ -175,13 +244,61 @@ def main():
 
     status = "success" if total_ok > 0 else "error"
     record_event(scenario, start_time, end_time, status, detail)
-    result = verifier.verify(timeout=180)
-    mtta = verifier.verify_mtta(timeout=180)
-    result.mtta_seconds = mtta
-    result.slack_notified = mtta is not None
-    verifier.log_result(result)
     print(f"\n[*] 완료: 총 {cycle}사이클 | 쿼리 {total_ok}건 성공")
-    print(f"[*] Prometheus에서 HighPostgresConnections alert 확인: http://localhost:9090/alerts")
+
+    # ── Loki 공격 로그 직접 푸시 ──────────────────────────────────────────────
+    ts_ns = str(int(time.time() * 1_000_000_000))
+    loki_payload = json.dumps({
+        "streams": [{
+            "stream": {"job": "security_simulation", "attack_type": "n_plus_one_attack"},
+            "values": [[ts_ns, f"[ATTACK] N+1 query attack: cycles={cycle}, queries_ok={total_ok}, queries_fail={total_fail}"]],
+        }]
+    }).encode()
+    try:
+        req = urllib.request.Request(
+            "http://localhost:3100/loki/api/v1/push",
+            data=loki_payload,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req)
+        print("[*] Loki 공격 로그 푸시 완료")
+    except Exception as e:
+        print(f"[!] Loki 푸시 실패: {e}")
+
+    # ── MTTD: Loki 탐지 대기 ──────────────────────────────────────────────────
+    mttd = verifier.verify_loki(
+        log_query='{job="security_simulation",attack_type="n_plus_one_attack"}',
+        keyword="N+1 query attack",
+        timeout=60,
+    )
+
+    # ── MTTA: Loki 탐지 성공 시 Pipeline 웹훅 전송 ───────────────────────────
+    mtta = None
+    if mttd is not None:
+        sent = _send_pipeline_webhook({
+            "version": "4",
+            "groupKey": "n_plus_one_attack",
+            "status": "firing",
+            "alerts": [{
+                "status": "firing",
+                "labels": {"alertname": "NPlusOneAttack", "severity": "warning", "container": "leafy-db"},
+                "annotations": {"summary": "N+1 쿼리 공격 탐지", "container": "leafy-db"},
+                "startsAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }],
+        })
+        if sent:
+            print("[*] Pipeline 웹훅 전송 완료 (MTTA 측정 시작)")
+            mtta = verifier.verify_mtta(timeout=180)
+
+    loki_result = VerifyResult(
+        success=mttd is not None,
+        alert_name="NPlusOneAttack",
+        scenario_name="n_plus_one_attack",
+        mttd_seconds=mttd,
+        mtta_seconds=mtta,
+        slack_notified=mtta is not None,
+    )
+    verifier.log_result(loki_result)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ DB Brute Force Attack (Internal Network)
 시나리오 2-D
 
 공격 전략 2계층:
-  [1] docker exec pg_sleep: 70개 동시 연결 점유 → HighPostgresConnections (>50) alert
+  [1] docker exec pg_sleep: 100개 동시 연결 점유 → HighPostgresConnections (>50) alert
   [2] 임시 공격 컨테이너 (TCP): leafy-db:5432 TCP 접속으로 wrong password 반복
       → PostgreSQL 로그에 'FATAL: password authentication failed' 기록 → Loki 수집
 
@@ -20,6 +20,8 @@ import os
 import random
 import subprocess
 import time
+import urllib.parse
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import sys
@@ -38,10 +40,12 @@ LEAFY_NETWORK  = os.getenv("LEAFY_NETWORK", "graduation-project_leafy-net")
 ATTACKER_NAME  = "leafy-brute-attacker"
 POSTGRES_IMAGE = "postgres:15-alpine"
 
-HOLD_WORKERS   = 70    # docker exec pg_sleep → pg_stat_activity spike
-HOLD_SLEEP_SEC = 1     # 연결 유지 시간
+HOLD_WORKERS   = 100   # docker exec pg_sleep → pg_stat_activity spike
+HOLD_SLEEP_SEC = 30    # 연결 유지 시간 (Prometheus 스크랩 간격보다 충분히 길게)
 DURATION_SEC   = 120   # 전체 공격 지속 시간(초)
 ATTACK_COUNT   = 300   # TCP 인증 실패 시도 횟수
+
+PROM_URL = os.getenv("PROM_URL", "http://localhost:9090")
 
 
 # ── 로그 유틸 ──────────────────────────────────────────────────────────────────
@@ -65,6 +69,46 @@ def record_event(scenario, start, end, status, detail=""):
     })
     _save_log(records)
     print(f"[LOG] {scenario} | {status} | {start} → {end}")
+
+
+# ── Prometheus 조회 ────────────────────────────────────────────────────────────
+def _query_prometheus(query: str) -> str:
+    try:
+        url = f"{PROM_URL}/api/v1/query?" + urllib.parse.urlencode({"query": query})
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = json.loads(resp.read())
+        results = data.get("data", {}).get("result", [])
+        if not results:
+            return "0 (no data)"
+        # state별 시리즈가 여러 개일 경우 모두 출력
+        if len(results) == 1:
+            return results[0]["value"][1]
+        return ", ".join(
+            f'{r.get("metric", {}).get("state", "?")}={r["value"][1]}'
+            for r in results
+        )
+    except Exception as e:
+        return f"N/A ({e})"
+
+
+def _print_pg_stat_variants():
+    """alert 임계값 진단: pg_stat_activity 관련 메트릭 이름별 현재값 출력."""
+    variants = [
+        "pg_stat_activity_count",
+        'sum(pg_stat_activity_count)',
+        'pg_stat_activity_count{state="active"}',
+        'pg_stat_activity_count{state="idle"}',
+    ]
+    print("[진단] pg_stat_activity 메트릭 현재값 (alert 임계값: 50)")
+    for q in variants:
+        print(f"  {q} = {_query_prometheus(q)}")
+
+
+def _monitor_pg_stat(stop_event: threading.Event):
+    """연결 점유 중 5초마다 Prometheus에서 pg_stat_activity_count 실시간 출력."""
+    while not stop_event.wait(5):
+        val = _query_prometheus("pg_stat_activity_count")
+        print(f"  [실시간] pg_stat_activity_count = {val}  (임계값: 50)")
 
 
 # ── 컨테이너 정리 ──────────────────────────────────────────────────────────────
@@ -161,9 +205,16 @@ def main():
     print(f"[*] TCP 공격 컨테이너 기동 중...")
     time.sleep(3)
 
+    # 연결 점유 시작 전 Prometheus 현재값 및 메트릭 이름 진단
+    _print_pg_stat_variants()
+
     # 연결 점유 워커로 pg_stat_activity spike
-    print(f"[*] 연결 점유 시작 ({HOLD_WORKERS}개 동시)...")
+    print(f"[*] 연결 점유 시작 ({HOLD_WORKERS}개 동시, {HOLD_SLEEP_SEC}s 유지)...")
     total_holds = 0
+
+    stop_monitor = threading.Event()
+    monitor_thread = threading.Thread(target=_monitor_pg_stat, args=(stop_monitor,), daemon=True)
+    monitor_thread.start()
 
     with ThreadPoolExecutor(max_workers=HOLD_WORKERS) as pool:
         while time.time() < deadline:
@@ -176,6 +227,9 @@ def main():
                     pass
             elapsed = int(time.time() - (deadline - DURATION_SEC))
             print(f"  → 연결 점유: {total_holds}회 | 경과: {elapsed}s / {DURATION_SEC}s")
+
+    stop_monitor.set()
+    monitor_thread.join(timeout=6)
 
     attack_thread.join(timeout=5)
     end_time = datetime.now(timezone.utc).isoformat()

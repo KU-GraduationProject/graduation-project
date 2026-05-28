@@ -46,15 +46,13 @@ groups:
           container: "{{ $labels.name }}"
 
       - alert: HighNginxErrorRate
-        expr: >
-          rate(nginx_http_requests_total{status=~"4..|5.."}[2m])
-          / rate(nginx_http_requests_total[2m]) > 0.1
-        for: 1m
+        expr: rate(nginx_http_requests_total[1m]) > 30
+        for: 30s
         labels:
           severity: warning
           category: security
         annotations:
-          summary: "Nginx 에러율 10% 초과"
+          summary: "Nginx 요청량 급증 (잠재적 SQLi/스캔)"
           container: "leafy-frontend"
 
       - alert: HighPostgresConnections

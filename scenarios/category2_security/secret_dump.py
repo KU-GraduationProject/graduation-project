@@ -173,11 +173,48 @@ def main():
         keyword="printenv executed",
         timeout=60,
     )
+
+    # Loki 탐지 성공 시 Pipeline 웹훅 전송 → MTTA 측정
+    mtta = None
+    if mttd is not None:
+        webhook_payload = json.dumps({
+            "version": "4",
+            "groupKey": "secret_dump",
+            "status": "firing",
+            "alerts": [{
+                "status": "firing",
+                "labels": {
+                    "alertname": "secret_dump",
+                    "severity": "critical",
+                    "container": "leafy-backend",
+                },
+                "annotations": {
+                    "summary": "환경변수 덤프 공격 탐지",
+                    "container": "leafy-backend",
+                },
+                "startsAt": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+            }]
+        }).encode()
+        try:
+            req = _ureq.Request(
+                "http://localhost:8000/webhook/alert",
+                data=webhook_payload,
+                headers={"Content-Type": "application/json"},
+            )
+            _ureq.urlopen(req, timeout=5)
+            print("[*] Pipeline 웹훅 전송 완료 (MTTA 측정 시작)")
+        except Exception as e:
+            print(f"[!] Pipeline 웹훅 전송 실패: {e}")
+
+        mtta = verifier.verify_mtta(timeout=180)
+
     loki_result = VerifyResult(
         success=mttd is not None,
         alert_name="secret_dump",
         scenario_name="secret_dump",
         mttd_seconds=mttd,
+        mtta_seconds=mtta,
+        slack_notified=mtta is not None,
     )
     verifier.log_result(loki_result)
 

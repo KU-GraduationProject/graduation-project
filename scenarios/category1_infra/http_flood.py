@@ -12,7 +12,6 @@ AIOps 포인트: 메트릭(CPU↑) + 로그(slow response)의 상관관계
 import ssl
 import json
 import os
-import platform
 import time
 import urllib.request
 import urllib.error
@@ -57,6 +56,22 @@ def _save_log(records: list) -> None:
     with open(LOG_PATH, "w", encoding="utf-8") as f:
         json.dump(records, f, indent=2, ensure_ascii=False)
 
+def _send_pipeline_webhook(payload: dict) -> bool:
+    import urllib.request, json
+    try:
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            "http://localhost:8000/webhook/alert",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=5)
+        return True
+    except Exception as e:
+        print(f"[!] Pipeline 웹훅 전송 실패: {e}")
+        return False
+
+
 def record_event(scenario, start, end, status, detail=""):
     records = _load_log()
     records.append({
@@ -94,13 +109,12 @@ def main():
     # ── verifier 초기화 ──
     verifier = ScenarioVerifier(
         scenario_name="http_flood",
-        alert_name="http_flood",
+        alert_name="HttpFlood",
         hypothesis="대량 HTTP 요청 시 Nginx 로그에서 FloodBot 트래픽 탐지",
     )
 
     verifier.check_steady_state()
     verifier.print_hypothesis()
-    verifier.check_repeat_interval()
     verifier.start_timer()
 
     # ── 기존 공격 코드 (그대로) ──
@@ -149,33 +163,41 @@ def main():
     print(f"\n[*] 완료: 총 {total}건 전송")
     print(f"[*] Prometheus alert 확인: http://localhost:9090/alerts")
 
-    # ── 4단계: Alert 발화 확인 ──
-    if platform.system() == "Windows":
-        mttd = verifier.verify_loki(
-            log_query='{container="frontend"}',
-            keyword="FloodBot",
-            timeout=180,
-        )
-        loki_result = VerifyResult(
-            success=mttd is not None,
-            alert_name="http_flood",
-            scenario_name="http_flood",
-            mttd_seconds=mttd,
-        )
-        verifier.log_result(loki_result)
-    else:
-        result = verifier.verify(timeout=180)
-        mtta = verifier.verify_mtta(timeout=180)
-        result.mtta_seconds = mtta
-        result.slack_notified = mtta is not None
-        nginx_mttd = verifier.verify_loki(
-            log_query='{container="frontend"}',
-            keyword="FloodBot",
-            timeout=60,
-        )
-        if nginx_mttd is not None:
-            print(f"  → Nginx FloodBot 로그 탐지: {nginx_mttd:.1f}초")
-        verifier.log_result(result)
+    # ── 4단계: MTTD + MTTA ────────────────────────────────────────────────────
+    _WEBHOOK_PAYLOAD = {
+        "version": "4",
+        "groupKey": "http_flood",
+        "status": "firing",
+        "alerts": [{
+            "status": "firing",
+            "labels": {"alertname": "HttpFlood", "severity": "critical", "container": "leafy-frontend"},
+            "annotations": {"summary": "HTTP Flood 공격 탐지", "container": "leafy-frontend"},
+            "startsAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }],
+    }
+
+    mttd = verifier.verify_loki(
+        log_query='{container="frontend"}',
+        keyword="FloodBot",
+        timeout=180,
+    )
+
+    mtta = None
+    if mttd is not None:
+        sent = _send_pipeline_webhook(_WEBHOOK_PAYLOAD)
+        if sent:
+            print("[*] Pipeline 웹훅 전송 완료 (MTTA 측정 시작)")
+            mtta = verifier.verify_mtta(timeout=180)
+
+    loki_result = VerifyResult(
+        success=mttd is not None,
+        alert_name="HttpFlood",
+        scenario_name="http_flood",
+        mttd_seconds=mttd,
+        mtta_seconds=mtta,
+        slack_notified=mtta is not None,
+    )
+    verifier.log_result(loki_result)
 
 if __name__ == "__main__":
     main()

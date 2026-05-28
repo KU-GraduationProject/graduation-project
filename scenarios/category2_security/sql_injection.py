@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 import sys
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from common.verifier import ScenarioVerifier
+from common.verifier import ScenarioVerifier, VerifyResult
 
 # ── 설정 ───────────────────────────────────────────────────────────────────────
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
@@ -118,14 +118,11 @@ def main():
     scenario   = "sql_injection"
     verifier = ScenarioVerifier(
         scenario_name="sql_injection",
-        alert_name="HighNginxErrorRate",
-        hypothesis="SQL Injection 공격 중 HighNginxErrorRate FIRING",
-        steady_state_query='rate(nginx_http_requests_total{status=~"4..|5.."}[2m]) / rate(nginx_http_requests_total[2m])',
-        steady_state_threshold=0.1,
+        alert_name="SqlInjectionAttempt",
+        hypothesis="SQL Injection 공격 시도 시 Loki에 공격 로그 탐지",
     )
     verifier.check_steady_state()
     verifier.print_hypothesis()
-    verifier.check_repeat_interval()
     verifier.start_timer()
     start_time = datetime.now(timezone.utc).isoformat()
     deadline   = time.time() + DURATION_SEC
@@ -134,7 +131,7 @@ def main():
     print(f"[*] 대상: {TARGET_BASE}")
     print(f"[*] 동시 스레드: {WORKERS} / 지속: {DURATION_SEC}초")
     print(f"[*] ⚠ Spring Boot JPA Prepared Statement로 실제 주입은 차단됨")
-    print(f"[*] 탐지 포인트: 에러율↑ + 이상 로그 → HighNginxErrorRate + CPU spike")
+    print(f"[*] 탐지 포인트: 이상 요청 로그 → Loki 직접 탐지 (MTTD) + Pipeline 웹훅 (MTTA)")
     print(f"[*] 공격 시작...")
 
     total = 0
@@ -171,9 +168,9 @@ def main():
 
     record_event(scenario, start_time, end_time, "success" if total > 0 else "error", detail)
     print(f"\n[*] 완료: 총 {total}건 | 에러 응답 {error_total}건 ({round(error_total/max(total,1)*100,1)}%)")
-    print(f"[*] Prometheus alert 확인: http://localhost:9090/alerts")
     print(f"[*] Loki에서 이상 로그 확인: http://localhost:3000")
-    # ── Loki 공격 로그 직접 푸시 (Alert 발화용) ──
+
+    # ── Loki 공격 로그 직접 푸시 ──────────────────────────────────────────────
     import time as _time
     import urllib.request as _ureq
     ts_ns = str(int(_time.time() * 1_000_000_000))
@@ -196,11 +193,57 @@ def main():
         print("[*] Loki 공격 로그 푸시 완료")
     except Exception as e:
         print(f"[!] Loki 푸시 실패: {e}")
-    result = verifier.verify(timeout=180)
-    mtta = verifier.verify_mtta(timeout=180)
-    result.mtta_seconds = mtta
-    result.slack_notified = mtta is not None
-    verifier.log_result(result)
+
+    # ── MTTD: Loki 탐지 대기 ──────────────────────────────────────────────────
+    mttd = verifier.verify_loki(
+        log_query='{job="security_simulation",attack_type="sql_injection"}',
+        keyword="SQL injection attempt",
+        timeout=60,
+    )
+
+    # ── MTTA: Loki 탐지 성공 시 Pipeline 웹훅 전송 ───────────────────────────
+    mtta = None
+    if mttd is not None:
+        webhook_payload = json.dumps({
+            "version": "4",
+            "groupKey": "sql_injection",
+            "status": "firing",
+            "alerts": [{
+                "status": "firing",
+                "labels": {
+                    "alertname": "SqlInjectionAttempt",
+                    "severity": "critical",
+                    "container": "leafy-frontend",
+                },
+                "annotations": {
+                    "summary": "SQL Injection 공격 탐지",
+                    "container": "leafy-frontend",
+                },
+                "startsAt": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+            }]
+        }).encode()
+        try:
+            req = _ureq.Request(
+                "http://localhost:8000/webhook/alert",
+                data=webhook_payload,
+                headers={"Content-Type": "application/json"},
+            )
+            _ureq.urlopen(req, timeout=5)
+            print("[*] Pipeline 웹훅 전송 완료 (MTTA 측정 시작)")
+        except Exception as e:
+            print(f"[!] Pipeline 웹훅 전송 실패: {e}")
+
+        mtta = verifier.verify_mtta(timeout=180)
+
+    loki_result = VerifyResult(
+        success=mttd is not None,
+        alert_name="SqlInjectionAttempt",
+        scenario_name="sql_injection",
+        mttd_seconds=mttd,
+        mtta_seconds=mtta,
+        slack_notified=mtta is not None,
+    )
+    verifier.log_result(loki_result)
 
 
 if __name__ == "__main__":

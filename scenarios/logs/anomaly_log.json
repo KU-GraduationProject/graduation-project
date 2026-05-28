@@ -1036,5 +1036,412 @@
     "failure_reason": "",
     "timestamp": "2026-05-16T13:28:21.796299+00:00",
     "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-05-16T13:35:01.632488+00:00",
+    "end_time": "2026-05-16T13:37:07.140963+00:00",
+    "status": "success",
+    "detail": "{\"hold_connections\": 3780, \"attack_count\": 300, \"hold_workers\": 70, \"network\": \"graduation-project_leafy-net\", \"note\": \"hold(docker exec pg_sleep) + TCP attack(임시 컨테이너, scram-sha-256)\"}"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "alert_name": "HighPostgresConnections",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "메트릭 값(0.0000)이 임계값(50.0)에 미달",
+    "timestamp": "2026-05-16T13:38:02.326428+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "lateral_movement",
+    "category": "security",
+    "start_time": "2026-05-16T13:41:59.775274+00:00",
+    "end_time": "2026-05-16T13:43:17.529764+00:00",
+    "status": "success",
+    "detail": "{\"attacker_container\": \"leafy-attacker-frontend\", \"network\": \"graduation-project_leafy-net\", \"target\": \"leafy-db:5432\", \"attempt_count\": 200, \"exit_code\": 0, \"credentials_tried\": 6, \"recon_queries\": 3, \"note\": \"정상 아키텍처에서 DB 접근은 leafy-backend만 허용. Loki에서 비정상 소스 IP 확인 필요.\"}"
+  },
+  {
+    "scenario": "lateral_movement",
+    "alert_name": "lateral_movement",
+    "success": true,
+    "mttd_seconds": 0.2,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "",
+    "timestamp": "2026-05-16T13:43:17.617149+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "sql_injection",
+    "category": "security",
+    "start_time": "2026-05-16T13:45:18.860313+00:00",
+    "end_time": "2026-05-16T13:47:26.660664+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 6000, \"error_responses\": 4830, \"error_rate_pct\": 80.5, \"status_counts\": {\"404\": 4830, \"200\": 1041, \"0\": 129}, \"payloads_used\": 13, \"note\": \"JPA Prepared Statement로 실제 주입 차단됨. 에러율/로그 이상 탐지 시나리오.\"}"
+  },
+  {
+    "scenario": "sql_injection",
+    "alert_name": "HighNginxErrorRate",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "원인 미상 — Prometheus 쿼리 확인 필요",
+    "timestamp": "2026-05-16T13:48:21.871791+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-05-28T10:23:06.039993+00:00",
+    "end_time": "2026-05-28T10:25:12.954946+00:00",
+    "status": "success",
+    "detail": "{\"hold_connections\": 3920, \"attack_count\": 300, \"hold_workers\": 70, \"network\": \"graduation-project_leafy-net\", \"note\": \"hold(docker exec pg_sleep) + TCP attack(임시 컨테이너, scram-sha-256)\"}"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "alert_name": "HighPostgresConnections",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "메트릭 값(0.0000)이 임계값(50.0)에 미달",
+    "timestamp": "2026-05-28T10:26:08.190366+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-05-28T10:41:23.142121+00:00",
+    "end_time": "2026-05-28T10:43:32.633651+00:00",
+    "status": "success",
+    "detail": "{\"hold_connections\": 356, \"attack_count\": 300, \"hold_workers\": 100, \"network\": \"graduation-project_leafy-net\", \"note\": \"hold(docker exec pg_sleep) + TCP attack(임시 컨테이너, scram-sha-256)\"}"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "alert_name": "HighPostgresConnections",
+    "success": true,
+    "mttd_seconds": 129.5,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T10:43:32.654352+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-05-28T10:49:48.582683+00:00",
+    "end_time": "2026-05-28T10:51:58.651969+00:00",
+    "status": "success",
+    "detail": "{\"hold_connections\": 356, \"attack_count\": 300, \"hold_workers\": 100, \"network\": \"graduation-project_leafy-net\", \"note\": \"hold(docker exec pg_sleep) + TCP attack(임시 컨테이너, scram-sha-256)\"}"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "alert_name": "HighPostgresConnections",
+    "success": true,
+    "mttd_seconds": 130.1,
+    "mtta_seconds": 179.5,
+    "slack_notified": true,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T10:51:58.672523+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "n_plus_one_attack",
+    "category": "security",
+    "start_time": "2026-05-28T10:55:07.761787+00:00",
+    "end_time": "2026-05-28T10:57:14.911595+00:00",
+    "status": "success",
+    "detail": "{\"cycles\": 15, \"queries_ok\": 5400, \"queries_fail\": 900, \"concurrent_connections\": 60, \"n_plus_one_pattern\": \"my_plant → [growth_record, plant_species, diagnosis_history, schedule]\"}"
+  },
+  {
+    "scenario": "n_plus_one_attack",
+    "alert_name": "HighPostgresConnections",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "메트릭 값(0.0000)이 임계값(50.0)에 미달",
+    "timestamp": "2026-05-28T10:58:10.137845+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "secret_dump",
+    "category": "security",
+    "start_time": "2026-05-28T11:05:08.901131+00:00",
+    "end_time": "2026-05-28T11:05:09.139753+00:00",
+    "status": "success",
+    "detail": "[{\"command\": \"env\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"KAKAO_REST_API_KEY=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nHOSTNAME=8831e7a8495b\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nPLANT_ID_API_KEY=***MASKED***\\nSHLVL=1\\nHOME=/root\\nAWS_SECRET_KEY=***MASKED***\\nS3_BUCKET_NAME=leafy-s3-buck\"}, {\"command\": \"cat /proc/1/environ | tr '\\\\0' '\\\\n'\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/default-jvm/bin\\nHOSTNAME=8831e7a8495b\\nAWS_ACCESS_KEY=***MASKED***\\nMANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS=always\\nOPEN_WEATHER_API_KEY=***MASKED***\\nAWS_REGION=ap-northeast-2\\nS3_BUCKET_NAME=leafy-s3-bucket\\nSPRING_DATASOURCE\"}, {\""
+  },
+  {
+    "scenario": "secret_dump",
+    "alert_name": "secret_dump",
+    "success": true,
+    "mttd_seconds": 0.3,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T11:05:09.194587+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "sql_injection",
+    "category": "security",
+    "start_time": "2026-05-28T11:05:49.231770+00:00",
+    "end_time": "2026-05-28T11:07:53.917373+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 6700, \"error_responses\": 5467, \"error_rate_pct\": 81.6, \"status_counts\": {\"404\": 5467, \"200\": 1159, \"0\": 74}, \"payloads_used\": 13, \"note\": \"JPA Prepared Statement로 실제 주입 차단됨. 에러율/로그 이상 탐지 시나리오.\"}"
+  },
+  {
+    "scenario": "sql_injection",
+    "alert_name": "HighNginxErrorRate",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "원인 미상 — Prometheus 쿼리 확인 필요",
+    "timestamp": "2026-05-28T11:08:54.195124+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "secret_dump",
+    "category": "security",
+    "start_time": "2026-05-28T11:12:44.301992+00:00",
+    "end_time": "2026-05-28T11:12:44.532393+00:00",
+    "status": "success",
+    "detail": "[{\"command\": \"env\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"KAKAO_REST_API_KEY=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nHOSTNAME=8831e7a8495b\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nPLANT_ID_API_KEY=***MASKED***\\nSHLVL=1\\nHOME=/root\\nAWS_SECRET_KEY=***MASKED***\\nS3_BUCKET_NAME=leafy-s3-buck\"}, {\"command\": \"cat /proc/1/environ | tr '\\\\0' '\\\\n'\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/default-jvm/bin\\nHOSTNAME=8831e7a8495b\\nAWS_ACCESS_KEY=***MASKED***\\nMANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS=always\\nOPEN_WEATHER_API_KEY=***MASKED***\\nAWS_REGION=ap-northeast-2\\nS3_BUCKET_NAME=leafy-s3-bucket\\nSPRING_DATASOURCE\"}, {\""
+  },
+  {
+    "scenario": "secret_dump",
+    "alert_name": "secret_dump",
+    "success": true,
+    "mttd_seconds": 0.3,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T11:15:45.160151+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "secret_dump",
+    "category": "security",
+    "start_time": "2026-05-28T11:16:58.631526+00:00",
+    "end_time": "2026-05-28T11:16:58.835094+00:00",
+    "status": "success",
+    "detail": "[{\"command\": \"env\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"KAKAO_REST_API_KEY=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nHOSTNAME=8831e7a8495b\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nPLANT_ID_API_KEY=***MASKED***\\nSHLVL=1\\nHOME=/root\\nAWS_SECRET_KEY=***MASKED***\\nS3_BUCKET_NAME=leafy-s3-buck\"}, {\"command\": \"cat /proc/1/environ | tr '\\\\0' '\\\\n'\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/default-jvm/bin\\nHOSTNAME=8831e7a8495b\\nAWS_ACCESS_KEY=***MASKED***\\nMANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS=always\\nOPEN_WEATHER_API_KEY=***MASKED***\\nAWS_REGION=ap-northeast-2\\nS3_BUCKET_NAME=leafy-s3-bucket\\nSPRING_DATASOURCE\"}, {\""
+  },
+  {
+    "scenario": "secret_dump",
+    "alert_name": "secret_dump",
+    "success": true,
+    "mttd_seconds": 0.2,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T11:19:59.558273+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "sql_injection",
+    "category": "security",
+    "start_time": "2026-05-28T11:20:14.947755+00:00",
+    "end_time": "2026-05-28T11:22:18.502843+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 7100, \"error_responses\": 5915, \"error_rate_pct\": 83.3, \"status_counts\": {\"200\": 1128, \"404\": 5915, \"0\": 57}, \"payloads_used\": 13, \"note\": \"JPA Prepared Statement로 실제 주입 차단됨. 에러율/로그 이상 탐지 시나리오.\"}"
+  },
+  {
+    "scenario": "sql_injection",
+    "alert_name": "HighNginxErrorRate",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "원인 미상 — Prometheus 쿼리 확인 필요",
+    "timestamp": "2026-05-28T11:23:18.760067+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "n_plus_one_attack",
+    "category": "security",
+    "start_time": "2026-05-28T11:26:34.507293+00:00",
+    "end_time": "2026-05-28T11:28:35.955621+00:00",
+    "status": "success",
+    "detail": "{\"cycles\": 3, \"queries_ok\": 1590, \"queries_fail\": 498, \"concurrent_connections\": 100, \"n_plus_one_pattern\": \"my_plant → [growth_record, plant_species, diagnosis_history, schedule]\"}"
+  },
+  {
+    "scenario": "n_plus_one_attack",
+    "alert_name": "HighPostgresConnections",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "메트릭 값(0.0000)이 임계값(50.0)에 미달",
+    "timestamp": "2026-05-28T11:29:36.110174+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "sql_injection",
+    "category": "security",
+    "start_time": "2026-05-28T11:33:36.405279+00:00",
+    "end_time": "2026-05-28T11:35:38.750188+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 6100, \"error_responses\": 4986, \"error_rate_pct\": 81.7, \"status_counts\": {\"404\": 4986, \"200\": 1025, \"0\": 89}, \"payloads_used\": 13, \"note\": \"JPA Prepared Statement로 실제 주입 차단됨. 에러율/로그 이상 탐지 시나리오.\"}"
+  },
+  {
+    "scenario": "sql_injection",
+    "alert_name": "HighNginxErrorRate",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "원인 미상 — Prometheus 쿼리 확인 필요",
+    "timestamp": "2026-05-28T11:36:39.017482+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "secret_dump",
+    "category": "security",
+    "start_time": "2026-05-28T11:39:52.998261+00:00",
+    "end_time": "2026-05-28T11:39:53.243659+00:00",
+    "status": "success",
+    "detail": "[{\"command\": \"env\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"KAKAO_REST_API_KEY=***MASKED***\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nHOSTNAME=8831e7a8495b\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nPLANT_ID_API_KEY=***MASKED***\\nSHLVL=1\\nHOME=/root\\nAWS_SECRET_KEY=***MASKED***\\nS3_BUCKET_NAME=leafy-s3-buck\"}, {\"command\": \"cat /proc/1/environ | tr '\\\\0' '\\\\n'\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/jvm/default-jvm/bin\\nHOSTNAME=8831e7a8495b\\nAWS_ACCESS_KEY=***MASKED***\\nMANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS=always\\nOPEN_WEATHER_API_KEY=***MASKED***\\nAWS_REGION=ap-northeast-2\\nS3_BUCKET_NAME=leafy-s3-bucket\\nSPRING_DATASOURCE\"}, {\""
+  },
+  {
+    "scenario": "secret_dump",
+    "alert_name": "secret_dump",
+    "success": true,
+    "mttd_seconds": 0.3,
+    "mtta_seconds": 42.9,
+    "slack_notified": true,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T11:40:38.419277+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "sql_injection",
+    "category": "security",
+    "start_time": "2026-05-28T11:40:59.263359+00:00",
+    "end_time": "2026-05-28T11:43:00.055550+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 6600, \"error_responses\": 5442, \"error_rate_pct\": 82.5, \"status_counts\": {\"404\": 5442, \"200\": 1090, \"0\": 68}, \"payloads_used\": 13, \"note\": \"JPA Prepared Statement로 실제 주입 차단됨. 에러율/로그 이상 탐지 시나리오.\"}"
+  },
+  {
+    "scenario": "lateral_movement",
+    "category": "security",
+    "start_time": "2026-05-28T11:46:52.453579+00:00",
+    "end_time": "2026-05-28T11:48:08.407030+00:00",
+    "status": "success",
+    "detail": "{\"attacker_container\": \"leafy-attacker-frontend\", \"network\": \"graduation-project_leafy-net\", \"target\": \"leafy-db:5432\", \"attempt_count\": 200, \"exit_code\": 0, \"credentials_tried\": 6, \"recon_queries\": 3, \"note\": \"정상 아키텍처에서 DB 접근은 leafy-backend만 허용. Loki에서 비정상 소스 IP 확인 필요.\"}"
+  },
+  {
+    "scenario": "lateral_movement",
+    "alert_name": "lateral_movement",
+    "success": true,
+    "mttd_seconds": 0.5,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T11:48:08.497885+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "sql_injection",
+    "category": "security",
+    "start_time": "2026-05-28T11:50:18.443156+00:00",
+    "end_time": "2026-05-28T11:52:25.715970+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 6100, \"error_responses\": 4981, \"error_rate_pct\": 81.7, \"status_counts\": {\"200\": 1050, \"404\": 4981, \"0\": 69}, \"payloads_used\": 13, \"note\": \"JPA Prepared Statement로 실제 주입 차단됨. 에러율/로그 이상 탐지 시나리오.\"}"
+  },
+  {
+    "scenario": "sql_injection",
+    "alert_name": "SqlInjectionAttempt",
+    "success": true,
+    "mttd_seconds": 127.3,
+    "mtta_seconds": 149.4,
+    "slack_notified": true,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T11:52:50.879236+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "n_plus_one_attack",
+    "category": "security",
+    "start_time": "2026-05-28T12:05:06.505021+00:00",
+    "end_time": "2026-05-28T12:07:44.122074+00:00",
+    "status": "success",
+    "detail": "{\"cycles\": 4, \"queries_ok\": 2136, \"queries_fail\": 664, \"concurrent_connections\": 100, \"n_plus_one_pattern\": \"my_plant → [growth_record, plant_species, diagnosis_history, schedule]\"}"
+  },
+  {
+    "scenario": "n_plus_one_attack",
+    "alert_name": "NPlusOneAttack",
+    "success": true,
+    "mttd_seconds": 157.6,
+    "mtta_seconds": 248.8,
+    "slack_notified": true,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T12:09:19.517629+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "lateral_movement",
+    "category": "security",
+    "start_time": "2026-05-28T12:11:24.928091+00:00",
+    "end_time": "2026-05-28T12:12:42.379137+00:00",
+    "status": "success",
+    "detail": "{\"attacker_container\": \"leafy-attacker-frontend\", \"network\": \"graduation-project_leafy-net\", \"target\": \"leafy-db:5432\", \"attempt_count\": 200, \"exit_code\": 0, \"credentials_tried\": 6, \"recon_queries\": 3, \"note\": \"정상 아키텍처에서 DB 접근은 leafy-backend만 허용. Loki에서 비정상 소스 IP 확인 필요.\"}"
+  },
+  {
+    "scenario": "lateral_movement",
+    "alert_name": "LateralMovement",
+    "success": true,
+    "mttd_seconds": 0.1,
+    "mtta_seconds": 185.9,
+    "slack_notified": true,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T12:14:32.835261+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "lateral_movement",
+    "category": "security",
+    "start_time": "2026-05-28T12:15:41.809113+00:00",
+    "end_time": "2026-05-28T12:17:01.808492+00:00",
+    "status": "success",
+    "detail": "{\"attacker_container\": \"leafy-attacker-frontend\", \"network\": \"graduation-project_leafy-net\", \"target\": \"leafy-db:5432\", \"attempt_count\": 200, \"exit_code\": 0, \"credentials_tried\": 6, \"recon_queries\": 3, \"note\": \"정상 아키텍처에서 DB 접근은 leafy-backend만 허용. Loki에서 비정상 소스 IP 확인 필요.\"}"
+  },
+  {
+    "scenario": "lateral_movement",
+    "alert_name": "LateralMovement",
+    "success": true,
+    "mttd_seconds": 0.2,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T12:20:02.160909+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-28T12:21:45.446323+00:00",
+    "end_time": "2026-05-28T12:22:45.334871+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 59.9,
+    "mtta_seconds": 139.0,
+    "slack_notified": true,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T12:22:45.367285+00:00",
+    "category": "verification"
   }
 ]
