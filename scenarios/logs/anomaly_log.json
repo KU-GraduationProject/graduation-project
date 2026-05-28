@@ -1443,5 +1443,43 @@
     "failure_reason": "",
     "timestamp": "2026-05-28T12:22:45.367285+00:00",
     "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-28T12:36:26.692416+00:00",
+    "end_time": "2026-05-28T12:37:26.527392+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 59.8,
+    "mtta_seconds": 100.7,
+    "slack_notified": true,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T12:37:26.567571+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-28T12:49:38.009769+00:00",
+    "end_time": "2026-05-28T12:51:37.608028+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 57.7,
+    "mtta_seconds": 151.3,
+    "slack_notified": true,
+    "failure_reason": "",
+    "timestamp": "2026-05-28T12:50:35.718086+00:00",
+    "category": "verification"
   }
 ]

@@ -1,6 +1,6 @@
 global:
-  scrape_interval:     15s  # ← 5s → 15s 로 변경
-  evaluation_interval: 15s  # ← 5s → 15s 로 변경
+  scrape_interval:     5s
+  evaluation_interval: 5s
 
 alerting:
   alertmanagers:

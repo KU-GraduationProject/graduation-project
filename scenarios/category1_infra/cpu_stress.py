@@ -9,6 +9,7 @@ import docker
 import json
 import os
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -20,8 +21,10 @@ LOG_PATH   = os.path.join(SCRIPT_DIR, "..", "logs", "anomaly_log.json")
 LOG_PATH   = os.path.normpath(LOG_PATH)
 
 CONTAINER_NAME = "leafy-backend"
-STRESS_DURATION = 60          # 컨테이너 내 스트레스 지속 시간(초)
+STRESS_DURATION = 120         # 컨테이너 내 스트레스 지속 시간(초)
 CPU_WORKERS     = 0           # 0 = 논리 CPU 수만큼 자동
+CPU_ALERT_QUERY = 'max(irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s]))'
+CPU_ALERT_THRESHOLD = 0.5
 
 
 # ── 로그 유틸 ──────────────────────────────────────────────────────────────────
@@ -88,8 +91,11 @@ def main():
         scenario_name="cpu_stress",
         alert_name="HighCpuUsage",
         hypothesis="cpu_stress 실행 2분 내 HighCpuUsage FIRING",
-        steady_state_query='rate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[2m])',
-        steady_state_threshold=0.5,
+        steady_state_query=CPU_ALERT_QUERY,
+        steady_state_threshold=CPU_ALERT_THRESHOLD,
+        metric_label="현재 CPU",
+        metric_unit="%",
+        metric_scale=100.0,
     )
 
     # 1단계: Steady State 확인
@@ -123,29 +129,40 @@ def main():
     cmd = _build_stress_cmd(CPU_WORKERS, STRESS_DURATION)
     print(f"[*] exec 명령 전송 중...")
 
-    try:
-        exit_code, output = container.exec_run(
-            cmd=["sh", "-c", cmd],
-            stdout=True,
-            stderr=True,
-            stream=False,
-        )
-        output_str = output.decode("utf-8", errors="replace") if output else ""
-        status = "success" if exit_code == 0 else f"exit_code={exit_code}"
-        print(f"[*] 완료 (exit={exit_code})")
-        if output_str.strip():
-            print(f"[OUTPUT]\n{output_str.strip()}")
-    except Exception as e:
-        status = "error"
-        output_str = str(e)
-        print(f"[!] exec 실패: {e}", file=sys.stderr)
+    stress_result = {"status": "running", "output": ""}
+
+    def _run_stress() -> None:
+        try:
+            exit_code, output = container.exec_run(
+                cmd=["sh", "-c", cmd],
+                stdout=True,
+                stderr=True,
+                stream=False,
+            )
+            output_str = output.decode("utf-8", errors="replace") if output else ""
+            stress_result["status"] = "success" if exit_code == 0 else f"exit_code={exit_code}"
+            stress_result["output"] = output_str
+            print(f"[*] 완료 (exit={exit_code})")
+            if output_str.strip():
+                print(f"[OUTPUT]\n{output_str.strip()}")
+        except Exception as e:
+            stress_result["status"] = "error"
+            stress_result["output"] = str(e)
+            print(f"[!] exec 실패: {e}", file=sys.stderr)
+
+    stress_thread = threading.Thread(target=_run_stress, name="cpu-stress-exec", daemon=True)
+    stress_thread.start()
+
+    # 4단계: Alert 발화 확인 + MTTD 측정
+    result = verifier.verify(timeout=STRESS_DURATION + 60, poll_interval=3)
+
+    stress_thread.join()
+    status = stress_result["status"]
+    output_str = stress_result["output"]
 
     end_time = datetime.now(timezone.utc).isoformat()
     record_event(scenario, start_time, end_time, status, output_str[:500])
     print(f"[*] 시나리오 종료: {scenario}")
-
-    # ── 4단계: Alert 발화 확인 + MTTD 측정 ──
-    result = verifier.verify(timeout=120)
 
     # ✅ MTTA 측정 추가
     mtta = verifier.verify_mtta(timeout=180)

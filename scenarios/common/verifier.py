@@ -91,13 +91,20 @@ class ScenarioVerifier:
         hypothesis: str,
         steady_state_query: str = "",
         steady_state_threshold: float = 0.0,
+        metric_label: str = "현재 값",
+        metric_unit: str = "",
+        metric_scale: float = 1.0,
     ):
         self.scenario_name = scenario_name
         self.alert_name = alert_name
         self.hypothesis = hypothesis
         self.steady_state_query = steady_state_query
         self.steady_state_threshold = steady_state_threshold
+        self.metric_label = metric_label
+        self.metric_unit = metric_unit
+        self.metric_scale = metric_scale
         self._start_time: float = 0.0
+        self._metric_samples: list[tuple[float, float]] = []
 
     # ── 1단계: Steady State 확인 ───────────────────────────────────────────────
     def check_steady_state(self) -> bool:
@@ -113,7 +120,8 @@ class ScenarioVerifier:
                 is_normal = value < self.steady_state_threshold
                 status = "[green]정상 ✅[/green]" if is_normal else "[yellow]비정상 ⚠️[/yellow]"
                 _console.print(
-                    f"  → 현재 값: [bold]{value:.4f}[/bold] / 임계값: {self.steady_state_threshold}"
+                    f"  → {self.metric_label}: [bold]{self._format_metric(value)}[/bold] "
+                    f"/ 임계값: {self._format_metric(self.steady_state_threshold)}"
                 )
                 _console.print(f"  → 상태: {status}")
                 if not is_normal:
@@ -154,11 +162,13 @@ class ScenarioVerifier:
 
         deadline = self._start_time + timeout
         check_count = 0
-        metrics_text = "대기 중..."
-        last_metric_time = time.time() - 5   # 첫 반복에서 즉시 수집
+        metrics_text = self._render_metric_chart(force=True)
+        metric_poll_interval = 2
+        last_metric_time = time.time() - metric_poll_interval   # 첫 반복에서 즉시 수집
         last_check_time = time.time() - poll_interval
         fired = False
         mttd_val = 0.0
+        alert_state = "NORMAL"
 
         def _make_layout() -> Layout:
             now = time.time()
@@ -174,7 +184,14 @@ class ScenarioVerifier:
             left_text.append("남은 시간: ", style="bold")
             left_text.append(f"{remaining:.0f}s\n")
             left_text.append("확인 횟수: ", style="bold")
-            left_text.append(f"{check_count}회")
+            left_text.append(f"{check_count}회\n")
+            left_text.append("Alert 상태: ", style="bold")
+            state_style = {
+                "FIRING": "red bold",
+                "PENDING": "yellow bold",
+                "NORMAL": "green",
+            }.get(alert_state, "yellow")
+            left_text.append(alert_state, style=state_style)
 
             layout = Layout()
             layout.split_row(
@@ -183,7 +200,7 @@ class ScenarioVerifier:
                     name="left",
                 ),
                 Layout(
-                    Panel(Text(metrics_text), title="[bold]실시간 메트릭[/bold]", border_style="blue"),
+                    Panel(metrics_text, title="[bold]실시간 Prometheus 그래프[/bold]", border_style="blue"),
                     name="right",
                 ),
             )
@@ -193,30 +210,33 @@ class ScenarioVerifier:
             while time.time() < deadline:
                 now = time.time()
 
-                # 5초마다 메트릭 수집
-                if now - last_metric_time >= 5:
+                # 짧은 간격으로 메트릭 수집
+                if now - last_metric_time >= metric_poll_interval:
                     metrics = self._get_realtime_metrics()
                     if metrics:
-                        q_short = metrics["query"][:55] + ("…" if len(metrics["query"]) > 55 else "")
-                        flag = ""
-                        if self.steady_state_threshold:
-                            flag = " 🔴" if metrics["value"] >= self.steady_state_threshold else " 🟢"
-                        metrics_text = (
-                            f"Query:\n{q_short}\n\n"
-                            f"값: {metrics['value']:.4f}{flag}\n"
-                            f"임계값: {self.steady_state_threshold}"
-                        )
+                        self._metric_samples.append((now - self._start_time, metrics["value"]))
+                        self._metric_samples = self._metric_samples[-72:]
+                        metrics_text = self._render_metric_chart(metrics)
                     else:
-                        metrics_text = "쿼리 미설정" if not self.steady_state_query else "데이터 없음"
+                        metrics_text = self._render_metric_chart(metrics, force=True)
                     last_metric_time = now
 
                 # poll_interval마다 Alert 확인
                 if now - last_check_time >= poll_interval:
                     check_count += 1
                     last_check_time = now
-                    if self._check_alert_firing():
+                    alert_state = self._get_alert_state()
+                    if alert_state == "FIRING":
                         fired = True
                         mttd_val = now - self._start_time
+                        metrics = self._get_realtime_metrics()
+                        if metrics:
+                            self._metric_samples.append((now - self._start_time, metrics["value"]))
+                            self._metric_samples = self._metric_samples[-72:]
+                            metrics_text = self._render_metric_chart(metrics, force=True)
+                        else:
+                            metrics_text = self._render_metric_chart(force=True)
+                        live.update(_make_layout())
                         break
 
                 live.update(_make_layout())
@@ -224,6 +244,12 @@ class ScenarioVerifier:
 
         if fired:
             c = _mttd_color(mttd_val)
+            if self._metric_samples:
+                _console.print(Panel(
+                    self._render_metric_chart(),
+                    title="[bold blue]최종 Prometheus 추이[/bold blue]",
+                    border_style="blue",
+                ))
             _console.print(Panel(
                 f"[bold]Alert:[/bold]  [yellow]{self.alert_name}[/yellow]\n"
                 f"[bold]MTTD:[/bold]   [{c}]{mttd_val:.1f}초[/{c}]",
@@ -242,6 +268,12 @@ class ScenarioVerifier:
             title="[bold yellow]⏱  TIMEOUT[/bold yellow]",
             border_style="yellow",
         ))
+        if self._metric_samples:
+            _console.print(Panel(
+                self._render_metric_chart(),
+                title="[bold blue]최종 Prometheus 추이[/bold blue]",
+                border_style="blue",
+            ))
         failure_reason, actual_value = self._diagnose_failure()
         return VerifyResult(
             success=False,
@@ -312,7 +344,7 @@ class ScenarioVerifier:
             if result.failure_reason:
                 table.add_row("실패 원인", f"[red]{result.failure_reason}[/red]")
             if result.actual_value is not None:
-                table.add_row("실제 값", str(result.actual_value))
+                table.add_row("실제 값", self._format_metric(result.actual_value))
 
         _console.print(table)
 
@@ -348,23 +380,136 @@ class ScenarioVerifier:
             return {}
         return {"query": self.steady_state_query, "value": value}
 
+    def _render_metric_chart(self, metrics: dict | None = None, force: bool = False) -> Text:
+        """Rich 텍스트로 Prometheus 샘플 추이를 그린다."""
+        text = Text()
+        if not self.steady_state_query:
+            text.append("Prometheus 쿼리 미설정\n", style="dim")
+            text.append("steady_state_query를 지정하면 실시간 그래프가 표시됩니다.", style="dim")
+            return text
+
+        query = self.steady_state_query
+        query_short = query[:76] + ("…" if len(query) > 76 else "")
+        text.append("Query\n", style="bold")
+        text.append(f"{query_short}\n\n", style="dim")
+
+        if metrics and metrics.get("value") is not None:
+            value = metrics["value"]
+        elif self._metric_samples:
+            value = self._metric_samples[-1][1]
+        else:
+            if not force:
+                text.append("Prometheus 샘플 수집 대기 중...", style="yellow")
+                return text
+            text.append("Prometheus 샘플 준비 중\n", style="yellow")
+            text.append("추이\n", style="bold")
+            text.append("." * 44, style="dim")
+            text.append("\n0s", style="dim")
+            text.append(" " * 36, style="dim")
+            text.append("now\n\n", style="dim")
+            text.append("압력\n", style="bold")
+            text.append("[", style="dim")
+            text.append("-" * 30, style="dim")
+            text.append("]", style="dim")
+            text.append("  샘플 0개")
+            return text
+
+        threshold = self.steady_state_threshold
+        status_style = "red bold" if threshold and value >= threshold else "green bold"
+        status_label = "임계값 초과" if threshold and value >= threshold else "정상 범위"
+        peak = max(v for _, v in self._metric_samples) if self._metric_samples else value
+        low = min(v for _, v in self._metric_samples) if self._metric_samples else value
+
+        text.append(f"{self.metric_label}: ", style="bold")
+        text.append(self._format_metric(value), style=status_style)
+        text.append(f"  {status_label}\n", style=status_style)
+        if threshold:
+            text.append("임계값: ", style="bold")
+            text.append(f"{self._format_metric(threshold)}\n", style="yellow")
+        text.append("최고/최저: ", style="bold")
+        text.append(f"{self._format_metric(peak)} / {self._format_metric(low)}\n\n")
+
+        if self._metric_samples:
+            text.append("추이\n", style="bold")
+            self._append_sparkline(text)
+            text.append("\n")
+            first_t = self._metric_samples[0][0]
+            last_t = self._metric_samples[-1][0]
+            text.append(f"{first_t:.0f}s", style="dim")
+            text.append(" " * 36, style="dim")
+            text.append(f"{last_t:.0f}s\n\n", style="dim")
+
+        text.append("압력\n", style="bold")
+        self._append_pressure_bar(text, value)
+        text.append(f"  샘플 {len(self._metric_samples)}개")
+        return text
+
+    def _append_sparkline(self, text: Text, width: int = 44) -> None:
+        samples = self._metric_samples[-width:]
+        values = [value for _, value in samples]
+        if not values:
+            text.append("데이터 없음", style="dim")
+            return
+
+        lo = min(values)
+        hi = max(values)
+        if self.steady_state_threshold:
+            lo = min(lo, self.steady_state_threshold)
+            hi = max(hi, self.steady_state_threshold)
+        span = hi - lo or 1.0
+        blocks = ".:-=+*#%@"
+        for value in values:
+            idx = min(len(blocks) - 1, max(0, int((value - lo) / span * (len(blocks) - 1))))
+            style = "red bold" if self.steady_state_threshold and value >= self.steady_state_threshold else "cyan"
+            text.append(blocks[idx], style=style)
+
+    def _append_pressure_bar(self, text: Text, value: float, width: int = 30) -> None:
+        threshold = self.steady_state_threshold
+        if threshold > 0:
+            ratio = max(0.0, min(value / threshold, 1.0))
+        else:
+            peak = max((v for _, v in self._metric_samples), default=value) or 1.0
+            ratio = max(0.0, min(value / peak, 1.0))
+
+        filled = int(round(ratio * width))
+        style = "red bold" if threshold and value >= threshold else "green"
+        text.append("[", style="dim")
+        text.append("#" * filled, style=style)
+        text.append("-" * (width - filled), style="dim")
+        text.append("]", style="dim")
+
+    def _format_metric(self, value: float | None) -> str:
+        if value is None:
+            return "-"
+        scaled = value * self.metric_scale
+        suffix = self.metric_unit
+        if suffix == "%":
+            return f"{scaled:.1f}%"
+        return f"{scaled:.4f}{suffix}"
+
     # ── 내부 유틸 ──────────────────────────────────────────────────────────────
-    def _check_alert_firing(self) -> bool:
+    def _get_alert_state(self) -> str:
         try:
             url = f"{PROMETHEUS_URL}/api/v1/alerts"
             req = urllib.request.Request(url, headers={"Accept": "application/json"})
             resp = urllib.request.urlopen(req, timeout=5)
             data = json.loads(resp.read().decode())
             alerts = data.get("data", {}).get("alerts", [])
-            for alert in alerts:
-                if (
-                    alert.get("labels", {}).get("alertname") == self.alert_name
-                    and alert.get("state") == "firing"
-                ):
-                    return True
-            return False
+            states = [
+                alert.get("state", "").upper()
+                for alert in alerts
+                if alert.get("labels", {}).get("alertname") == self.alert_name
+            ]
+            if "FIRING" in states:
+                return "FIRING"
+            if "PENDING" in states:
+                return "PENDING"
+            return "NORMAL"
         except Exception:
-            return False
+            return "UNKNOWN"
+
+    def _check_alert_firing(self) -> bool:
+        return self._get_alert_state() == "FIRING"
 
     def _query_prometheus_instant(self, query: str) -> float | None:
         try:
@@ -409,7 +554,11 @@ class ScenarioVerifier:
         if self.steady_state_query:
             value = self._query_prometheus_instant(self.steady_state_query)
             if value is not None:
-                return f"메트릭 값({value:.4f})이 임계값({self.steady_state_threshold})에 미달", value
+                return (
+                    f"메트릭 값({self._format_metric(value)})이 "
+                    f"임계값({self._format_metric(self.steady_state_threshold)})에 미달",
+                    value,
+                )
 
         return "원인 미상 — Prometheus 쿼리 확인 필요", None
 
