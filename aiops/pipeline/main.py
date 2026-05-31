@@ -156,7 +156,10 @@ async def analyze_alerts(alerts: list[Alert]):
         # ★ 핵심 개선: 복잡한 Docker Socket ID 변환 없이, 웹훅에서 바로 직관적인 이름을 꺼내 씀
         container_name = alert.annotations.get("container") or alert.labels.container
 
-        dedup_key = f"{alert.labels.alertname}:{container_name or 'unknown'}"
+        # 수정: unknown이면 alertname만으로 dedup
+        dedup_key = f"{alert.labels.alertname}:{container_name}" \
+            if container_name and container_name != "unknown" \
+            else alert.labels.alertname
         last_seen = _recent_alerts.get(dedup_key)
         if last_seen is not None and now - last_seen < DEDUP_WINDOW_SEC:
             logger.info(f"[Pipeline] 중복 Alert 스킵: {dedup_key}")

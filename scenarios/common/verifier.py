@@ -781,7 +781,7 @@ class ScenarioVerifier:
 
     def _query_loki_slack_sent(self) -> dict | None:
         try:
-            baseline = self._alert_firing_time or self._start_time
+            baseline = self._start_time - 60
             start_ns = int(baseline * 1_000_000_000)
             end_ns = int(time.time() * 1_000_000_000)
             query = '{job="aiops-slack"}'
