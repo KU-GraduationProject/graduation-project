@@ -44,7 +44,7 @@ console = Console()
 
 _STEPS = [
     ("bruteforce", "🔐", "yellow",  "DB 브루트포스 (auth failure 로그 생성)"),
-    ("dump",       "🔍", "magenta", "환경변수 덤프 시뮬레이션"),
+    ("dump", "🔍", "magenta", "사용자 데이터 탈취 (leaked_users exfiltration)"),
     ("rce",        "🔥", "red",     "COPY FROM PROGRAM RCE + HighCpuUsage 탐지"),
 ]
 
