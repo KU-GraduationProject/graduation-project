@@ -34,7 +34,7 @@ sys.path.insert(0, str(BASE_SCENARIO_DIR))
 sys.path.insert(0, str(BASE_SCENARIO_DIR / "category2_security"))
 
 from brute_force import run_bruteforce, run_rce
-from secret_dump import main as run_dump
+from data_exfil import main as run_dump
 
 GRAFANA_URL = os.getenv("GRAFANA_SOC_URL", "http://localhost:3000/d/leafy-aiops/leafy-aiops-soc-dashboard")
 LOKI_URL    = os.getenv("LOKI_URL", "http://localhost:3100")

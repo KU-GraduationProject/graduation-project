@@ -84,7 +84,7 @@ services:
         tag: "backend"
 
   db:
-    image: postgres:16-alpine
+    image: postgres:16
     container_name: leafy-db
     environment:
       POSTGRES_DB: leafy

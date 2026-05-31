@@ -2236,5 +2236,57 @@
     "failure_reason": "",
     "timestamp": "2026-05-28T18:32:33.957418+00:00",
     "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-05-31T03:14:49.203827+00:00",
+    "end_time": "2026-05-31T03:19:55.939163+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 33.6,
+    "mtta_seconds": 9.7,
+    "slack_notified": true,
+    "slack_status": "SUCCESS",
+    "slack_response_code": 200,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-05-31T03:15:33.063351+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-05-31T03:37:35.075175+00:00",
+    "end_time": "2026-05-31T03:37:48.242254+00:00",
+    "status": "success",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "category": "security",
+    "start_time": "2026-05-31T03:37:55.651171+00:00",
+    "end_time": "2026-05-31T03:38:56.457930+00:00",
+    "status": "success",
+    "detail": "{\"mttd\": 39.8, \"mtta\": -1.9}"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 39.8,
+    "mtta_seconds": -1.9,
+    "slack_notified": true,
+    "slack_status": "SUCCESS",
+    "slack_response_code": 200,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-05-31T03:38:56.020090+00:00",
+    "category": "verification"
   }
 ]

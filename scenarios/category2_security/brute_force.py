@@ -42,6 +42,13 @@ BRUTE_PASSWORDS = [
 BRUTE_ITERATIONS = 100   # 패스워드 리스트 순환 반복 횟수
 RCE_DURATION_SEC = 300   # CPU 점유 지속 시간(초)
 
+_cracked_password: str | None = None
+
+
+def get_cracked_password() -> str | None:
+    """pgminer_integrated.py Step 2에서 호출."""
+    return _cracked_password
+
 
 # ── 로그 유틸 ──────────────────────────────────────────────────────────────────
 def _load_log() -> list:
@@ -130,6 +137,39 @@ echo "[brute] 종료: $i × {len(BRUTE_PASSWORDS)} = $((i * {len(BRUTE_PASSWORDS
     end_time = datetime.now(timezone.utc).isoformat()
     record_event(scenario, start_time, end_time, status,
                  f"iterations={BRUTE_ITERATIONS}, passwords={len(BRUTE_PASSWORDS)}")
+
+    # ── 크레덴셜 발견 시뮬레이션 ────────────────────────────────────────────
+    global _cracked_password
+    actual_password = os.getenv("DB_PASSWORD", "leafy_secret")
+    candidate_list  = BRUTE_PASSWORDS + [actual_password]
+    LEAFY_NETWORK_LOCAL = os.getenv("LEAFY_NETWORK", LEAFY_NETWORK)
+
+    print(f"\n[*] leafy 계정으로 크레덴셜 재시도 중...")
+    for pw in candidate_list:
+        check_script = (
+            f'PGPASSWORD="{pw}" psql -h {DB_CONTAINER} -U {DB_USER} '
+            f'-d {DB_NAME} -c "SELECT 1" -t --no-align 2>&1'
+        )
+        check_cmd = [
+            "docker", "run", "--rm",
+            "--network", LEAFY_NETWORK_LOCAL,
+            POSTGRES_IMAGE,
+            "sh", "-c", check_script,
+        ]
+        try:
+            r = subprocess.run(check_cmd, capture_output=True, timeout=10)
+            out = r.stdout.decode("utf-8", errors="replace").strip()
+            if r.returncode == 0 and "1" in out:
+                _cracked_password = pw
+                print(f"[!] 크레덴셜 발견: {DB_USER} / {pw}")
+                break
+        except Exception:
+            continue
+
+    if not _cracked_password:
+        _cracked_password = actual_password
+        print(f"[*] 환경변수 fallback: {DB_USER} / {_cracked_password}")
+
     print(f"[*] 1단계 완료: {status}")
 
 
