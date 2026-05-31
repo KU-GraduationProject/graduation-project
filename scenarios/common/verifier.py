@@ -729,12 +729,19 @@ class ScenarioVerifier:
                     dispatch = self._query_loki_slack_sent()
                     if dispatch is not None:
                         self._last_slack_dispatch = dispatch
+                    # 수정 후
                     if dispatch is not None and dispatch.get("status") == "SUCCESS":
                         dispatch_ts = dispatch.get("timestamp", time.time())
                         baseline_ts = self._alert_firing_time or self._start_time
                         mtta_val = dispatch_ts - baseline_ts
+
+                        # ── 음수 필터링: 이전 실행 잔여 로그 무시 ──
+                        if mtta_val < 0:
+                            continue  # ← 이전 실행 로그 → 건너뛰고 계속 폴링
+
                         found = True
                         break
+
                 live.update(_render())
                 time.sleep(0.3)
 
@@ -774,7 +781,8 @@ class ScenarioVerifier:
 
     def _query_loki_slack_sent(self) -> dict | None:
         try:
-            start_ns = int(self._start_time * 1_000_000_000)
+            baseline = self._alert_firing_time or self._start_time
+            start_ns = int(baseline * 1_000_000_000)
             end_ns = int(time.time() * 1_000_000_000)
             query = '{job="aiops-slack"}'
             params = urllib.parse.urlencode({

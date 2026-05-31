@@ -243,8 +243,11 @@ def run_rce() -> None:
         print(f"  [!] pkill 실패 (무시): {e}")
 
     # 임시 테이블 정리
+    # ── 임시 테이블 정리 (수정 후)
+    time.sleep(2)  # ← 이 줄 추가 (pkill 후 DB 연결 안정화 대기)
     rc, _ = _psql("DROP TABLE IF EXISTS abroxu;")
     print(f"  → DROP TABLE {'OK' if rc == 0 else f'FAIL(rc={rc})'}")
+
 
     end_time = datetime.now(timezone.utc).isoformat()
     record_event(scenario, start_time, end_time,
