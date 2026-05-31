@@ -2288,5 +2288,35 @@
     "failure_reason": "",
     "timestamp": "2026-05-31T03:38:56.020090+00:00",
     "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-05-31T04:44:47.605756+00:00",
+    "end_time": "2026-05-31T04:44:53.529743+00:00",
+    "status": "success",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "category": "security",
+    "start_time": "2026-05-31T04:44:56.643594+00:00",
+    "end_time": "2026-05-31T04:48:40.192717+00:00",
+    "status": "success",
+    "detail": "{\"mttd\": 43.0, \"mtta\": null}"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 43.0,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-05-31T04:48:39.847502+00:00",
+    "category": "verification"
   }
 ]

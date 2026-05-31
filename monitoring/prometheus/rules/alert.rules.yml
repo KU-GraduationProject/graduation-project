@@ -2,9 +2,15 @@ groups:
   - name: aiops-alerts
     rules:
 
+      # cAdvisor on Mac ARM (Docker Desktop)에는 name 라벨이 없다.
+      # container_name_info (Pipeline /metrics) 의 id→name 매핑을 on(id) 조인으로 붙인다.
+
       - alert: HighCpuUsage
         expr: >
-          sum(irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s]))
+          sum by (name) (
+            irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s])
+            * on(id) group_left(name) container_name_info
+          )
           > 0.5
         for: 30s
         labels:
@@ -16,9 +22,13 @@ groups:
 
       - alert: HighMemoryUsage
         expr: >
-          (container_memory_usage_bytes{id=~"/docker/.+"}
-          / container_spec_memory_limit_bytes{id=~"/docker/.+"} > 0.7)
-          and container_spec_memory_limit_bytes{id=~"/docker/.+"} > 0
+          (
+            (
+              container_memory_usage_bytes{id=~"/docker/.+"}
+              / container_spec_memory_limit_bytes{id=~"/docker/.+"}
+            ) * on(id) group_left(name) container_name_info
+          ) > 0.7
+          and on(id) container_spec_memory_limit_bytes{id=~"/docker/.+"} > 0
         for: 1m
         labels:
           severity: warning
@@ -28,7 +38,11 @@ groups:
           container: "{{ $labels.name }}"
 
       - alert: ContainerRestarted
-        expr: changes(container_start_time_seconds{id=~"/docker/.+"}[5m]) > 0
+        expr: >
+          (
+            changes(container_start_time_seconds{id=~"/docker/.+"}[5m])
+            * on(id) group_left(name) container_name_info
+          ) > 0
         for: 0m
         labels:
           severity: critical
@@ -37,8 +51,14 @@ groups:
           summary: "컨테이너 재시작 감지"
           container: "{{ $labels.name }}"
 
+      # Mac Docker Desktop은 네트워크 메트릭이 per-container가 아닌 id="/" 수준만 제공.
+      # id 필터 제거 → Mac(id="/")·Linux/Windows(id="/docker/...") 모두 동작.
+      # name 라벨이 없는 환경(Mac)에서는 container 어노테이션이 비어 Pipeline 수동 분석 경로로 진입.
       - alert: HighNetworkReceive
-        expr: rate(container_network_receive_bytes_total{id=~"/docker/.+"}[1m]) > 1e7
+        expr: >
+          sum without(interface) (
+            rate(container_network_receive_bytes_total{interface!="lo"}[1m])
+          ) > 1e7
         for: 30s
         labels:
           severity: warning

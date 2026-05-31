@@ -12,6 +12,8 @@ Chaos Engineering 5단계를 코드로 자동화:
 """
 
 import http.client
+import io
+import contextlib
 import json
 import os
 import threading
@@ -29,6 +31,12 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.table import Table
 from rich import box
+
+try:
+    import plotext as plt
+    _PLOTEXT_AVAILABLE = True
+except ImportError:
+    _PLOTEXT_AVAILABLE = False
 
 # ── 설정 ───────────────────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -384,6 +392,14 @@ class ScenarioVerifier:
 
         _console.print(table)
 
+        if _PLOTEXT_AVAILABLE and len(self._metric_samples) >= 2:
+            timeline = self._render_plotext_chart(wide=True)
+            _console.print(Panel(
+                timeline,
+                title="[bold blue]📈  전체 메트릭 추이 (공격 전 → 공격 중 → 공격 후)[/bold blue]",
+                border_style="blue",
+            ))
+
     # ── repeat_interval 사전 체크 ──────────────────────────────────────────────
     def check_repeat_interval(self) -> bool:
         try:
@@ -437,6 +453,36 @@ class ScenarioVerifier:
             return {}
         return {"query": self.steady_state_query, "value": value}
 
+    def _render_plotext_chart(self, wide: bool = False) -> Text:
+        """plotext 라인 그래프를 Rich Text로 변환해 반환한다."""
+        if len(self._metric_samples) < 2:
+            return Text("데이터 수집 중...", style="dim")
+
+        xs = [t for t, _ in self._metric_samples]
+        ys = [v * self.metric_scale for _, v in self._metric_samples]
+        threshold_scaled = self.steady_state_threshold * self.metric_scale
+
+        plt.clf()
+        line_color = "red" if (threshold_scaled > 0 and ys[-1] >= threshold_scaled) else "green"
+        plt.plot(xs, ys, color=line_color)
+        plt.title(self.metric_label)
+        plt.xlabel("경과 시간(초)")
+        plt.ylabel(self.metric_unit or "값")
+        if self.steady_state_threshold:
+            plt.hline(threshold_scaled, color="yellow")
+        plt.plotsize(60 if not wide else 60, 20 if wide else 15)
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            plt.show()
+        chart_str = buf.getvalue()
+
+        try:
+            result = Text.from_ansi(chart_str)
+        except Exception:
+            result = Text(chart_str)
+        return result
+
     def _render_metric_chart(self, metrics: dict | None = None, force: bool = False) -> Text:
         """Rich 텍스트로 Prometheus 샘플 추이를 그린다."""
         text = Text()
@@ -444,6 +490,17 @@ class ScenarioVerifier:
             text.append("Prometheus 쿼리 미설정\n", style="dim")
             text.append("steady_state_query를 지정하면 실시간 그래프가 표시됩니다.", style="dim")
             return text
+
+        if _PLOTEXT_AVAILABLE and len(self._metric_samples) >= 2:
+            result = self._render_plotext_chart()
+            value = self._metric_samples[-1][1]
+            result.append("\n현재값: ", style="bold")
+            result.append(self._format_metric(value), style=self._metric_style(value))
+            if self.steady_state_threshold:
+                result.append("  임계값: ", style="bold")
+                result.append(self._format_metric(self.steady_state_threshold), style="yellow")
+            result.append(f"  ({len(self._metric_samples)}샘플)\n")
+            return result
 
         query = self.steady_state_query
         query_short = query[:76] + ("…" if len(query) > 76 else "")
@@ -691,6 +748,17 @@ class ScenarioVerifier:
                 + (f" ([green]{code}[/green])" if code is not None else ""),
                 title="[bold green]✅  Slack notification dispatched[/bold green]",
                 border_style="green",
+            ))
+            _console.print("[green]🎉 Slack 알림 전송 완료![/green]")
+            celebrate = Text(justify="center")
+            celebrate.append("🎉  Slack 알림이 성공적으로 전송되었습니다!\n\n", style="bold green")
+            celebrate.append(f"   MTTA: {mtta_val:.1f}초", style=f"bold {c}")
+            celebrate.append("  ·  AIOps 자동화 성공!", style="bold green")
+            _console.print(Panel(
+                celebrate,
+                title="[bold green blink]🎉  알림 전송 완료!  🎉[/bold green blink]",
+                border_style="green",
+                padding=(1, 4),
             ))
             return round(mtta_val, 1)
 
