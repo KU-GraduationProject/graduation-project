@@ -2400,5 +2400,65 @@
     "failure_reason": "메트릭 값(10.0000개)이 임계값(40.0000개)에 미달",
     "timestamp": "2026-06-01T18:33:37.176360+00:00",
     "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-06-01T18:58:43.955211+00:00",
+    "end_time": "2026-06-01T18:58:57.874195+00:00",
+    "status": "success",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "category": "security",
+    "start_time": "2026-06-01T18:59:04.929094+00:00",
+    "end_time": "2026-06-01T19:00:11.020114+00:00",
+    "status": "success",
+    "detail": "{\"mttd\": 42.8, \"mtta\": 8.1}"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 42.8,
+    "mtta_seconds": 8.1,
+    "slack_notified": true,
+    "slack_status": "SUCCESS",
+    "slack_response_code": 200,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-01T19:00:08.568523+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-06-01T19:05:41.359451+00:00",
+    "end_time": "2026-06-01T19:05:53.583650+00:00",
+    "status": "success",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "category": "security",
+    "start_time": "2026-06-01T19:06:00.426714+00:00",
+    "end_time": "2026-06-01T19:06:47.013358+00:00",
+    "status": "success",
+    "detail": "{\"mttd\": 33.4, \"mtta\": 9.2}"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 33.4,
+    "mtta_seconds": 9.2,
+    "slack_notified": true,
+    "slack_status": "SUCCESS",
+    "slack_response_code": 200,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-01T19:06:44.593044+00:00",
+    "category": "verification"
   }
 ]

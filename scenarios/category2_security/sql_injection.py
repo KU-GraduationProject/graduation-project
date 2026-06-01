@@ -236,7 +236,12 @@ def main():
         mttd_seconds=mttd,
     )
     verifier.log_result(result)
-
+    # ↓ 추가
+    from common.result_viewer import ResultViewer
+    ResultViewer("SQLInjectionAttempt", "sql_injection").show(
+        mttd_seconds=result.mttd_seconds,
+        mtta_seconds=result.mtta_seconds,
+    )
 
 if __name__ == "__main__":
     main()

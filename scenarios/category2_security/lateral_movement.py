@@ -245,6 +245,12 @@ def main():
     )
     verifier.log_result(result)
 
-
+    # ↓ 추가
+    from common.result_viewer import ResultViewer
+    ResultViewer("UnauthorizedDBAccess", "lateral_movement").show(
+        mttd_seconds=result.mttd_seconds,
+        mtta_seconds=result.mtta_seconds,
+    )
+    
 if __name__ == "__main__":
     main()

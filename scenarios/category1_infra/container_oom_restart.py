@@ -171,7 +171,11 @@ def main():
 
     # ── 5단계: 결과 기록 ──────────────────────────────────────────────────────
     verifier.log_result(result)
-
+    from common.result_viewer import ResultViewer
+    ResultViewer("ContainerRestarted", "container_oom_restart").show(
+        mttd_seconds=result.mttd_seconds,
+        mtta_seconds=result.mtta_seconds,
+    )
 
 if __name__ == "__main__":
     main()
