@@ -2378,5 +2378,27 @@
     "failure_reason": "",
     "timestamp": "2026-05-31T11:35:36.853229+00:00",
     "category": "verification"
+  },
+  {
+    "scenario": "api_resource_abuse",
+    "category": "security",
+    "start_time": "2026-06-01T18:28:36.975730+00:00",
+    "end_time": "2026-06-01T18:33:37.130084+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 232300, \"success_200\": 232300, \"status_counts\": {\"200\": 232300}, \"workers\": 50, \"duration_sec\": 300, \"endpoints\": [\"/api/v1/my-plants\", \"/api/v1/schedules\"], \"attack_model\": \"Assumed Breach - JWT token reuse\", \"owasp\": \"API4:2023 Unrestricted Resource Consumption\"}"
+  },
+  {
+    "scenario": "api_resource_abuse",
+    "alert_name": "HighPostgresConnections",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "메트릭 값(10.0000개)이 임계값(40.0000개)에 미달",
+    "timestamp": "2026-06-01T18:33:37.176360+00:00",
+    "category": "verification"
   }
 ]
