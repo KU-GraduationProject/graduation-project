@@ -50,6 +50,8 @@ services:
   backend:
     image: gicks/leafy-backend:latest
     container_name: leafy-backend
+    mem_limit: 512m          # ← 추가
+    memswap_limit: 512m      # ← 추가 (swap 비활성화, 순수 메모리만)
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/leafy
       SPRING_DATASOURCE_USERNAME: leafy

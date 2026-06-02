@@ -2380,6 +2380,7 @@
     "category": "verification"
   },
   {
+<<<<<<< HEAD
     "scenario": "db_bruteforce",
     "category": "security",
     "start_time": "2026-06-01T07:44:34.022006+00:00",
@@ -2408,11 +2409,26 @@
     "alert_name": "HighCpuUsage",
     "success": true,
     "mttd_seconds": 0.0,
+=======
+    "scenario": "api_resource_abuse",
+    "category": "security",
+    "start_time": "2026-06-01T18:28:36.975730+00:00",
+    "end_time": "2026-06-01T18:33:37.130084+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 232300, \"success_200\": 232300, \"status_counts\": {\"200\": 232300}, \"workers\": 50, \"duration_sec\": 300, \"endpoints\": [\"/api/v1/my-plants\", \"/api/v1/schedules\"], \"attack_model\": \"Assumed Breach - JWT token reuse\", \"owasp\": \"API4:2023 Unrestricted Resource Consumption\"}"
+  },
+  {
+    "scenario": "api_resource_abuse",
+    "alert_name": "HighPostgresConnections",
+    "success": false,
+    "mttd_seconds": null,
+>>>>>>> be9b129a1f28760660b195548f5915409c2e6463
     "mtta_seconds": null,
     "slack_notified": false,
     "slack_status": "",
     "slack_response_code": null,
     "slack_response_text": "",
+<<<<<<< HEAD
     "failure_reason": "",
     "timestamp": "2026-06-01T07:55:07.610157+00:00",
     "category": "verification"
@@ -2430,12 +2446,70 @@
     "alert_name": "HighCpuUsage",
     "success": true,
     "mttd_seconds": 36.7,
+=======
+    "failure_reason": "메트릭 값(10.0000개)이 임계값(40.0000개)에 미달",
+    "timestamp": "2026-06-01T18:33:37.176360+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-06-01T18:58:43.955211+00:00",
+    "end_time": "2026-06-01T18:58:57.874195+00:00",
+    "status": "success",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "category": "security",
+    "start_time": "2026-06-01T18:59:04.929094+00:00",
+    "end_time": "2026-06-01T19:00:11.020114+00:00",
+    "status": "success",
+    "detail": "{\"mttd\": 42.8, \"mtta\": 8.1}"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 42.8,
+    "mtta_seconds": 8.1,
+    "slack_notified": true,
+    "slack_status": "SUCCESS",
+    "slack_response_code": 200,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-01T19:00:08.568523+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-06-01T19:05:41.359451+00:00",
+    "end_time": "2026-06-01T19:05:53.583650+00:00",
+    "status": "success",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "category": "security",
+    "start_time": "2026-06-01T19:06:00.426714+00:00",
+    "end_time": "2026-06-01T19:06:47.013358+00:00",
+    "status": "success",
+    "detail": "{\"mttd\": 33.4, \"mtta\": 9.2}"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 33.4,
+>>>>>>> be9b129a1f28760660b195548f5915409c2e6463
     "mtta_seconds": 9.2,
     "slack_notified": true,
     "slack_status": "SUCCESS",
     "slack_response_code": 200,
     "slack_response_text": "",
     "failure_reason": "",
+<<<<<<< HEAD
     "timestamp": "2026-06-02T03:38:03.791767+00:00",
     "category": "verification"
   },
@@ -2481,6 +2555,9 @@
     "slack_response_text": "",
     "failure_reason": "",
     "timestamp": "2026-06-02T05:26:13.427981+00:00",
+=======
+    "timestamp": "2026-06-01T19:06:44.593044+00:00",
+>>>>>>> be9b129a1f28760660b195548f5915409c2e6463
     "category": "verification"
   }
 ]

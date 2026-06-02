@@ -255,6 +255,11 @@ def run_rce() -> None:
                  json.dumps({"mttd": result.mttd_seconds, "mtta": result.mtta_seconds},
                             ensure_ascii=False))
     verifier.log_result(result)
+    from common.result_viewer import ResultViewer
+    ResultViewer("HighCpuUsage", "db_rce_cpu").show(
+        mttd_seconds=result.mttd_seconds,
+        mtta_seconds=result.mtta_seconds,
+    )
     print(f"[*] 2단계 완료")
 
 

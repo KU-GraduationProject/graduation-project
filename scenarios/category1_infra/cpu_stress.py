@@ -167,6 +167,12 @@ def main():
 
     # ── 5단계: 결과 기록 ──
     verifier.log_result(result)
+    # ↓ 추가
+    from common.result_viewer import ResultViewer
+    ResultViewer("HighCpuUsage", "cpu_stress").show(
+        mttd_seconds=result.mttd_seconds,
+        mtta_seconds=result.mtta_seconds,
+    )
 
 
 SCENARIO_META = {
