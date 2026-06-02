@@ -168,5 +168,22 @@ def main():
     # ── 5단계: 결과 기록 ──
     verifier.log_result(result)
 
+
+SCENARIO_META = {
+    "id":             "cpu_stress",
+    "label":          "CPU 스트레스",
+    "subtitle":       "dd/stress-ng로 leafy-backend CPU 고갈",
+    "category":       "인프라",
+    "owasp":          None,
+    "mitre":          None,
+    "container":      "leafy-backend",
+    "loki_container": "backend",
+    "alert_name":     "HighCpuUsage",
+    "alert_fires":    True,
+    "blind_spot":     False,
+    "module":         "category1_infra.cpu_stress",
+    "custom_panel":   None,
+}
+
 if __name__ == "__main__":
     main()

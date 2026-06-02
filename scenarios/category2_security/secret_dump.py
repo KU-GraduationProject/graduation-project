@@ -205,15 +205,28 @@ def main():
         except Exception as e:
             print(f"[!] Pipeline 웹훅 전송 실패: {e}")
 
-    loki_result = VerifyResult(
-        success=mttd is not None,
-        alert_name="secret_dump",
-        scenario_name="secret_dump",
-        mttd_seconds=mttd,
-    )
-    verifier.log_result(loki_result)
-
+    # secret_dump는 탐지 사각지대: Alert 없음, Pipeline 미연동
+    # Loki 자기 보고 후 즉시 탐지하는 패턴 제거 — blind spot 그대로 유지
     print(f"\n[*] 시나리오 종료: {scenario} | 환경변수 덤프 {'성공' if any_success else '실패'}")
+    print("[*] 탐지 사각지대: 별도 Alert 없음 — Loki에서 수동 확인 필요")
+    print("[*] Grafana: http://localhost:3000  → Explore → Loki → {job='security_simulation'}")
+
+
+SCENARIO_META = {
+    "id":             "secret_dump",
+    "label":          "환경변수 덤프 (탐지 사각지대)",
+    "subtitle":       "env / printenv / /proc/1/environ  ·  alert 없음",
+    "category":       "보안",
+    "owasp":          "A02:2021",
+    "mitre":          "TA0006",
+    "container":      "leafy-backend",
+    "loki_container": "backend",
+    "alert_name":     "없음 (탐지 사각지대)",
+    "alert_fires":    False,
+    "blind_spot":     True,
+    "module":         "category2_security.secret_dump",
+    "custom_panel":   "secret_dump",
+}
 
 if __name__ == "__main__":
     main()

@@ -5,7 +5,7 @@ user 프롬프트는 실제 이상 데이터를 담는다.
 """
 import json
 
-SYSTEM_PROMPT = """You are an AIOps engineer. Analyze Docker container anomaly data and return JSON only.
+SYSTEM_PROMPT = """You are an AIOps engineer. Analyze Docker container anomaly data and return JSON only. Always respond in English regardless of the input language.
 
 SCHEMA (all fields required):
 {

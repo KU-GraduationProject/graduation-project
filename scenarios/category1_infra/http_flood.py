@@ -193,5 +193,22 @@ def main():
     )
     verifier.log_result(loki_result)
 
+
+SCENARIO_META = {
+    "id":             "http_flood",
+    "label":          "HTTP Flood",
+    "subtitle":       "300 workers × 300s  ·  FloodBot/1.0",
+    "category":       "인프라",
+    "owasp":          "A05:2021",
+    "mitre":          None,
+    "container":      "leafy-frontend",
+    "loki_container": "frontend",
+    "alert_name":     "HighNginxErrorRate",
+    "alert_fires":    True,
+    "blind_spot":     False,
+    "module":         "category1_infra.http_flood",
+    "custom_panel":   None,
+}
+
 if __name__ == "__main__":
     main()

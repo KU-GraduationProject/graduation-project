@@ -265,12 +265,10 @@ def main():
     except Exception as e:
         print(f"[!] Loki 푸시 실패: {e}")
 
-    # ── MTTD: Loki 탐지 대기 ──────────────────────────────────────────────────
-    mttd = verifier.verify_loki(
-        log_query='{job="security_simulation",attack_type="n_plus_one_attack"}',
-        keyword="N+1 query attack",
-        timeout=60,
-    )
+    # ── MTTD: HighPostgresConnections — Prometheus alert 발화 대기 ───────────
+    # pg_sleep(30) 연결 점유 → pg_stat_activity_count > 50 → alert FIRING
+    verify_result = verifier.verify(timeout=180, poll_interval=5)
+    mttd = verify_result.mttd_seconds if verify_result.success else None
 
     if mttd is not None:
         _send_pipeline_webhook({
@@ -293,6 +291,22 @@ def main():
     )
     verifier.log_result(loki_result)
 
+
+SCENARIO_META = {
+    "id":             "n_plus_one_attack",
+    "label":          "N+1 쿼리 공격",
+    "subtitle":       "100 연결 × pg_sleep(30) → PostgreSQL 연결 고갈",
+    "category":       "보안",
+    "owasp":          "A04:2021",
+    "mitre":          None,
+    "container":      "leafy-db",
+    "loki_container": "leafy-db",
+    "alert_name":     "HighPostgresConnections",
+    "alert_fires":    True,
+    "blind_spot":     False,
+    "module":         "category2_security.n_plus_one_attack",
+    "custom_panel":   None,
+}
 
 if __name__ == "__main__":
     main()

@@ -10,6 +10,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ValidationError  # ✅ Fix: 버그 3
 from datetime import datetime, timezone
 from collections import deque
+from pathlib import Path
 import json
 import asyncio
 import logging
@@ -31,6 +32,9 @@ app = FastAPI(title="AIOps Pipeline", version="0.1.0")
 
 # 최근 분석 결과 저장 (최대 20건)
 analysis_history: deque = deque(maxlen=20)
+
+# LLM 결과 영속 저장 파일 (컨테이너 재시작 후에도 유지)
+RESULTS_FILE = Path("/app/results/llm_results.jsonl")
 
 # ─── 중복 Alert 필터 ────────────────────────────────────
 DEDUP_WINDOW_SEC = 300
@@ -113,7 +117,47 @@ async def prometheus_metrics():
 
     return "\n".join(name_lines + [""] + count_lines) + "\n"
 
-# (참고: /results, /debug 등 기타 GET 엔드포인트들은 기존 코드 그대로 사용하면 됨)
+def _append_to_file(entry: dict) -> None:
+    """LLM 분석 결과를 JSONL 파일에 한 줄씩 추가 (append-only)."""
+    try:
+        RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with RESULTS_FILE.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as e:
+        logger.warning(f"[Pipeline] 결과 파일 저장 실패 (무시): {e}")
+
+
+@app.get("/results")
+async def get_results():
+    """메모리에 있는 최근 분석 결과 최대 20건 반환."""
+    return list(analysis_history)
+
+
+@app.get("/results/latest")
+async def get_results_latest():
+    """가장 최근 분석 결과 1건 반환. 없으면 404."""
+    if not analysis_history:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="분석 결과 없음")
+    return analysis_history[-1]
+
+
+@app.get("/results/history")
+async def get_results_history():
+    """JSONL 파일에서 전체 히스토리를 읽어 반환."""
+    if not RESULTS_FILE.exists():
+        return []
+    lines = RESULTS_FILE.read_text(encoding="utf-8").splitlines()
+    results = []
+    for line in lines:
+        line = line.strip()
+        if line:
+            try:
+                results.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+    return results
+
 
 @app.post("/webhook/alert")
 async def receive_alert(payload: AlertManagerWebhook, background_tasks: BackgroundTasks):
@@ -195,6 +239,7 @@ async def analyze_alerts(alerts: list[Alert]):
                     "result": fallback_result.model_dump(),
                 }
                 analysis_history.append(entry)
+                _append_to_file(entry)
                 try: await push_to_loki(entry)
                 except Exception: pass
                 try: await forward_to_remediation(alert, fallback_result)
@@ -248,6 +293,7 @@ async def analyze_alerts(alerts: list[Alert]):
                 "result": result.model_dump(),
             }
             analysis_history.append(entry)
+            _append_to_file(entry)
 
             # 6. Loki 푸시 & 7. Remediation 전달
             await push_to_loki(entry)

@@ -211,5 +211,21 @@ def main() -> None:
     run_exfil(pw)
 
 
+SCENARIO_META = {
+    "id":             "data_exfil",
+    "label":          "데이터 탈취 (탐지 사각지대)",
+    "subtitle":       "leaked_users 전체 덤프 → CSV  ·  alert 없음",
+    "category":       "보안",
+    "owasp":          "A01:2021",
+    "mitre":          "TA0010",
+    "container":      "leafy-db",
+    "loki_container": "leafy-db",
+    "alert_name":     "없음 (탐지 사각지대)",
+    "alert_fires":    False,
+    "blind_spot":     True,
+    "module":         "category2_security.data_exfil",
+    "custom_panel":   "data_exfil",
+}
+
 if __name__ == "__main__":
     main()

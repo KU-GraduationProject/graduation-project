@@ -2378,5 +2378,109 @@
     "failure_reason": "",
     "timestamp": "2026-05-31T11:35:36.853229+00:00",
     "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-06-01T07:44:34.022006+00:00",
+    "end_time": "2026-06-01T07:44:34.878472+00:00",
+    "status": "exit_code=127",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-06-01T07:50:16.844088+00:00",
+    "end_time": "2026-06-01T07:50:28.125925+00:00",
+    "status": "success",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "category": "security",
+    "start_time": "2026-06-01T07:50:36.860629+00:00",
+    "end_time": "2026-06-01T07:55:10.052086+00:00",
+    "status": "success",
+    "detail": "{\"mttd\": 0.0, \"mtta\": null}"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 0.0,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-01T07:55:07.610157+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-06-02T03:37:16.711414+00:00",
+    "end_time": "2026-06-02T03:42:16.850046+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 36.7,
+    "mtta_seconds": 9.2,
+    "slack_notified": true,
+    "slack_status": "SUCCESS",
+    "slack_response_code": 200,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-02T03:38:03.791767+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-06-02T05:25:27.018684+00:00",
+    "end_time": "2026-06-02T05:30:54.052213+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 36.9,
+    "mtta_seconds": 8.7,
+    "slack_notified": true,
+    "slack_status": "SUCCESS",
+    "slack_response_code": 200,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-02T05:26:14.298866+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "cpu_stress",
+    "category": "infra",
+    "start_time": "2026-06-02T05:25:29.375545+00:00",
+    "end_time": "2026-06-02T05:30:55.718127+00:00",
+    "status": "success",
+    "detail": ""
+  },
+  {
+    "scenario": "cpu_stress",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 33.7,
+    "mtta_seconds": 9.6,
+    "slack_notified": true,
+    "slack_status": "SUCCESS",
+    "slack_response_code": 200,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-02T05:26:13.427981+00:00",
+    "category": "verification"
   }
 ]

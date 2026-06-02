@@ -181,5 +181,21 @@ def main():
     verifier.log_result(loki_result)
 
 
+SCENARIO_META = {
+    "id":             "memory_leak",
+    "label":          "메모리 누수 (OOM 시뮬)",
+    "subtitle":       "leafy-backend 90초 주기 4회 강제 재시작",
+    "category":       "인프라",
+    "owasp":          None,
+    "mitre":          None,
+    "container":      "leafy-backend",
+    "loki_container": "backend",
+    "alert_name":     "ContainerRestarted",
+    "alert_fires":    False,
+    "blind_spot":     False,
+    "module":         "category1_infra.memory_leak",
+    "custom_panel":   "memory_leak",
+}
+
 if __name__ == "__main__":
     main()

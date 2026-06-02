@@ -483,6 +483,92 @@ class ScenarioVerifier:
             result = Text(chart_str)
         return result
 
+    def _render_sparkline_chart(self) -> Text:
+        """
+        plotext 없이도 동작하는 유니코드 스파크라인 차트.
+        Mac/Linux/Windows 모든 터미널에서 표시된다.
+        """
+        _BLOCKS = "▁▂▃▄▅▆▇█"
+        CHART_W  = 50   # 가로 너비 (문자 수)
+        CHART_H  = 8    # 세로 높이 (줄 수)
+
+        samples = self._metric_samples
+        values  = [v * self.metric_scale for _, v in samples]
+        scaled_thresh = self.steady_state_threshold * self.metric_scale
+
+        lo = min(values)
+        hi = max(values)
+        # y축 범위: 임계값이 hi보다 높으면 임계값까지 포함
+        y_max = max(hi, scaled_thresh * 1.1) if scaled_thresh > 0 else (hi * 1.1 or 1.0)
+        y_min = 0.0
+
+        # CHART_W 폭에 맞게 다운샘플
+        if len(values) <= CHART_W:
+            pts = values
+        else:
+            step = len(values) / CHART_W
+            pts  = [values[int(i * step)] for i in range(CHART_W)]
+
+        def _norm(v: float) -> float:
+            return (v - y_min) / (y_max - y_min) if y_max > y_min else 0.0
+
+        # 2D 그리드 (행=위→아래, 열=왼→오른)
+        grid: list[list[str]] = [[" "] * len(pts) for _ in range(CHART_H)]
+
+        thresh_row = int((1 - _norm(scaled_thresh)) * CHART_H) if scaled_thresh > 0 else -1
+
+        for col, v in enumerate(pts):
+            bar_height = int(_norm(v) * CHART_H)
+            for row in range(CHART_H):
+                actual_row = CHART_H - 1 - row   # 아래부터 채움
+                if row < bar_height:
+                    is_over = scaled_thresh > 0 and v >= scaled_thresh
+                    grid[actual_row][col] = "█" if is_over else "▓"
+
+        text = Text()
+
+        # y축 레이블 + 그리드
+        for r, row in enumerate(grid):
+            # y축 값 레이블 (0번째 행=최대, 마지막 행=0)
+            y_val = y_max - (r / (CHART_H - 1)) * (y_max - y_min) if CHART_H > 1 else y_max
+            label = f"{y_val:>7.1f}{self.metric_unit} │"
+            text.append(label, style="dim")
+
+            for c, cell in enumerate(row):
+                is_thresh_line = (r == thresh_row)
+                if cell == "█":
+                    text.append(cell, style="bold red")
+                elif cell == "▓":
+                    text.append(cell, style="bold green")
+                elif is_thresh_line:
+                    text.append("─", style="yellow")
+                else:
+                    text.append(" ")
+            text.append("\n")
+
+        # x축
+        text.append(" " * 9 + "└" + "─" * len(pts) + "\n", style="dim")
+
+        # 범례
+        current = values[-1]
+        peak    = max(values)
+        status  = "FIRING" if scaled_thresh > 0 and current >= scaled_thresh else "NORMAL"
+        s_style = "bold red" if status == "FIRING" else "bold green"
+
+        text.append(f"  현재값  : ", style="bold")
+        text.append(f"{current:.1f}{self.metric_unit}\n", style=self._metric_style(self._metric_samples[-1][1]))
+        if scaled_thresh > 0:
+            text.append(f"  임계값  : ", style="bold")
+            text.append(f"{scaled_thresh:.1f}{self.metric_unit}  ", style="yellow")
+            text.append("── (노란 선)\n", style="dim yellow")
+        text.append(f"  최고/최저: ", style="bold")
+        text.append(f"{peak:.1f} / {lo * self.metric_scale:.1f}{self.metric_unit}\n")
+        text.append(f"  Status  : ", style="bold")
+        text.append(f"{status}\n", style=s_style)
+        text.append(f"  샘플 {len(samples)}개  ·  [dim](█ FIRING  ▓ normal  ── threshold)[/dim]\n")
+
+        return text
+
     def _render_metric_chart(self, metrics: dict | None = None, force: bool = False) -> Text:
         """Rich 텍스트로 Prometheus 샘플 추이를 그린다."""
         text = Text()
@@ -491,8 +577,12 @@ class ScenarioVerifier:
             text.append("steady_state_query를 지정하면 실시간 그래프가 표시됩니다.", style="dim")
             return text
 
-        if _PLOTEXT_AVAILABLE and len(self._metric_samples) >= 2:
-            result = self._render_plotext_chart()
+        # ── 샘플이 2개 이상이면 그래프 표시 (plotext 우선, 없으면 스파크라인) ──
+        if len(self._metric_samples) >= 2:
+            if _PLOTEXT_AVAILABLE:
+                result = self._render_plotext_chart()
+            else:
+                result = self._render_sparkline_chart()
             value = self._metric_samples[-1][1]
             result.append("\n현재값: ", style="bold")
             result.append(self._format_metric(value), style=self._metric_style(value))
@@ -502,8 +592,8 @@ class ScenarioVerifier:
             result.append(f"  ({len(self._metric_samples)}샘플)\n")
             return result
 
-        query = self.steady_state_query
-        query_short = query[:76] + ("…" if len(query) > 76 else "")
+        # ── 샘플 부족 시 대기 화면 ──
+        query_short = self.steady_state_query[:76] + ("…" if len(self.steady_state_query) > 76 else "")
         text.append("Query\n", style="bold")
         text.append(f"{query_short}\n\n", style="dim")
 
@@ -531,7 +621,7 @@ class ScenarioVerifier:
         status = "FIRING" if threshold and value >= threshold else "NORMAL"
         status_style = self._metric_style(value)
         peak = max(v for _, v in self._metric_samples) if self._metric_samples else value
-        low = min(v for _, v in self._metric_samples) if self._metric_samples else value
+        low  = min(v for _, v in self._metric_samples) if self._metric_samples else value
 
         text.append(f"{self.metric_label}\n", style="bold")
         self._append_pressure_bar(text, value)

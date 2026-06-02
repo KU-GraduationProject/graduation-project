@@ -186,8 +186,8 @@ def main():
             "status": "firing",
             "alerts": [{
                 "status": "firing",
-                "labels": {"alertname": "ReDoSAttack", "severity": "critical", "container": "leafy-backend"},
-                "annotations": {"summary": "ReDoS 공격 탐지", "container": "leafy-backend"},
+                "labels": {"alertname": "ReDoSAttack", "severity": "critical", "container": "leafy-frontend"},
+                "annotations": {"summary": "ReDoS 공격 탐지", "container": "leafy-frontend"},
                 "startsAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }],
         })
@@ -200,6 +200,22 @@ def main():
     )
     verifier.log_result(loki_result)
 
+
+SCENARIO_META = {
+    "id":             "redos_attack",
+    "label":          "ReDoS (HTTP 폭주)",
+    "subtitle":       "300 workers  ·  ReDoSBot/1.0  ·  Nginx CPU 고갈",
+    "category":       "인프라",
+    "owasp":          "A05:2021",
+    "mitre":          None,
+    "container":      "leafy-frontend",
+    "loki_container": "frontend",
+    "alert_name":     "HighNginxErrorRate",
+    "alert_fires":    True,
+    "blind_spot":     False,
+    "module":         "category1_infra.redos_attack",
+    "custom_panel":   None,
+}
 
 if __name__ == "__main__":
     main()

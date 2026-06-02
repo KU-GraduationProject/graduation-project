@@ -267,5 +267,21 @@ def main():
     verifier.log_result(loki_result)
 
 
+SCENARIO_META = {
+    "id":             "lateral_movement",
+    "label":          "컨테이너 횡적 이동",
+    "subtitle":       "침해 컨테이너 → DB 직접 접속 (backend 우회)",
+    "category":       "보안",
+    "owasp":          None,
+    "mitre":          "TA0008",
+    "container":      "leafy-db",
+    "loki_container": "leafy-db",
+    "alert_name":     "LateralMovement",
+    "alert_fires":    False,
+    "blind_spot":     False,
+    "module":         "category2_security.lateral_movement",
+    "custom_panel":   "lateral_movement",
+}
+
 if __name__ == "__main__":
     main()

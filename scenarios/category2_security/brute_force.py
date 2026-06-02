@@ -267,5 +267,21 @@ def main() -> None:
     print("[*] === 시나리오 종료 ===")
 
 
+SCENARIO_META = {
+    "id":             "brute_force",
+    "label":          "DB 브루트포스 + RCE",
+    "subtitle":       "postgres 1000회 → 크레덴셜 탈취 → COPY FROM PROGRAM",
+    "category":       "보안",
+    "owasp":          None,
+    "mitre":          "TA0006 + TA0002",
+    "container":      "leafy-db",
+    "loki_container": "leafy-db",
+    "alert_name":     "HighCpuUsage",
+    "alert_fires":    True,
+    "blind_spot":     False,
+    "module":         "category2_security.brute_force",
+    "custom_panel":   "brute_force",
+}
+
 if __name__ == "__main__":
     main()

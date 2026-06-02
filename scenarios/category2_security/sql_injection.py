@@ -194,11 +194,12 @@ def main():
     except Exception as e:
         print(f"[!] Loki 푸시 실패: {e}")
 
-    # ── MTTD: Loki 탐지 대기 ──────────────────────────────────────────────────
+    # ── MTTD: 실제 Nginx 접근 로그에서 sqlmap User-Agent 탐지 ─────────────────
+    # self-reporting 패턴 제거 — 실제 frontend 컨테이너 로그에서 탐지
     mttd = verifier.verify_loki(
-        log_query='{job="security_simulation",attack_type="sql_injection"}',
-        keyword="SQL injection attempt",
-        timeout=60,
+        log_query='{container="frontend"}',
+        keyword="sqlmap",
+        timeout=120,
     )
 
     # Loki 탐지 성공 시 Pipeline 웹훅 전송
@@ -240,6 +241,22 @@ def main():
     )
     verifier.log_result(loki_result)
 
+
+SCENARIO_META = {
+    "id":             "sql_injection",
+    "label":          "SQL Injection 스캐닝",
+    "subtitle":       "sqlmap/1.7  ·  13가지 페이로드  ·  100 workers",
+    "category":       "보안",
+    "owasp":          "A03:2021",
+    "mitre":          None,
+    "container":      "leafy-frontend",
+    "loki_container": "frontend",
+    "alert_name":     "HighNginxErrorRate",
+    "alert_fires":    True,
+    "blind_spot":     False,
+    "module":         "category2_security.sql_injection",
+    "custom_panel":   None,
+}
 
 if __name__ == "__main__":
     main()
