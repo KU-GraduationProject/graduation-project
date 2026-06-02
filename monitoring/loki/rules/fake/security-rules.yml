@@ -31,7 +31,7 @@ groups:
       - alert: SQLInjectionAttempt
         expr: |
           sum(count_over_time(
-            {container="frontend"} |~ "(?i)(union select|or 1=1|drop table|sleep\\()" [2m]
+            {container="frontend"} |~ "(?i)(union.{0,3}select|or 1=1|drop.{0,3}table|sleep\\()" [2m]
           )) > 5
         for: 0m
         labels:

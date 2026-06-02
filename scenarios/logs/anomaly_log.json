@@ -2380,36 +2380,6 @@
     "category": "verification"
   },
   {
-<<<<<<< HEAD
-    "scenario": "db_bruteforce",
-    "category": "security",
-    "start_time": "2026-06-01T07:44:34.022006+00:00",
-    "end_time": "2026-06-01T07:44:34.878472+00:00",
-    "status": "exit_code=127",
-    "detail": "iterations=100, passwords=10"
-  },
-  {
-    "scenario": "db_bruteforce",
-    "category": "security",
-    "start_time": "2026-06-01T07:50:16.844088+00:00",
-    "end_time": "2026-06-01T07:50:28.125925+00:00",
-    "status": "success",
-    "detail": "iterations=100, passwords=10"
-  },
-  {
-    "scenario": "db_rce_cpu",
-    "category": "security",
-    "start_time": "2026-06-01T07:50:36.860629+00:00",
-    "end_time": "2026-06-01T07:55:10.052086+00:00",
-    "status": "success",
-    "detail": "{\"mttd\": 0.0, \"mtta\": null}"
-  },
-  {
-    "scenario": "db_rce_cpu",
-    "alert_name": "HighCpuUsage",
-    "success": true,
-    "mttd_seconds": 0.0,
-=======
     "scenario": "api_resource_abuse",
     "category": "security",
     "start_time": "2026-06-01T18:28:36.975730+00:00",
@@ -2422,31 +2392,11 @@
     "alert_name": "HighPostgresConnections",
     "success": false,
     "mttd_seconds": null,
->>>>>>> be9b129a1f28760660b195548f5915409c2e6463
     "mtta_seconds": null,
     "slack_notified": false,
     "slack_status": "",
     "slack_response_code": null,
     "slack_response_text": "",
-<<<<<<< HEAD
-    "failure_reason": "",
-    "timestamp": "2026-06-01T07:55:07.610157+00:00",
-    "category": "verification"
-  },
-  {
-    "scenario": "cpu_stress",
-    "category": "infra",
-    "start_time": "2026-06-02T03:37:16.711414+00:00",
-    "end_time": "2026-06-02T03:42:16.850046+00:00",
-    "status": "success",
-    "detail": ""
-  },
-  {
-    "scenario": "cpu_stress",
-    "alert_name": "HighCpuUsage",
-    "success": true,
-    "mttd_seconds": 36.7,
-=======
     "failure_reason": "메트릭 값(10.0000개)이 임계값(40.0000개)에 미달",
     "timestamp": "2026-06-01T18:33:37.176360+00:00",
     "category": "verification"
@@ -2502,62 +2452,57 @@
     "alert_name": "HighCpuUsage",
     "success": true,
     "mttd_seconds": 33.4,
->>>>>>> be9b129a1f28760660b195548f5915409c2e6463
     "mtta_seconds": 9.2,
     "slack_notified": true,
     "slack_status": "SUCCESS",
     "slack_response_code": 200,
     "slack_response_text": "",
     "failure_reason": "",
-<<<<<<< HEAD
-    "timestamp": "2026-06-02T03:38:03.791767+00:00",
-    "category": "verification"
-  },
-  {
-    "scenario": "cpu_stress",
-    "category": "infra",
-    "start_time": "2026-06-02T05:25:27.018684+00:00",
-    "end_time": "2026-06-02T05:30:54.052213+00:00",
-    "status": "success",
-    "detail": ""
-  },
-  {
-    "scenario": "cpu_stress",
-    "alert_name": "HighCpuUsage",
-    "success": true,
-    "mttd_seconds": 36.9,
-    "mtta_seconds": 8.7,
-    "slack_notified": true,
-    "slack_status": "SUCCESS",
-    "slack_response_code": 200,
-    "slack_response_text": "",
-    "failure_reason": "",
-    "timestamp": "2026-06-02T05:26:14.298866+00:00",
-    "category": "verification"
-  },
-  {
-    "scenario": "cpu_stress",
-    "category": "infra",
-    "start_time": "2026-06-02T05:25:29.375545+00:00",
-    "end_time": "2026-06-02T05:30:55.718127+00:00",
-    "status": "success",
-    "detail": ""
-  },
-  {
-    "scenario": "cpu_stress",
-    "alert_name": "HighCpuUsage",
-    "success": true,
-    "mttd_seconds": 33.7,
-    "mtta_seconds": 9.6,
-    "slack_notified": true,
-    "slack_status": "SUCCESS",
-    "slack_response_code": 200,
-    "slack_response_text": "",
-    "failure_reason": "",
-    "timestamp": "2026-06-02T05:26:13.427981+00:00",
-=======
     "timestamp": "2026-06-01T19:06:44.593044+00:00",
->>>>>>> be9b129a1f28760660b195548f5915409c2e6463
+    "category": "verification"
+  },
+  {
+    "scenario": "sql_injection",
+    "category": "security",
+    "start_time": "2026-06-02T06:39:42.670336+00:00",
+    "end_time": "2026-06-02T06:44:43.496217+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 854800, \"error_responses\": 52552, \"error_rate_pct\": 6.1, \"status_counts\": {\"404\": 4644, \"0\": 789115, \"200\": 13133, \"502\": 47908}, \"payloads_used\": 13, \"encoding\": \"none (raw payload for Loki pattern matching)\", \"note\": \"JPA Prepared Statement로 실제 주입 차단. Nginx 로그의 이상 패턴을 Loki Ruler가 탐지. Loki Ruler → Alertmanager → Pipeline 자동 흐름.\"}"
+  },
+  {
+    "scenario": "sql_injection",
+    "alert_name": "SQLInjectionAttempt",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-02T06:47:43.667322+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "sql_injection",
+    "category": "security",
+    "start_time": "2026-06-02T06:58:06.383867+00:00",
+    "end_time": "2026-06-02T07:03:06.408548+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 953100, \"error_responses\": 54906, \"error_rate_pct\": 5.8, \"status_counts\": {\"200\": 18500, \"0\": 879694, \"404\": 4180, \"502\": 50726}, \"payloads_used\": 13, \"encoding\": \"none (raw payload for Loki pattern matching)\", \"note\": \"JPA Prepared Statement로 실제 주입 차단. Nginx 로그의 이상 패턴을 Loki Ruler가 탐지. Loki Ruler → Alertmanager → Pipeline 자동 흐름.\"}"
+  },
+  {
+    "scenario": "sql_injection",
+    "alert_name": "SQLInjectionAttempt",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-02T07:06:06.697075+00:00",
     "category": "verification"
   }
 ]

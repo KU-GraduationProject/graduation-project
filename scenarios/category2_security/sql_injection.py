@@ -58,25 +58,24 @@ SQLI_PAYLOADS = [
     "' OR '1'='1",
     "' OR 1=1--",
     "'; DROP TABLE users;--",
-    "' UNION SELECT username, password FROM users--",
+    "' UNION SELECT username,password FROM users--",   # 공백 없애기
     "1' AND SLEEP(5)--",
     "' OR 'x'='x",
     "admin'--",
     "' OR 1=1#",
     "1; SELECT * FROM information_schema.tables--",
     "' AND extractvalue(1,concat(0x7e,(SELECT version())))--",
-    "' UNION SELECT null, table_name FROM information_schema.tables--",
+    "' UNION SELECT null,table_name FROM information_schema.tables--",  # 공백 없애기
     "' AND 1=1--",
     "' AND sleep(3)--",
 ]
 
-# 공격 대상: 인증 없이 접근 가능한 공개 엔드포인트
 SQLI_TARGETS = [
     "/api/v1/my-plants?userId={payload}",
     "/api/v1/schedules?plantId={payload}",
     "/api/dictionary/url?url={payload}",
     "/home?search={payload}",
-    "/login/kakao?code={payload}",
+    # "/login/kakao?code={payload}",  ← 제거 (OAuth 리다이렉트)
 ]
 
 _ssl_ctx = ssl.create_default_context()
@@ -218,47 +217,14 @@ def main():
     print(f"[*] Grafana 확인: http://localhost:3000")
     print(f"[*] Loki 쿼리: {{container=\"frontend\"}} |~ \"union select|or 1=1\"")
 
-<<<<<<< HEAD
-    # ── Loki 공격 로그 직접 푸시 ──────────────────────────────────────────────
-    import time as _time
-    import urllib.request as _ureq
-    ts_ns = str(int(_time.time() * 1_000_000_000))
-    loki_payload = json.dumps({
-        "streams": [{
-            "stream": {
-                "job": "security_simulation",
-                "attack_type": "sql_injection"
-            },
-            "values": [[ts_ns, f"[ATTACK] SQL injection attempt: total={total}, error_rate={round(error_total/max(total,1)*100,1)}%, payloads={len(SQLI_PAYLOADS)}"]]
-        }]
-    }).encode()
-    try:
-        req = _ureq.Request(
-            "http://localhost:3100/loki/api/v1/push",
-            data=loki_payload,
-            headers={"Content-Type": "application/json"},
-        )
-        _ureq.urlopen(req)
-        print("[*] Loki 공격 로그 푸시 완료")
-    except Exception as e:
-        print(f"[!] Loki 푸시 실패: {e}")
-
-    # ── MTTD: 실제 Nginx 접근 로그에서 sqlmap User-Agent 탐지 ─────────────────
-    # self-reporting 패턴 제거 — 실제 frontend 컨테이너 로그에서 탐지
-    mttd = verifier.verify_loki(
-        log_query='{container="frontend"}',
-        keyword="sqlmap",
-        timeout=120,
-=======
     # ── 3단계: Loki 로그 기반 MTTD 측정 ──────────────────────────────────────
     # Loki Ruler → Alertmanager → Pipeline 웹훅은 자동 전송됨
     # verify_loki()는 Nginx 로그에서 실제 SQLi 패턴 감지 시점으로 MTTD 측정
     print("\n[*] Loki SQLi 패턴 탐지 대기 중...")
     mttd = verifier.verify_loki(
         log_query='{container="frontend"}',
-        keyword="union select",   # URL 인코딩 안 된 원문 패턴
+        keyword="union",          # "union select" → "union" 으로 단순화
         timeout=180,
->>>>>>> be9b129a1f28760660b195548f5915409c2e6463
     )
 
     # ── 4단계: 결과 기록 ──────────────────────────────────────────────────────
