@@ -231,8 +231,18 @@ async def analyze_alerts(alerts: list[Alert]):
             }
             analysis_history.append(entry)
 
-            # 5. Loki 푸시 & 6. Remediation 전달 (여기서 Slack 전송됨)
+            # 5. Loki 푸시
             await push_to_loki(entry)
+
+            # [FIX] LLM 파싱 실패 fallback이면 remediation 스킵 → Slack 노이즈 차단
+            if result.confidence == 0.0 and result.action_type == "NONE":
+                logger.warning(
+                    f"[Pipeline] LLM 파싱 실패 fallback — remediation 스킵: "
+                    f"{alert.labels.alertname} / {container_name}"
+                )
+                continue
+
+            # 6. Remediation 전달 (여기서 Slack 전송됨)
             await forward_to_remediation(alert, result)
 
         except Exception as e:

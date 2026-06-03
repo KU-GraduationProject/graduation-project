@@ -189,61 +189,6 @@ def main():
         timeout=120,
     )
 
-<<<<<<< HEAD
-    # Loki 탐지 성공 시 Pipeline 웹훅 전송
-    if mttd is not None:
-        webhook_payload = json.dumps({
-            "version": "4",
-            "groupKey": "secret_dump",
-            "status": "firing",
-            "alerts": [{
-                "status": "firing",
-                "labels": {
-                    "alertname": "secret_dump",
-                    "severity": "critical",
-                    "container": "leafy-backend",
-                },
-                "annotations": {
-                    "summary": "환경변수 덤프 공격 탐지",
-                    "container": "leafy-backend",
-                },
-                "startsAt": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
-            }]
-        }).encode()
-        try:
-            req = _ureq.Request(
-                "http://localhost:8000/webhook/alert",
-                data=webhook_payload,
-                headers={"Content-Type": "application/json"},
-            )
-            _ureq.urlopen(req, timeout=5)
-            print("[*] Pipeline 웹훅 전송 완료")
-        except Exception as e:
-            print(f"[!] Pipeline 웹훅 전송 실패: {e}")
-
-    # secret_dump는 탐지 사각지대: Alert 없음, Pipeline 미연동
-    # Loki 자기 보고 후 즉시 탐지하는 패턴 제거 — blind spot 그대로 유지
-    print(f"\n[*] 시나리오 종료: {scenario} | 환경변수 덤프 {'성공' if any_success else '실패'}")
-    print("[*] 탐지 사각지대: 별도 Alert 없음 — Loki에서 수동 확인 필요")
-    print("[*] Grafana: http://localhost:3000  → Explore → Loki → {job='security_simulation'}")
-
-
-SCENARIO_META = {
-    "id":             "secret_dump",
-    "label":          "환경변수 덤프 (탐지 사각지대)",
-    "subtitle":       "env / printenv / /proc/1/environ  ·  alert 없음",
-    "category":       "보안",
-    "owasp":          "A02:2021",
-    "mitre":          "TA0006",
-    "container":      "leafy-backend",
-    "loki_container": "backend",
-    "alert_name":     "없음 (탐지 사각지대)",
-    "alert_fires":    False,
-    "blind_spot":     True,
-    "module":         "category2_security.secret_dump",
-    "custom_panel":   "secret_dump",
-}
-=======
     # ── 5단계: 결과 기록 ──────────────────────────────────────────────────────
     result = VerifyResult(
         success=mttd is not None,
@@ -260,7 +205,6 @@ SCENARIO_META = {
 
     print(f"\n[*] 시나리오 종료: {scenario}")
 
->>>>>>> be9b129a1f28760660b195548f5915409c2e6463
 
 if __name__ == "__main__":
     main()

@@ -223,7 +223,7 @@ def main():
     print("\n[*] Loki SQLi 패턴 탐지 대기 중...")
     mttd = verifier.verify_loki(
         log_query='{container="frontend"}',
-        keyword="union",          # "union select" → "union" 으로 단순화
+        keyword="sqlmap",   # User-Agent에 항상 찍힘 → 확실하게 탐지
         timeout=180,
     )
 

@@ -2504,5 +2504,71 @@
     "failure_reason": "",
     "timestamp": "2026-06-02T07:06:06.697075+00:00",
     "category": "verification"
+  },
+  {
+    "scenario": "sql_injection",
+    "category": "security",
+    "start_time": "2026-06-03T12:10:04.783262+00:00",
+    "end_time": "2026-06-03T12:15:08.707363+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 22000, \"error_responses\": 0, \"error_rate_pct\": 0.0, \"status_counts\": {\"0\": 22000}, \"payloads_used\": 13, \"encoding\": \"none (raw payload for Loki pattern matching)\", \"note\": \"JPA Prepared Statement로 실제 주입 차단. Nginx 로그의 이상 패턴을 Loki Ruler가 탐지. Loki Ruler → Alertmanager → Pipeline 자동 흐름.\"}"
+  },
+  {
+    "scenario": "sql_injection",
+    "alert_name": "SQLInjectionAttempt",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-03T12:18:11.934203+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "sql_injection",
+    "category": "security",
+    "start_time": "2026-06-03T12:19:30.502605+00:00",
+    "end_time": "2026-06-03T12:24:30.673809+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 158600, \"error_responses\": 9025, \"error_rate_pct\": 5.7, \"status_counts\": {\"0\": 146427, \"502\": 684, \"200\": 3148, \"404\": 8341}, \"payloads_used\": 13, \"encoding\": \"none (raw payload for Loki pattern matching)\", \"note\": \"JPA Prepared Statement로 실제 주입 차단. Nginx 로그의 이상 패턴을 Loki Ruler가 탐지. Loki Ruler → Alertmanager → Pipeline 자동 흐름.\"}"
+  },
+  {
+    "scenario": "sql_injection",
+    "alert_name": "SQLInjectionAttempt",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-03T12:27:30.748697+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "sql_injection",
+    "category": "security",
+    "start_time": "2026-06-03T12:33:51.236598+00:00",
+    "end_time": "2026-06-03T12:38:57.983472+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 151700, \"error_responses\": 8696, \"error_rate_pct\": 5.7, \"status_counts\": {\"0\": 140049, \"404\": 8696, \"200\": 2955}, \"payloads_used\": 13, \"encoding\": \"none (raw payload for Loki pattern matching)\", \"note\": \"JPA Prepared Statement로 실제 주입 차단. Nginx 로그의 이상 패턴을 Loki Ruler가 탐지. Loki Ruler → Alertmanager → Pipeline 자동 흐름.\"}"
+  },
+  {
+    "scenario": "sql_injection",
+    "alert_name": "SQLInjectionAttempt",
+    "success": true,
+    "mttd_seconds": 0.8,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-03T12:38:58.021315+00:00",
+    "category": "verification"
   }
 ]
