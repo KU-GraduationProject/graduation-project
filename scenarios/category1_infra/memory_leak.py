@@ -134,7 +134,7 @@ def main():
                 "state_before": state_before,
                 "state_after":  state_after,
             })
-
+#hi
         except docker.errors.APIError as e:
             print(f"  [!] API 오류: {e}", file=sys.stderr)
             events.append({"cycle": i, "cycle_start": cycle_start, "error": str(e)})

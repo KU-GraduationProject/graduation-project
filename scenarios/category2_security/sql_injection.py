@@ -25,9 +25,12 @@ OWASP A03:2021 - Injection / A05:2025 - Injection
 - Spring Boot가 요청 자체는 통과시키고 400/403 반환
   → Nginx 로그에 이상 패턴 기록됨
 
-탐지 포인트: SQLInjectionAttempt (Loki Ruler → Alertmanager → Pipeline)
-탐지 조건:  {container="frontend"} |~ "union select|or 1=1|drop table|sleep"
-AIOps 포인트: 이상 URL 패턴 + 에러율 급등 → LLM 분석 → NOTIFY 권고
+탐지 전략: Defense in Depth (NIST SP 800-94 / SANS 다층 탐지)
+탐지 포인트 1차: HighNginxErrorRate (Prometheus → Alertmanager → Pipeline)
+탐지 조건 1차:  rate(nginx_http_requests_total[1m]) > 30
+탐지 포인트 2차: SQLInjectionAttempt (Loki Ruler → Alertmanager → Pipeline)
+탐지 조건 2차:  {container="frontend"} |~ "union select|or 1=1|drop table|sleep"
+AIOps 포인트: 트래픽 급증 + SQLi 패턴 → LLM 분석 → NOTIFY/ISOLATE 권고
 """
 
 import ssl
@@ -143,10 +146,10 @@ def main():
     # ── 1단계: Verifier 초기화 ────────────────────────────────────────────────
     verifier = ScenarioVerifier(
         scenario_name="sql_injection",
-        alert_name="SQLInjectionAttempt",
+        alert_name="HighNginxErrorRate",
         hypothesis=(
-            "SQLi 패턴 페이로드 전송 시 Nginx 로그에 이상 패턴 기록 → "
-            "Loki SQLInjectionAttempt Alert 발화"
+            "SQLi 스캐너 트래픽 급증 → HighNginxErrorRate 1차 탐지 (Prometheus) / "
+            "Loki SQLi 패턴 2차 탐지 (Defense in Depth)"
         ),
     )
 
@@ -161,7 +164,8 @@ def main():
     print(f"[*] 대상: {TARGET_BASE}")
     print(f"[*] 동시 스레드: {WORKERS} / 지속: {DURATION_SEC}초")
     print(f"[*] ⚠ JPA Prepared Statement로 실제 주입 차단됨")
-    print(f"[*] 탐지 목표: Nginx 로그 이상 패턴 → Loki SQLInjectionAttempt 발화")
+    print(f"[*] 탐지 목표 1차: 트래픽 급증 → HighNginxErrorRate (Prometheus)")
+    print(f"[*] 탐지 목표 2차: SQLi 패턴 → SQLInjectionAttempt (Loki)")
     print(f"[*] URL 인코딩 없이 원문 페이로드 전송 (Loki 패턴 매칭을 위해)")
 
     start_time = datetime.now(timezone.utc).isoformat()
@@ -218,8 +222,8 @@ def main():
     print(f"[*] Loki 쿼리: {{container=\"frontend\"}} |~ \"union select|or 1=1\"")
 
     # ── 3단계: Loki 로그 기반 MTTD 측정 ──────────────────────────────────────
-    # Loki Ruler → Alertmanager → Pipeline 웹훅은 자동 전송됨
-    # verify_loki()는 Nginx 로그에서 실제 SQLi 패턴 감지 시점으로 MTTD 측정
+    # verify_loki()는 Loki에서 sqlmap User-Agent 감지 시점으로 MTTD 측정
+    # SQLInjectionAttempt (2차 탐지) 보완용
     print("\n[*] Loki SQLi 패턴 탐지 대기 중...")
     mttd = verifier.verify_loki(
         log_query='{container="frontend"}',

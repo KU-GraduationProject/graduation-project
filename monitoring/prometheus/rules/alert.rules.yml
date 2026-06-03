@@ -51,9 +51,11 @@ groups:
           summary: "컨테이너 재시작 감지"
           container: "{{ $labels.name }}"
 
-      # Mac Docker Desktop은 네트워크 메트릭이 per-container가 아닌 id="/" 수준만 제공.
-      # id 필터 제거 → Mac(id="/")·Linux/Windows(id="/docker/...") 모두 동작.
-      # name 라벨이 없는 환경(Mac)에서는 container 어노테이션이 비어 Pipeline 수동 분석 경로로 진입.
+      # [역할] DDoS/포트스캔 탐지 목적 — 실제 운영 환경 대응용
+      # [한계] Mac Docker Desktop에서 per-container 메트릭 미지원
+      #        name 라벨 없어서 Pipeline이 수동 분석 경로로 진입
+      # [시나리오] 직접 연결된 시나리오 없음 — 실제 공격 발생 시 탐지용
+      # [참고] id 필터 제거 → Mac(id="/")·Linux/Windows(id="/docker/...") 모두 동작
       - alert: HighNetworkReceive
         expr: >
           sum without(interface) (
@@ -67,16 +69,26 @@ groups:
           summary: "네트워크 수신량 급증 (잠재적 DDoS/스캔)"
           container: "{{ $labels.name }}"
 
-      - alert: HighNginxErrorRate
+      # [수정] alert 이름을 실제 측정값(요청량)에 맞게 변경
+      # Before: HighNginxErrorRate (에러율로 오해 유발)
+      # After:  HighNginxRequestRate (요청량 급증)
+      # 근거: NIST SP 800-137 — 알람명과 측정값 일치 원칙
+      #       LLM이 alert 이름 기반으로 분석하므로 이름 불일치 시 분석 방향 오염
+      # [시나리오] sql_injection.py — sqlmap 100 workers 대량 요청 → 발화
+      - alert: HighNginxRequestRate
         expr: rate(nginx_http_requests_total[1m]) > 30
         for: 30s
         labels:
           severity: warning
           category: security
         annotations:
-          summary: "Nginx 요청량 급증 (잠재적 SQLi/스캔)"
+          summary: "Nginx 요청량 급증 (잠재적 SQLi/DDoS/스캔)"
           container: "leafy-frontend"
 
+      # [역할] 실제 서비스 DB 과부하 탐지 목적 (연결 누수, 슬로우 쿼리 등)
+      # [참고] 브루트포스 탐지는 UnauthorizedDBAccess(Loki Ruler)가 담당
+      #        psql 브루트포스는 연결 즉시 해제라 이 룰 발화 불확실
+      #        lateral_movement/brute_force 시나리오에서는 발화 안 할 수 있음
       - alert: HighPostgresConnections
         expr: pg_stat_activity_count > 40
         for: 30s
@@ -84,5 +96,5 @@ groups:
           severity: warning
           category: security
         annotations:
-          summary: "PostgreSQL 동시 연결 수 과다"
+          summary: "PostgreSQL 동시 연결 수 과다 (서비스 과부하 또는 연결 누수)"
           container: "leafy-db"
