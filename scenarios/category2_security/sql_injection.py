@@ -230,14 +230,14 @@ def main():
     # ── 4단계: 결과 기록 ──────────────────────────────────────────────────────
     result = VerifyResult(
         success=mttd is not None,
-        alert_name="SQLInjectionAttempt",
+        alert_name="HighNginxErrorRate",   # ← 실제 발화하는 alert
         scenario_name="sql_injection",
         mttd_seconds=mttd,
     )
     verifier.log_result(result)
     # ↓ 추가
     from common.result_viewer import ResultViewer
-    ResultViewer("SQLInjectionAttempt", "sql_injection").show(
+    ResultViewer("HighNginxErrorRate", "sql_injection").show(
         mttd_seconds=result.mttd_seconds,
         mtta_seconds=result.mtta_seconds,
     )
