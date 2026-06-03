@@ -2380,7 +2380,6 @@
     "category": "verification"
   },
   {
-<<<<<<< HEAD
     "scenario": "db_bruteforce",
     "category": "security",
     "start_time": "2026-06-01T07:44:34.022006+00:00",
@@ -2405,12 +2404,10 @@
     "detail": "{\"mttd\": 0.0, \"mtta\": null}"
   },
   {
-    "scenario": "db_rce_cpu",
+    "scenario": "api_resource_abuse",
     "alert_name": "HighCpuUsage",
     "success": true,
     "mttd_seconds": 0.0,
-=======
-    "scenario": "api_resource_abuse",
     "category": "security",
     "start_time": "2026-06-01T18:28:36.975730+00:00",
     "end_time": "2026-06-01T18:33:37.130084+00:00",
@@ -2422,13 +2419,11 @@
     "alert_name": "HighPostgresConnections",
     "success": false,
     "mttd_seconds": null,
->>>>>>> be9b129a1f28760660b195548f5915409c2e6463
     "mtta_seconds": null,
     "slack_notified": false,
     "slack_status": "",
     "slack_response_code": null,
     "slack_response_text": "",
-<<<<<<< HEAD
     "failure_reason": "",
     "timestamp": "2026-06-01T07:55:07.610157+00:00",
     "category": "verification"
@@ -2446,7 +2441,6 @@
     "alert_name": "HighCpuUsage",
     "success": true,
     "mttd_seconds": 36.7,
-=======
     "failure_reason": "메트릭 값(10.0000개)이 임계값(40.0000개)에 미달",
     "timestamp": "2026-06-01T18:33:37.176360+00:00",
     "category": "verification"
@@ -2502,15 +2496,13 @@
     "alert_name": "HighCpuUsage",
     "success": true,
     "mttd_seconds": 33.4,
->>>>>>> be9b129a1f28760660b195548f5915409c2e6463
     "mtta_seconds": 9.2,
     "slack_notified": true,
     "slack_status": "SUCCESS",
     "slack_response_code": 200,
     "slack_response_text": "",
     "failure_reason": "",
-<<<<<<< HEAD
-    "timestamp": "2026-06-02T03:38:03.791767+00:00",
+    "timestamp": "2026-06-01T19:06:44.593044+00:00",
     "category": "verification"
   },
   {
@@ -2555,9 +2547,6 @@
     "slack_response_text": "",
     "failure_reason": "",
     "timestamp": "2026-06-02T05:26:13.427981+00:00",
-=======
-    "timestamp": "2026-06-01T19:06:44.593044+00:00",
->>>>>>> be9b129a1f28760660b195548f5915409c2e6463
     "category": "verification"
   }
 ]

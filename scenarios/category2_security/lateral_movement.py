@@ -245,7 +245,6 @@ def main():
     )
     verifier.log_result(result)
 
-<<<<<<< HEAD
 SCENARIO_META = {
     "id":             "lateral_movement",
     "label":          "컨테이너 횡적 이동",
@@ -261,15 +260,12 @@ SCENARIO_META = {
     "module":         "category2_security.lateral_movement",
     "custom_panel":   "lateral_movement",
 }
-
-=======
-    # ↓ 추가
-    from common.result_viewer import ResultViewer
-    ResultViewer("UnauthorizedDBAccess", "lateral_movement").show(
-        mttd_seconds=result.mttd_seconds,
-        mtta_seconds=result.mtta_seconds,
-    )
+# ↓ 추가
+from common.result_viewer import ResultViewer
+ResultViewer("UnauthorizedDBAccess", "lateral_movement").show(
+    mttd_seconds=result.mttd_seconds,
+    mtta_seconds=result.mtta_seconds,
+)
     
->>>>>>> be9b129a1f28760660b195548f5915409c2e6463
 if __name__ == "__main__":
     main()

@@ -46,7 +46,12 @@
       "Bash(curl -s \"http://localhost:3100/loki/api/v1/labels\")",
       "Bash(curl -s \"http://localhost:3100/loki/api/v1/label/container/values\")",
       "Bash(curl -s 'http://localhost:3100/loki/api/v1/query_range?query=%7Bcontainer%3D\"leafy-backend\"%7D&limit=2&start=0')",
-      "Bash(curl -s \"http://localhost:9090/api/v1/query?query=irate\\(container_cpu_usage_seconds_total%7Bcpu%3D%22total%22%7D%5B30s%5D\\)\")"
+      "Bash(curl -s \"http://localhost:9090/api/v1/query?query=irate\\(container_cpu_usage_seconds_total%7Bcpu%3D%22total%22%7D%5B30s%5D\\)\")",
+      "Bash(xargs cat)",
+      "mcp__35754306-5f3c-49fb-ba93-678f86f9408f__notion-search",
+      "mcp__35754306-5f3c-49fb-ba93-678f86f9408f__notion-fetch",
+      "mcp__35754306-5f3c-49fb-ba93-678f86f9408f__notion-create-pages",
+      "Bash(xargs ls -la)"
     ]
   }
 }

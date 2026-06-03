@@ -88,6 +88,30 @@ SCENARIO_REGISTRY = [
         "module": "category1_infra.redos_attack", "custom_panel": None,
     },
     {
+        "id": "cpu_spike_transient", "label": "CPU 급등 (일시적)",
+        "subtitle": "절반 코어 60초 dd  ·  서비스 생존  ·  THROTTLE 케이스",
+        "category": "인프라", "owasp": None, "mitre": None,
+        "container": "leafy-backend", "loki_container": "backend",
+        "alert_name": "HighCpuUsage", "alert_fires": True, "blind_spot": False,
+        "module": "category1_infra.cpu_spike_transient", "custom_panel": None,
+    },
+    {
+        "id": "memory_pressure_early", "label": "메모리 압박 (초기 단계)",
+        "subtitle": "/dev/shm 200MB 점유 → OOM 없음  ·  THROTTLE 케이스",
+        "category": "인프라", "owasp": None, "mitre": None,
+        "container": "leafy-backend", "loki_container": "backend",
+        "alert_name": "HighMemoryUsage", "alert_fires": True, "blind_spot": False,
+        "module": "category1_infra.memory_pressure_early", "custom_panel": None,
+    },
+    {
+        "id": "false_positive_cpu", "label": "CPU 오탐 (False Positive)",
+        "subtitle": "35초 버스트 → 정상화 후 수동 웹훅  ·  NONE 케이스",
+        "category": "인프라", "owasp": None, "mitre": None,
+        "container": "leafy-backend", "loki_container": "backend",
+        "alert_name": "HighCpuUsage", "alert_fires": False, "blind_spot": False,
+        "module": "category1_infra.false_positive_cpu", "custom_panel": None,
+    },
+    {
         "id": "brute_force", "label": "DB 브루트포스 + RCE",
         "subtitle": "postgres 1000회 → 크레덴셜 탈취 → COPY FROM PROGRAM",
         "category": "보안", "owasp": None, "mitre": "TA0006 + TA0002",
@@ -126,6 +150,24 @@ SCENARIO_REGISTRY = [
         "container": "leafy-backend", "loki_container": "leafy-backend",
         "alert_name": "없음 (탐지 사각지대)", "alert_fires": False, "blind_spot": True,
         "module": "category2_security.secret_dump", "custom_panel": "secret_dump",
+    },
+    {
+        "id": "suspicious_process_exec", "label": "의심 프로세스 실행",
+        "subtitle": "C2 연결 시도 + env 덤프  ·  PAUSE 케이스",
+        "category": "보안", "owasp": "A02:2021", "mitre": "T1059",
+        "container": "leafy-backend", "loki_container": "backend",
+        "alert_name": "SuspiciousProcessExec", "alert_fires": True, "blind_spot": False,
+        "module": "category2_security.suspicious_process_exec",
+        "custom_panel": "suspicious_process_exec",
+    },
+    {
+        "id": "container_escape_attempt", "label": "컨테이너 탈출 시도",
+        "subtitle": "host_fs + docker.sock + ns 탐색  ·  PAUSE 케이스",
+        "category": "보안", "owasp": "A05:2021", "mitre": "T1611",
+        "container": "leafy-backend", "loki_container": "backend",
+        "alert_name": "ContainerEscapeAttempt", "alert_fires": True, "blind_spot": False,
+        "module": "category2_security.container_escape_attempt",
+        "custom_panel": "container_escape_attempt",
     },
     {
         "id": "sql_injection", "label": "SQL Injection 스캐닝",
@@ -797,6 +839,98 @@ def custom_panel_lateral_movement(log_path: str):
                         border_style="red"))
 
 
+def custom_panel_suspicious_process_exec(log_path: str):
+    """C2 연결 시도 + 환경변수 덤프 공격 체인 표시"""
+    lines = []
+    if os.path.exists(log_path):
+        lines = [strip_ansi(l).strip() for l in open(log_path, encoding="utf-8", errors="replace")]
+
+    c2_line  = next((l for l in lines if "c2" in l.lower() or "curl" in l.lower()), None)
+    env_line = next((l for l in lines if "env_exfil" in l.lower() or "env_dump" in l.lower()), None)
+    recon    = next((l for l in lines if "recon" in l.lower()), None)
+
+    content = Text()
+    content.append("━━ 1단계: C2 아웃바운드 연결 시도 ━━━━━━━━━━━━━━━━━━━━━━━━━━\n", style="bold red")
+    content.append("  목표: 10.0.0.1:4444 (공격자 C2 서버)\n")
+    content.append("  방법: curl → /dev/tcp 폴백\n")
+    if c2_line:
+        content.append(f"  결과: {c2_line[:80]}\n", style="dim")
+    content.append("  → 로그에 'suspicious_outbound' 패턴 기록됨\n\n", style="dim green")
+
+    content.append("━━ 2단계: 환경변수 크리덴셜 탈취 ━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", style="bold yellow")
+    content.append("  printenv | grep -i 'password|secret|token|key'\n")
+    if env_line:
+        content.append(f"  → {env_line[:80]}\n", style="red")
+    content.append("  탈취 가능 크리덴셜: DB_PASSWORD, JWT_SECRET, SPRING_DATASOURCE_URL\n\n")
+
+    content.append("━━ 3단계: 프로세스 정찰 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", style="bold cyan")
+    content.append("  ps aux → 실행 중인 프로세스 목록 (횡적 이동 준비)\n")
+    if recon:
+        content.append(f"  → {recon[:80]}\n", style="dim")
+
+    content.append("\n━━ PAUSE vs ISOLATE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", style="bold magenta")
+    content.append("  ISOLATE: 네트워크 차단 (프로세스는 계속 실행)\n", style="yellow")
+    content.append("  PAUSE:   프로세스 동결 → 포렌식 증거 보존 ✅ 권장\n", style="bold green")
+    content.append("  이유: C2 연결 시도 + 크리덴셜 탈취 동시 = 포렌식 조사 필요\n", style="dim")
+
+    console.print(Panel(content,
+                        title="[bold red]🔴  의심 프로세스 실행 — PAUSE 조치 케이스[/bold red]",
+                        border_style="red"))
+
+
+def custom_panel_container_escape_attempt(log_path: str):
+    """컨테이너 탈출 시도 단계별 결과 표시"""
+    lines = []
+    if os.path.exists(log_path):
+        lines = [strip_ansi(l).strip() for l in open(log_path, encoding="utf-8", errors="replace")]
+
+    host_fs = next((l for l in lines if "host_fs" in l.lower()), None)
+    sock    = next((l for l in lines if "docker_sock" in l.lower()), None)
+    kernel  = next((l for l in lines if "kernel" in l.lower() or "sched" in l.lower()), None)
+    ns      = next((l for l in lines if "namespace" in l.lower() or "ns_list" in l.lower()), None)
+
+    def _status(line: str | None) -> tuple[str, str]:
+        if line is None:
+            return "실행 안됨", "dim"
+        if "accessible" in line.lower() or "mounted" in line.lower() or "readable" in line.lower():
+            return "접근 성공 ⚠", "bold red"
+        if "blocked" in line.lower() or "not_found" in line.lower() or "not_mounted" in line.lower():
+            return "차단됨 ✓", "green"
+        return "시도됨", "yellow"
+
+    content = Text()
+    content.append("━━ 탈출 시도 벡터 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n", style="bold red")
+
+    steps = [
+        ("/proc/1/root 접근",      "호스트 파일시스템 직접 마운트",  host_fs),
+        ("docker.sock 탐색",      "API로 새 컨테이너 생성 가능",    sock),
+        ("커널 정보 수집",         "/proc/sched_debug, uname",       kernel),
+        ("네임스페이스 열거",      "탈출 가능한 ns 탐색",            ns),
+    ]
+    for step, desc, line in steps:
+        status, color = _status(line)
+        content.append(f"  {step:<22s}", style="bold white")
+        content.append(f"  {status:<18s}", style=color)
+        content.append(f"  {desc}\n", style="dim")
+
+    sock_accessible = sock and ("mounted" in sock.lower() or "accessible" in sock.lower())
+    content.append("\n━━ 위험도 판단 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", style="bold yellow")
+    if sock_accessible:
+        content.append("  🔴 docker.sock 마운트됨 — 호스트 루트 탈취 가능\n", style="bold red")
+        content.append("  docker run --privileged -v /:/host ubuntu chroot /host\n", style="red")
+    else:
+        content.append("  🟡 docker.sock 없음 — 탈출 벡터 제한적\n", style="yellow")
+
+    content.append("\n━━ CVE 참조 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", style="bold cyan")
+    content.append("  CVE-2019-5736  runc /proc/1/fd 경유 호스트 runc 덮어쓰기\n")
+    content.append("  CVE-2024-21626 workdir 조작으로 호스트 파일 접근\n")
+    content.append("\n  → 적합한 조치: PAUSE (프로세스 동결 + 포렌식 보존)\n", style="bold green")
+
+    console.print(Panel(content,
+                        title="[bold red]🚨  컨테이너 탈출 시도 — PAUSE 조치 케이스[/bold red]",
+                        border_style="red"))
+
+
 def dispatch_custom_panel(meta: dict, log_path: str):
     key = meta.get("custom_panel")
     if key == "memory_leak":
@@ -809,6 +943,10 @@ def dispatch_custom_panel(meta: dict, log_path: str):
         custom_panel_secret_dump(log_path)
     elif key == "lateral_movement":
         custom_panel_lateral_movement(log_path)
+    elif key == "suspicious_process_exec":
+        custom_panel_suspicious_process_exec(log_path)
+    elif key == "container_escape_attempt":
+        custom_panel_container_escape_attempt(log_path)
 
 
 # ── 메인 파이프라인 ───────────────────────────────────────────────────────────

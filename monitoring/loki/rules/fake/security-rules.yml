@@ -40,4 +40,29 @@ groups:
         annotations:
           summary: "SQL Injection 시도 패턴 탐지"
           container: "leafy-frontend"
-          
+
+      - alert: SuspiciousProcessExec
+        expr: |
+          sum(count_over_time(
+            {container="backend"} |~ "suspicious_outbound" [2m]
+          )) > 0
+        for: 0m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "컨테이너 내부 의심 프로세스 실행 탐지 (C2 연결 시도)"
+          container: "leafy-backend"
+
+      - alert: ContainerEscapeAttempt
+        expr: |
+          sum(count_over_time(
+            {container="backend"} |~ "container_escape_attempt" [2m]
+          )) > 0
+        for: 0m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "컨테이너 탈출 시도 탐지 (host_fs/docker.sock 접근)"
+          container: "leafy-backend"

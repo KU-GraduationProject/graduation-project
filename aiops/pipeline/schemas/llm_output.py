@@ -20,7 +20,7 @@ class LLMAnalysisResult(BaseModel):
     )
     
     # ★ action을 구조화 필드로 분리
-    action_type: Literal["RESTART", "ISOLATE", "SCALE", "NOTIFY", "NONE"] = Field(
+    action_type: Literal["RESTART", "ISOLATE", "SCALE", "PAUSE", "THROTTLE", "NOTIFY", "NONE"] = Field(
         default="NONE",
         description="Action type for automated remediation"
     )
@@ -53,6 +53,10 @@ class LLMAnalysisResult(BaseModel):
                 values["action_type"] = "ISOLATE"
             elif "scale" in action_text:
                 values["action_type"] = "SCALE"
+            elif "pause" in action_text or "freeze" in action_text:
+                values["action_type"] = "PAUSE"
+            elif "throttle" in action_text or "limit" in action_text or "quota" in action_text:
+                values["action_type"] = "THROTTLE"
             elif "notify" in action_text or "alert" in action_text:
                 values["action_type"] = "NOTIFY"
             else:
@@ -70,7 +74,7 @@ class LLMAnalysisResult(BaseModel):
         if v is None:
             return "NONE"
         s = str(v).upper().strip()
-        return s if s in ("RESTART", "ISOLATE", "SCALE", "NOTIFY", "NONE") else "NONE"
+        return s if s in ("RESTART", "ISOLATE", "SCALE", "PAUSE", "THROTTLE", "NOTIFY", "NONE") else "NONE"
     
     @field_validator("action_targets", mode="before")
     @classmethod

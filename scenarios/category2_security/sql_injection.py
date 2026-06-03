@@ -218,7 +218,6 @@ def main():
     print(f"[*] Grafana 확인: http://localhost:3000")
     print(f"[*] Loki 쿼리: {{container=\"frontend\"}} |~ \"union select|or 1=1\"")
 
-<<<<<<< HEAD
     # ── Loki 공격 로그 직접 푸시 ──────────────────────────────────────────────
     import time as _time
     import urllib.request as _ureq
@@ -249,16 +248,6 @@ def main():
         log_query='{container="frontend"}',
         keyword="sqlmap",
         timeout=120,
-=======
-    # ── 3단계: Loki 로그 기반 MTTD 측정 ──────────────────────────────────────
-    # Loki Ruler → Alertmanager → Pipeline 웹훅은 자동 전송됨
-    # verify_loki()는 Nginx 로그에서 실제 SQLi 패턴 감지 시점으로 MTTD 측정
-    print("\n[*] Loki SQLi 패턴 탐지 대기 중...")
-    mttd = verifier.verify_loki(
-        log_query='{container="frontend"}',
-        keyword="union select",   # URL 인코딩 안 된 원문 패턴
-        timeout=180,
->>>>>>> be9b129a1f28760660b195548f5915409c2e6463
     )
 
     # ── 4단계: 결과 기록 ──────────────────────────────────────────────────────

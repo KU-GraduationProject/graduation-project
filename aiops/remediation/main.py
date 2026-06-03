@@ -56,7 +56,7 @@ async def execute_action(request: ActionRequest):
 
     # 2. 자동 실행 로직 (저위험 + 고신뢰)
     if action_risk == "low" and confidence >= 0.7:
-        if action_type in ["RESTART", "ISOLATE"]:
+        if action_type in ["RESTART", "ISOLATE", "PAUSE", "THROTTLE"]:
             # ✅ Fix: 버그 2 — 빈 targets이면 오탐 방지
             if not action_targets:
                 slack_dispatch = await notifier.send_approval_request(alert, analysis)
@@ -103,11 +103,17 @@ async def _execute(action_type: str, target: str) -> str:  # ✅ Fix: 버그 1 �
     loop = asyncio.get_event_loop()
     try:
         if action_type == "RESTART":
-            await loop.run_in_executor(None, container_actions.restart, target)  # ✅ Fix: 버그 1
+            await loop.run_in_executor(None, container_actions.restart, target)
             return f"Success: {target} restarted."
         elif action_type == "ISOLATE":
-            await loop.run_in_executor(None, container_actions.isolate, target)  # ✅ Fix: 버그 1
+            await loop.run_in_executor(None, container_actions.isolate, target)
             return f"Success: {target} isolated from network."
+        elif action_type == "PAUSE":
+            await loop.run_in_executor(None, container_actions.pause, target)
+            return f"Success: {target} paused (forensic preservation)."
+        elif action_type == "THROTTLE":
+            await loop.run_in_executor(None, container_actions.throttle, target)
+            return f"Success: {target} throttled (cpu_quota=50%)."
         else:
             return f"Skip: No handler for {action_type}"
     except Exception as e:

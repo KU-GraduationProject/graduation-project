@@ -189,7 +189,6 @@ def main():
         timeout=120,
     )
 
-<<<<<<< HEAD
     # Loki 탐지 성공 시 Pipeline 웹훅 전송
     if mttd is not None:
         webhook_payload = json.dumps({
@@ -243,24 +242,6 @@ SCENARIO_META = {
     "module":         "category2_security.secret_dump",
     "custom_panel":   "secret_dump",
 }
-=======
-    # ── 5단계: 결과 기록 ──────────────────────────────────────────────────────
-    result = VerifyResult(
-        success=mttd is not None,
-        alert_name="SecretDumpAttempt",
-        scenario_name="secret_dump",
-        mttd_seconds=mttd,
-    )
-    verifier.log_result(result)
-    from common.result_viewer import ResultViewer
-    ResultViewer("SecretDumpAttempt", "secret_dump").show(
-        mttd_seconds=result.mttd_seconds,
-        mtta_seconds=result.mtta_seconds,
-    )
-
-    print(f"\n[*] 시나리오 종료: {scenario}")
-
->>>>>>> be9b129a1f28760660b195548f5915409c2e6463
 
 if __name__ == "__main__":
     main()
