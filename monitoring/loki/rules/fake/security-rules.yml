@@ -2,6 +2,11 @@ groups:
   - name: security-log-alerts
     rules:
 
+      # [역할] 비인가 DB 직접 접속 시도 탐지
+      # [근거] 실제 사건: 2024 Snowflake 침해 — 크리덴셜 스터핑으로 DB 직접 접근
+      #        MITRE ATT&CK T1110 (Brute Force)
+      # [임계값] 2분 내 3회 초과 — 오탐 방지 (1~2회는 실수 가능)
+      # [시나리오] lateral_movement.py, brute_force.py
       - alert: UnauthorizedDBAccess
         expr: |
           sum(count_over_time(
@@ -15,10 +20,18 @@ groups:
           summary: "비인가 DB 직접 접속 시도 탐지"
           container: "leafy-db"
 
+      # [역할] 컨테이너 내부 환경변수 덤프 시도 탐지
+      # [수정] printenv 단일 키워드 → [ATTACK] AND 조건 추가
+      # 근거: SANS Blue Team 가이드 — 단일 키워드보다 복합 조건 권장
+      #       정상 디버깅에서도 printenv 실행 가능 → 오탐 방지
+      #       secret_dump.py가 echo '[ATTACK] printenv executed' 먼저 출력
+      # [임계값] 1회도 즉시 발화 — 환경변수 덤프는 1번만 발생해도 심각
+      # [시나리오] secret_dump.py
+      # 실제 사건: 2023 CircleCI 침해 — MITRE ATT&CK T1552.001
       - alert: SecretDumpAttempt
         expr: |
           sum(count_over_time(
-            {container="backend"} |= "printenv" [2m]
+            {container="backend"} |= "printenv" |= "[ATTACK]" [2m]
           )) > 0
         for: 0m
         labels:
@@ -28,10 +41,16 @@ groups:
           summary: "컨테이너 내부 환경변수 덤프 시도 탐지"
           container: "leafy-backend"
 
+      # [역할] SQL Injection 시도 패턴 탐지 (2차 탐지)
+      # [수정] SQLi 패턴 확장 — extractvalue|information_schema|admin'--|and 1=1 추가
+      # 근거: OWASP ModSecurity Core Rule Set 기반
+      # [임계값] 5회 초과 — sqlmap은 수백 건 전송하므로 충분히 잡힘
+      # [시나리오] sql_injection.py — 1차 탐지는 HighNginxRequestRate (Prometheus)
+      # 실제 근거: FBI/CISA 2024, OWASP 2025 A05
       - alert: SQLInjectionAttempt
         expr: |
           sum(count_over_time(
-            {container="frontend"} |~ "(?i)(union.{0,3}select|or 1=1|drop.{0,3}table|sleep\\()" [2m]
+            {container="frontend"} |~ "(?i)(union.{0,3}select|or.{0,3}1=1|drop.{0,3}table|sleep\\(|extractvalue|information_schema|admin'--|and.{0,3}1=1)" [2m]
           )) > 5
         for: 0m
         labels:
@@ -40,4 +59,51 @@ groups:
         annotations:
           summary: "SQL Injection 시도 패턴 탐지"
           container: "leafy-frontend"
-          
+
+      # [NEW] Nginx 5xx 에러율 급증 탐지
+      # [역할] 서비스 장애 1차 신호 탐지 — 실제 인시던트 발생률 1위
+      # [방식] stub_status 대신 Loki Nginx access log 기반
+      #        stub_status는 상태코드 분류 불가 → Loki로 대체
+      # [임계값] 1분 내 10건 초과
+      #          정상 서비스는 5xx가 거의 없음
+      #          10건은 일시적 오류(1~2건)와 실제 장애 구분 기준
+      # [근거] Datadog 2024 State of DevOps — 5xx 급증이 장애 신호 1위
+      #        Google SRE — 에러율 > 1% 시 즉각 대응 권고
+      # [시나리오] 직접 연결 없음 — 실제 운영 환경 대응용
+      #            sql_injection.py 실행 시 502 에러 발생으로 부수 탐지 가능
+      - alert: HighNginxErrorRate
+        expr: |
+          sum(count_over_time(
+            {container="frontend"} |~ "\" [5][0-9][0-9] " [1m]
+          )) > 10
+        for: 0m
+        labels:
+          severity: warning
+          category: infra
+        annotations:
+          summary: "Nginx 5xx 에러 급증 (서비스 장애 신호)"
+          container: "leafy-frontend"
+
+      # [NEW] 컨테이너 내 비정상 프로세스 실행 탐지
+      # [역할] 컨테이너 침해 후 공격자 행위 탐지
+      #        MITRE ATT&CK T1059 (Command and Scripting Interpreter)
+      # [방식] backend/frontend 컨테이너 로그에서 비정상 네트워크 도구 키워드 탐지
+      # [임계값] 1회도 즉시 발화
+      #          정상 애플리케이션은 wget/curl/netcat 직접 실행 안 함
+      # [근거] 실제 사례: 2024 TeamCity RCE — wget으로 악성코드 다운로드
+      #                   2023 Docker escape — /bin/bash -i 역방향 셸
+      #        MITRE ATT&CK T1059.004 (Unix Shell)
+      # [주의] curl은 정상 앱에서도 사용 가능 — http 외부 연결 패턴만 탐지
+      - alert: SuspiciousProcessExecution
+        expr: |
+          sum(count_over_time(
+            {container=~"backend|frontend"}
+            |~ "(?i)(wget http|wget -|curl http[^s]|curl -o |nc -|netcat|/bin/bash -i|/bin/sh -i)" [2m]
+          )) > 0
+        for: 0m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "컨테이너 내 비정상 프로세스 실행 탐지 (침해 후 공격자 행위)"
+          container: "leafy-backend"

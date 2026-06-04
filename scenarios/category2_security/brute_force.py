@@ -5,12 +5,28 @@ DB Brute Force + RCE Attack Simulation
 1단계 run_bruteforce():
   postgres 계정으로 패스워드 리스트 순환 브루트포스 (100회 반복)
   → PostgreSQL 로그에 'password authentication failed' 기록 → Loki 수집
+  → UnauthorizedDBAccess alert 발화 → MTTD 측정
 
 2단계 run_rce():
   leafy 계정(superuser)으로 COPY FROM PROGRAM 악용
-  → 컨테이너 내부 CPU 점유 프로세스 기동 → HighCpuUsage alert
+  → 컨테이너 내부 CPU 점유 프로세스 기동 → HighCpuUsage alert → MTTD 측정
 
 두 함수는 독립적으로 import 가능.
+
+[실제 사고 모티브]
+- 2024 BlackCat 랜섬웨어: 크레덴셜 스터핑 → 내부망 횡적 이동
+- 2023 MOVEit 공격: SQL 인젝션 초기 침투 → lateral movement
+- MITRE ATT&CK TA0006 (Credential Access) + TA0002 (Execution)
+
+[실제와의 차이]
+- 실제: 취약점 악용 → 크레덴셜 탈취 → RCE
+- 우리: postgres 계정 브루트포스(항상 실패) → leafy 계정으로 RCE
+  → 브루트포스 탐지 + RCE 탐지 두 단계 검증이 목적
+
+[설계 의도]
+- 1단계: UnauthorizedDBAccess (Loki) — 브루트포스 탐지 MTTD 측정
+- 2단계: HighCpuUsage (Prometheus) — RCE 탐지 MTTD 측정
+- 연쇄 공격의 각 단계별 탐지 성능을 독립적으로 측정
 """
 
 import json
@@ -22,7 +38,7 @@ import time
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from common.verifier import ScenarioVerifier
+from common.verifier import ScenarioVerifier, VerifyResult
 
 # ── 설정 ───────────────────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -85,15 +101,35 @@ def run_bruteforce() -> None:
     """
     postgres 계정으로 패스워드 리스트를 순환하며 브루트포스.
     BRUTE_ITERATIONS회 반복, 항상 인증 실패
-    → PostgreSQL 로그에 'password authentication failed' 기록.
+    → PostgreSQL 로그에 'password authentication failed' 기록
+    → UnauthorizedDBAccess alert 발화 → MTTD 측정
+
+    [탐지 경로]
+    psql 인증 실패 → PostgreSQL 로그 → Fluentd → Loki
+    → Loki Ruler (authentication failed 3회↑) → Alertmanager → Pipeline
     """
     scenario   = "db_bruteforce"
     start_time = datetime.now(timezone.utc).isoformat()
 
-    print(f"[*] 1단계: 브루트포스 시작")
+    # ── verifier 초기화 ──────────────────────────────────────────────────────
+    verifier = ScenarioVerifier(
+        scenario_name="db_bruteforce",
+        alert_name="UnauthorizedDBAccess",
+        hypothesis=(
+            "postgres 계정 브루트포스 → PostgreSQL 인증 실패 로그 누적 → "
+            "UnauthorizedDBAccess 발화 (Loki Ruler, 2분 내 3회↑)"
+        ),
+    )
+    verifier.check_steady_state()
+    verifier.print_hypothesis()
+    verifier.wait_for_alert_inactive(timeout=60, poll_interval=5)
+    verifier.start_timer()
+
+    print(f"\n[*] 1단계: 브루트포스 시작")
     print(f"[*] 대상: postgres 계정 @ {DB_CONTAINER}:5432")
     print(f"[*] 패스워드 {len(BRUTE_PASSWORDS)}개 × {BRUTE_ITERATIONS}회 = "
           f"{len(BRUTE_PASSWORDS) * BRUTE_ITERATIONS}회 시도 (전부 실패)")
+    print(f"[*] 탐지 목표: UnauthorizedDBAccess (Loki Ruler)")
 
     attempts_cmds = " ".join(
         f'PGPASSWORD="{p}" psql -h {DB_CONTAINER} -U postgres -d postgres '
@@ -138,6 +174,27 @@ echo "[brute] 종료: $i × {len(BRUTE_PASSWORDS)} = $((i * {len(BRUTE_PASSWORDS
     record_event(scenario, start_time, end_time, status,
                  f"iterations={BRUTE_ITERATIONS}, passwords={len(BRUTE_PASSWORDS)}")
 
+    # ── MTTD 측정 ────────────────────────────────────────────────────────────
+    print("\n[*] Loki 'authentication failed' 탐지 대기 중...")
+    mttd = verifier.verify_loki(
+        log_query='{container="leafy-db"}',
+        keyword="authentication failed",
+        timeout=180,
+    )
+
+    bf_result = VerifyResult(
+        success=mttd is not None,
+        alert_name="UnauthorizedDBAccess",
+        scenario_name="db_bruteforce",
+        mttd_seconds=mttd,
+    )
+    verifier.log_result(bf_result)
+    from common.result_viewer import ResultViewer
+    ResultViewer("UnauthorizedDBAccess", "db_bruteforce").show(
+        mttd_seconds=bf_result.mttd_seconds,
+        mtta_seconds=bf_result.mtta_seconds,
+    )
+
     # ── 크레덴셜 발견 시뮬레이션 ────────────────────────────────────────────
     global _cracked_password
     actual_password = os.getenv("DB_PASSWORD", "leafy_secret")
@@ -178,6 +235,10 @@ def run_rce() -> None:
     """
     leafy 계정(superuser)으로 COPY FROM PROGRAM을 악용해 CPU 점유 프로세스 기동.
     HighCpuUsage alert 발화 확인 후 RCE_DURATION_SEC 초 대기, dd 프로세스 정리.
+
+    [탐지 경로]
+    COPY FROM PROGRAM → dd 프로세스 → CPU 급등
+    → Prometheus HighCpuUsage → Alertmanager → Pipeline
     """
     scenario   = "db_rce_cpu"
     start_time = datetime.now(timezone.utc).isoformat()
@@ -210,6 +271,7 @@ def run_rce() -> None:
 
     print(f"[*] 2단계: RCE 시작 (COPY FROM PROGRAM)")
     print(f"[*] 대상: {DB_CONTAINER} / 계정: {DB_USER} (superuser)")
+    print(f"[*] 탐지 목표: HighCpuUsage (Prometheus)")
 
     # 테이블 준비
     for sql in [
@@ -243,11 +305,9 @@ def run_rce() -> None:
         print(f"  [!] pkill 실패 (무시): {e}")
 
     # 임시 테이블 정리
-    # ── 임시 테이블 정리 (수정 후)
-    time.sleep(2)  # ← 이 줄 추가 (pkill 후 DB 연결 안정화 대기)
+    time.sleep(2)  # pkill 후 DB 연결 안정화 대기
     rc, _ = _psql("DROP TABLE IF EXISTS abroxu;")
     print(f"  → DROP TABLE {'OK' if rc == 0 else f'FAIL(rc={rc})'}")
-
 
     end_time = datetime.now(timezone.utc).isoformat()
     record_event(scenario, start_time, end_time,
@@ -266,6 +326,8 @@ def run_rce() -> None:
 # ── 메인 ───────────────────────────────────────────────────────────────────────
 def main() -> None:
     print("[*] === DB Brute Force + RCE 시나리오 시작 ===")
+    print("[*] 1단계: UnauthorizedDBAccess 탐지 (Loki Ruler)")
+    print("[*] 2단계: HighCpuUsage 탐지 (Prometheus)")
     run_bruteforce()
     print()
     run_rce()
@@ -281,7 +343,8 @@ SCENARIO_META = {
     "mitre":          "TA0006 + TA0002",
     "container":      "leafy-db",
     "loki_container": "leafy-db",
-    "alert_name":     "HighCpuUsage",
+    # 1단계: UnauthorizedDBAccess (Loki) / 2단계: HighCpuUsage (Prometheus)
+    "alert_name":     "UnauthorizedDBAccess + HighCpuUsage",
     "alert_fires":    True,
     "blind_spot":     False,
     "module":         "category2_security.brute_force",
