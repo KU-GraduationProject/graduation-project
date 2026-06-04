@@ -44,18 +44,17 @@ analysis_history: deque = deque(maxlen=20)
 
 
 # ─── 백그라운드 태스크 ───────────────────────────────────
-
+# 이 부분은 시나리오 시작하면 주석처리 해야함.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """서버 시작 시 백그라운드 태스크 실행, 종료 시 정리"""
-    task1 = asyncio.create_task(periodic_log_check())
-    task2 = asyncio.create_task(periodic_llm_health())
-    logger.info("[Periodic] 백그라운드 태스크 시작: log_check(10분), llm_health(5분)")
+    # task1 = asyncio.create_task(periodic_log_check())
+    # task2 = asyncio.create_task(periodic_llm_health())
+    logger.info("[Periodic] 백그라운드 태스크 비활성화 (시나리오 테스트 모드)")
     yield
-    task1.cancel()
-    task2.cancel()
+    # task1.cancel()
+    # task2.cancel()
     logger.info("[Periodic] 백그라운드 태스크 종료")
-
 
 app = FastAPI(title="AIOps Pipeline", version="0.1.0", lifespan=lifespan)
 

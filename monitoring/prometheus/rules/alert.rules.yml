@@ -17,8 +17,9 @@ groups:
           sum by (name) (
             irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s])
             * on(id) group_left(name) container_name_info
-          )
-          > 0.5
+          ) > 0.5
+          and on(name)
+          container_name_info{name!~"ollama|cadvisor|node-exporter|prometheus|grafana|loki"}
         for: 30s
         labels:
           severity: warning
@@ -58,11 +59,12 @@ groups:
       #            secret_dump.py 실행 후 프로세스 정리 목적
       # [한계] changes() 함수는 값 변화만 감지 — 정상 재배포와 구분 불가
       #        AIOps Pipeline이 횟수/빈도로 이상/정상 판별
+      # 변경 후
       - alert: ContainerRestarted
         expr: >
           sum by (image) (
-            resets(container_cpu_usage_seconds_total{image=~".*leafy-backend.*", cpu="total"}[10m])
-          ) >= 3
+            resets(container_cpu_usage_seconds_total{image=~".*leafy-backend.*", cpu="total"}[5m])
+          ) >= 2
         for: 0m
         labels:
           severity: critical
@@ -84,10 +86,10 @@ groups:
         labels:
           severity: warning
           category: security
+        # 변경 후
         annotations:
           summary: "네트워크 수신량 급증 (잠재적 DDoS/스캔)"
-          container: "{{ $labels.name }}"
-
+          container: "unknown (host-level)"
       # [수정] alert 이름을 실제 측정값(요청량)에 맞게 변경
       # Before: HighNginxErrorRate (에러율로 오해 유발)
       # After:  HighNginxRequestRate (요청량 급증)

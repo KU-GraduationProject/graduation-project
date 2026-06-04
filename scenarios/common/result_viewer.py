@@ -82,9 +82,11 @@ class ResultViewer:
         return None
 
     def _fetch_llm_result(self) -> dict | None:
+        # 1차: alert 레이블로 정확히 조회
         query = f'{{job="aiops-llm",alert="{self.alert_name}"}}'
         streams = self._query_loki(query)
         if not streams:
+            # 2차 fallback: 전체 조회
             streams = self._query_loki('{job="aiops-llm"}')
 
         latest_entry = None
@@ -94,12 +96,14 @@ class ResultViewer:
             for ts_ns, line in stream.get("values", []):
                 try:
                     entry = json.loads(line)
-                    if entry.get("alert_name") == self.alert_name:
-                        ts = int(ts_ns) / 1e9
-                        if ts > latest_ts:
-                            latest_ts            = ts
-                            latest_entry         = entry
-                            latest_entry["_ts"]  = ts
+                    # ★ alert_name 필터를 latest_ts 비교 전에 먼저 적용
+                    if entry.get("alert_name") != self.alert_name:
+                        continue
+                    ts = int(ts_ns) / 1e9
+                    if ts > latest_ts:
+                        latest_ts           = ts
+                        latest_entry        = entry
+                        latest_entry["_ts"] = ts
                 except Exception:
                     continue
         return latest_entry

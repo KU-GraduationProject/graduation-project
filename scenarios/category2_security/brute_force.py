@@ -181,7 +181,7 @@ echo "[brute] 종료: $i × {len(BRUTE_PASSWORDS)} = $((i * {len(BRUTE_PASSWORDS
         keyword="authentication failed",
         timeout=180,
     )
-
+    
     bf_result = VerifyResult(
         success=mttd is not None,
         alert_name="UnauthorizedDBAccess",
@@ -286,10 +286,10 @@ def run_rce() -> None:
         "COPY abroxu FROM PROGRAM "
         "'for i in $(seq 1 $(nproc)); do dd if=/dev/zero of=/dev/null bs=1M & done';"
     )
-    rc, out = _psql(cpu_stress_sql)
-    print(f"  → COPY FROM PROGRAM {'OK — dd 프로세스 기동' if rc == 0 else f'FAIL(rc={rc})'}")
 
     verifier.start_timer()
+    rc, out = _psql(cpu_stress_sql)
+    print(f"  → COPY FROM PROGRAM {'OK — dd 프로세스 기동' if rc == 0 else f'FAIL(rc={rc})'}")
 
     # Alert 발화 확인 + MTTA 병렬 측정
     result = verifier.verify(timeout=RCE_DURATION_SEC + 60, poll_interval=3)
