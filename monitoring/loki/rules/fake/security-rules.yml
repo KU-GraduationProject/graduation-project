@@ -107,3 +107,40 @@ groups:
         annotations:
           summary: "컨테이너 내 비정상 프로세스 실행 탐지 (침해 후 공격자 행위)"
           container: "leafy-backend"
+      # [NEW] 무작위 취약점 스캐닝 탐지 (Reconnaissance)
+      # [역할] DirBuster, Nuclei, Nikto 등 자동화된 스캐너를 이용한 숨겨진 경로/취약점 탐색 감지
+      # [근거] 2021년 Log4j 사태 당시 글로벌 공격자들의 대규모 404 스캐닝 선행
+      #        MITRE ATT&CK TA0043 (Reconnaissance)
+      # [방식] Nginx 로그에서 400, 403, 404 에러(클라이언트 에러) 급증 감지
+      # [임계값] 1분 내 4xx 에러 50건 초과 (일반 사용자의 단순 오타와 스캐너의 속도를 구분)
+      - alert: VulnerabilityScanningDetected
+        expr: |
+          sum(count_over_time(
+            {container="frontend"} |~ "\" [4][0-9][0-9] " [1m]
+          )) > 50
+        for: 0m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "웹 서버 4xx 에러 급증 (자동화된 취약점 스캐닝/디렉토리 탐색 의심)"
+          container: "leafy-frontend"
+
+      # [NEW] 경로 탐색 및 민감 파일 접근 시도 (Path Traversal / LFI)
+      # [역할] 공격자가 ../ 패턴을 이용해 웹 디렉토리를 벗어나 OS 민감 파일을 읽으려는 시도 탐지
+      # [근거] 2023-2024년 Fortinet, Ivanti 등 주요 VPN/보안장비 침해 사고의 핵심 공격 벡터
+      #        OWASP Top 10 A01 (Broken Access Control)
+      # [방식] URI에 디렉토리 이동(../, ..\)이나 환경변수(.env), OS 패스워드(/etc/passwd) 포함 감지
+      # [임계값] 1회라도 발생 시 즉시 발화 (정상적인 사용자는 절대 접근하지 않는 패턴)
+      - alert: PathTraversalAttempt
+        expr: |
+          sum(count_over_time(
+            {container="frontend"} |~ "(?i)(\\.\\.\\/|\\.\\.\\\\|/etc/passwd|\\.env|/\\.git/)" [2m]
+          )) > 0
+        for: 0m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "경로 탐색(Path Traversal) 및 민감 파일 접근 시도 탐지"
+          container: "leafy-frontend"

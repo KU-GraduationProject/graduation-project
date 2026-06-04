@@ -79,16 +79,17 @@ def main():
     verifier = ScenarioVerifier(
         scenario_name="container_oom_restart",
         alert_name="ContainerRestarted",
+
         hypothesis=(
             "leafy-backend 컨테이너 반복 재시작 시 "
             "ContainerRestarted Alert 발화 및 AIOps 탐지"
         ),
+
         steady_state_query=(
-            'changes(container_start_time_seconds'
-            '{id=~"/docker/.+"}[5m])'
+            'sum(resets(container_cpu_usage_seconds_total{image=~".*leafy-backend.*", cpu="total"}[10m]))'
         ),
         steady_state_threshold=1.0,
-        metric_label="컨테이너 재시작 횟수 (5분)",
+        metric_label="컨테이너 재시작 횟수 (10분)",
         metric_unit="회",
         metric_scale=1.0,
     )
@@ -136,7 +137,7 @@ def main():
                 time.sleep(3)
 
             state_before = container.status
-            container.restart(timeout=0)   # 즉시 강제 재시작 (SIGKILL)
+            container.restart(timeout=1)
             print(f"  → 재시작 완료 (이전 상태: {state_before})")
 
             time.sleep(3)

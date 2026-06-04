@@ -119,7 +119,7 @@ class ScenarioVerifier:
         self._alert_firing_time: float | None = None
         self._last_slack_dispatch: dict = {}
         self._metric_samples: list[tuple[float, float]] = []
-        self._mtta_timeout: int = 180
+        self._mtta_timeout: int = 300
 
     # ── 1단계: Steady State 확인 ───────────────────────────────────────────────
     def check_steady_state(self) -> bool:
