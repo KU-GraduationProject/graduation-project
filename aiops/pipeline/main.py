@@ -42,6 +42,8 @@ PERIODIC_CACHE_TTL = 3600  # 1시간
 # 최근 분석 결과 저장 (최대 20건)
 analysis_history: deque = deque(maxlen=20)
 
+# ─── LLM 동시 호출 제한 ─────────────────────────────────
+_llm_semaphore = asyncio.Semaphore(1)
 
 # ─── 백그라운드 태스크 ───────────────────────────────────
 # 이 부분은 시나리오 시작하면 주석처리 해야함.
@@ -242,7 +244,8 @@ async def analyze_alerts(alerts: list[Alert]):
             )
 
             # 3. LLM 호출
-            result: LLMAnalysisResult = await call_llm(prompt)
+            async with _llm_semaphore:
+                result: LLMAnalysisResult = await call_llm(prompt)
             logger.info(f"[Pipeline] LLM 분석 완료: {result.model_dump()}")
 
             # 4. 결과 저장
