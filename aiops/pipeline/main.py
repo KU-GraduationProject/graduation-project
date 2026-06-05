@@ -1,8 +1,13 @@
 """
 AIOps Pipeline Module
 AlertManager 웹훅 수신 → 데이터 수집 → 프롬프트 조립 → LLM 호출 → 결과 반환
+
+[추가] 백그라운드 태스크 2개
+  1. periodic_log_check()   — 10분마다 앱 로그 이상탐지 (Alert 없어도 동작)
+  2. periodic_llm_health()  — 5분마다 LLM 분석 결과 품질 모니터링
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ValidationError
@@ -25,14 +30,36 @@ from config import settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="AIOps Pipeline", version="0.1.0")
+# ─── 중복 Alert 필터 ────────────────────────────────────
+DEDUP_WINDOW_SEC = 300
+_recent_alerts: dict[str, float] = {}
+
+# ─── 주기적 스캔 중복 알림 방지 캐시 ───────────────────
+# 같은 이상을 1시간 내 재전송 안 함
+_periodic_alert_cache: dict[str, float] = {}
+PERIODIC_CACHE_TTL = 3600  # 1시간
 
 # 최근 분석 결과 저장 (최대 20건)
 analysis_history: deque = deque(maxlen=20)
 
-# ─── 중복 Alert 필터 ────────────────────────────────────
-DEDUP_WINDOW_SEC = 300
-_recent_alerts: dict[str, float] = {}
+# ─── LLM 동시 호출 제한 ─────────────────────────────────
+_llm_semaphore = asyncio.Semaphore(1)
+
+# ─── 백그라운드 태스크 ───────────────────────────────────
+# 이 부분은 시나리오 시작하면 주석처리 해야함.
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """서버 시작 시 백그라운드 태스크 실행, 종료 시 정리"""
+    # task1 = asyncio.create_task(periodic_log_check())
+    # task2 = asyncio.create_task(periodic_llm_health())
+    logger.info("[Periodic] 백그라운드 태스크 비활성화 (시나리오 테스트 모드)")
+    yield
+    # task1.cancel()
+    # task2.cancel()
+    logger.info("[Periodic] 백그라운드 태스크 종료")
+
+app = FastAPI(title="AIOps Pipeline", version="0.1.0", lifespan=lifespan)
+
 
 # ─── AlertManager 웹훅 스키마 ───────────────────────────
 class AlertLabel(BaseModel):
@@ -126,7 +153,6 @@ async def receive_alert(payload: AlertManagerWebhook, background_tasks: Backgrou
 # ─── 핵심 파이프라인 ──────────────────────────────────────
 
 async def _resolve_top_cpu_container() -> str | None:
-    """Prometheus에서 현재 CPU 사용률이 가장 높은 컨테이너 name 라벨을 반환."""
     query = 'topk(1, sum(irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s])) by (name))'
     try:
         async with httpx.AsyncClient(timeout=5) as client:
@@ -193,9 +219,8 @@ async def analyze_alerts(alerts: list[Alert]):
                     await push_to_loki(entry)
                 except Exception:
                     pass
-                continue  # [FIX] Slack/Remediation 전송 안 함
+                continue
 
-            # [FIX] LLM 전 PENDING 알림 제거 — 노이즈만 유발
             logger.info(f"[Pipeline] LLM 분석 시작: {alert.labels.alertname} / {container_name}")
 
             # 1. 메트릭/로그 수집
@@ -219,7 +244,8 @@ async def analyze_alerts(alerts: list[Alert]):
             )
 
             # 3. LLM 호출
-            result: LLMAnalysisResult = await call_llm(prompt)
+            async with _llm_semaphore:
+                result: LLMAnalysisResult = await call_llm(prompt)
             logger.info(f"[Pipeline] LLM 분석 완료: {result.model_dump()}")
 
             # 4. 결과 저장
@@ -231,17 +257,470 @@ async def analyze_alerts(alerts: list[Alert]):
             }
             analysis_history.append(entry)
 
-            # 5. Loki 푸시 & 6. Remediation 전달 (여기서 Slack 전송됨)
+            # 5. Loki 푸시
             await push_to_loki(entry)
+
+            # [FIX] LLM 파싱 실패 fallback이면 remediation 스킵 → Slack 노이즈 차단
+            if result.confidence == 0.0 and result.action_type == "NONE":
+                logger.warning(
+                    f"[Pipeline] LLM 파싱 실패 fallback — remediation 스킵: "
+                    f"{alert.labels.alertname} / {container_name}"
+                )
+                continue
+
+            # 6. Remediation 전달 (여기서 Slack 전송됨)
             await forward_to_remediation(alert, result)
 
         except Exception as e:
-            # [FIX] 파싱 실패는 Slack 전송 안 함 — Loki 로그만
             logger.error(f"[Pipeline] 분석 실패 ({alert.labels.alertname}): {e}")
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# 백그라운드 태스크 1 — 주기적 앱 로그 이상탐지
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# 주기적 스캔용 시스템 프롬프트
+PERIODIC_SCAN_SYSTEM_PROMPT = """You are an AIOps security analyst. Analyze recent container logs and detect anomalies. Respond in JSON only.
+
+SCHEMA:
+{
+  "is_healthy": true/false,
+  "issues": ["<issue description>", ...],
+  "affected_containers": ["<container name>", ...],
+  "recommendation": "<one sentence action>",
+  "action_type": "<RESTART|ISOLATE|SCALE|NOTIFY|NONE>",
+  "action_targets": ["<container name>", ...],
+  "threat_level": "<low|medium|high|critical>",
+  "action_risk": "<low|medium|high>",
+  "confidence": <0.0-1.0>
+}
+
+DETECTION CRITERIA:
+- ERROR/FATAL logs > 20 in 10 minutes → application issue
+- authentication failed > 3 → brute force attempt
+- sqlmap/union select/or 1=1 keyword → SQLi attack
+- OOM/OutOfMemory keyword → memory issue
+- If logs are normal → is_healthy: true, action_type: NONE
+"""
+
+async def periodic_log_check() -> None:
+    """
+    10분마다 leafy-backend/frontend/db 로그를 조회하여 이상 감지.
+    Alert 없어도 동작 — AlertManager가 못 잡는 이상 탐지 목적.
+
+    근거: NIST SP 800-137 Continuous Monitoring
+    """
+    # 서버 시작 직후 바로 실행하지 않고 1분 대기 (시스템 안정화)
+    await asyncio.sleep(60)
+
+    while True:
+        try:
+            logger.info("[Periodic] 앱 로그 이상탐지 스캔 시작")
+            now_ts = time.time()
+            window_sec = 600  # 10분
+
+            # 모니터링 대상 컨테이너 (Fluentd tag 기준)
+            targets = ["backend", "frontend", "leafy-db"]
+
+            for container in targets:
+                try:
+                    # Loki에서 최근 10분 로그 조회
+                    logs = await _fetch_loki_logs(container, window_sec)
+                    if not logs:
+                        continue
+
+                    # 1차 필터: 키워드 기반 빠른 체크
+                    all_lines = " ".join(l.get("line", "") for l in logs).lower()
+                    has_issue = (
+                        all_lines.count("error") > 20
+                        or all_lines.count("fatal") > 5
+                        or all_lines.count("authentication failed") > 3
+                        or any(kw in all_lines for kw in ["sqlmap", "union select", "or 1=1"])
+                        or all_lines.count("outofmemory") > 0
+                    )
+
+                    if not has_issue:
+                        continue
+
+                    # 2차: LLM 분석
+                    log_summary = "\n".join(
+                        f"[{l.get('labels', {}).get('container', '?')}] {l.get('line', '')[:200]}"
+                        for l in logs[:50]
+                    )
+                    prompt = {
+                        "system": PERIODIC_SCAN_SYSTEM_PROMPT,
+                        "user": (
+                            f"Container: {container}\n"
+                            f"Time window: last 10 minutes\n"
+                            f"Log count: {len(logs)}\n\n"
+                            f"=== LOGS ===\n{log_summary}\n\n"
+                            f"Analyze and respond with JSON only."
+                        ),
+                    }
+
+                    raw_result = await _call_llm_raw(prompt)
+                    if not raw_result:
+                        continue
+
+                    is_healthy = raw_result.get("is_healthy", True)
+                    if is_healthy:
+                        continue
+
+                    # 이상 감지 → 중복 캐시 체크
+                    issues = raw_result.get("issues", [])
+                    issue_key = f"periodic_log:{container}:{raw_result.get('threat_level', 'unknown')}"
+                    last_sent = _periodic_alert_cache.get(issue_key, 0)
+                    if now_ts - last_sent < PERIODIC_CACHE_TTL:
+                        logger.info(f"[Periodic] 중복 알림 스킵: {issue_key}")
+                        continue
+
+                    _periodic_alert_cache[issue_key] = now_ts
+
+                    # Slack 버튼 알림 전송
+                    await send_periodic_slack(
+                        issue_key=issue_key,
+                        container=container,
+                        issues=issues,
+                        raw_result=raw_result,
+                        source="periodic_log_scan",
+                    )
+                    logger.warning(f"[Periodic] 이상 감지 → Slack 전송: {container} / {issues}")
+
+                except Exception as e:
+                    logger.error(f"[Periodic] 컨테이너 {container} 스캔 실패: {e}")
+
+        except Exception as e:
+            logger.error(f"[Periodic] 앱 로그 스캔 전체 실패: {e}")
+
+        await asyncio.sleep(600)  # 10분 대기
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 백그라운드 태스크 2 — LLM 분석 결과 품질 모니터링 (헬스체크)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+PERIODIC_LLM_HEALTH_PROMPT = """You are an AIOps system health analyst. Review recent LLM analysis results and determine if the AIOps system itself is healthy. Respond in JSON only.
+
+SCHEMA:
+{
+  "is_healthy": true/false,
+  "issues": ["<issue description>", ...],
+  "recommendation": "<one sentence>",
+  "severity": "<low|medium|high>"
+}
+
+DETECTION CRITERIA:
+- confidence=0.0 appears 3+ times → LLM parsing failure loop
+- threat_level=high/critical appears 2+ times → ongoing attack
+- Same container appears 3+ times → unresolved issue
+- action_type=NONE dominates → LLM not making decisions
+"""
+
+async def periodic_llm_health() -> None:
+    """
+    5분마다 Loki {job="aiops-llm"} 결과를 조회하여 LLM 자체 상태 모니터링.
+
+    탐지 대상:
+    - LLM 파싱 실패 반복 (confidence=0.0 연속)
+    - 시스템 위험 신호 (threat_level=high/critical 연속)
+    - 특정 컨테이너 반복 이상 (미해결 문제 지속)
+
+    근거: NIST SP 800-137 — 모니터링 시스템 자체도 모니터링 대상
+    """
+    await asyncio.sleep(120)  # 2분 대기 후 시작
+
+    while True:
+        try:
+            logger.info("[Periodic] LLM 헬스체크 시작")
+            now_ts = time.time()
+            window_sec = 300  # 5분
+
+            # Loki에서 최근 5분 LLM 분석 결과 조회
+            entries = await _fetch_loki_aiops_results(window_sec)
+            if not entries:
+                logger.info("[Periodic] LLM 헬스체크: 최근 분석 결과 없음")
+                await asyncio.sleep(300)
+                continue
+
+            # 1차 필터
+            low_confidence = sum(1 for e in entries if e.get("result", {}).get("confidence", 1.0) == 0.0)
+            high_threat    = sum(1 for e in entries if e.get("result", {}).get("threat_level") in ("high", "critical"))
+            container_counts: dict[str, int] = {}
+            for e in entries:
+                c = e.get("container", "unknown")
+                container_counts[c] = container_counts.get(c, 0) + 1
+            repeated_container = [c for c, cnt in container_counts.items() if cnt >= 3]
+
+            has_issue = (
+                low_confidence >= 3
+                or high_threat >= 2
+                or len(repeated_container) > 0
+            )
+
+            if not has_issue:
+                logger.info("[Periodic] LLM 헬스체크: 정상")
+                await asyncio.sleep(300)
+                continue
+
+            # 2차: LLM 분석
+            summary = json.dumps(entries[:20], ensure_ascii=False)
+            prompt = {
+                "system": PERIODIC_LLM_HEALTH_PROMPT,
+                "user": (
+                    f"Recent LLM analysis results (last 5 minutes, {len(entries)} entries):\n\n"
+                    f"{summary}\n\n"
+                    f"Quick stats:\n"
+                    f"- Low confidence (0.0): {low_confidence} cases\n"
+                    f"- High/critical threat: {high_threat} cases\n"
+                    f"- Repeated containers: {repeated_container}\n\n"
+                    f"Analyze and respond with JSON only."
+                ),
+            }
+
+            raw_result = await _call_llm_raw(prompt)
+            if not raw_result:
+                await asyncio.sleep(300)
+                continue
+
+            is_healthy = raw_result.get("is_healthy", True)
+            if is_healthy:
+                logger.info("[Periodic] LLM 헬스체크: LLM 정상 판단")
+                await asyncio.sleep(300)
+                continue
+
+            # 이상 감지 → 중복 캐시 체크
+            issue_key = f"llm_health:{raw_result.get('severity', 'unknown')}"
+            last_sent = _periodic_alert_cache.get(issue_key, 0)
+            if now_ts - last_sent < PERIODIC_CACHE_TTL:
+                logger.info(f"[Periodic] LLM 헬스 중복 알림 스킵")
+                await asyncio.sleep(300)
+                continue
+
+            _periodic_alert_cache[issue_key] = now_ts
+
+            # Slack 버튼 알림 전송
+            await send_periodic_slack(
+                issue_key=issue_key,
+                container="aiops-pipeline",
+                issues=raw_result.get("issues", []),
+                raw_result={
+                    "is_healthy":     False,
+                    "action_type":    "NOTIFY",
+                    "action_targets": ["aiops-pipeline"],
+                    "threat_level":   raw_result.get("severity", "medium"),
+                    "action_risk":    "medium",
+                    "confidence":     0.8,
+                    "recommendation": raw_result.get("recommendation", ""),
+                },
+                source="llm_health_check",
+            )
+            logger.warning(f"[Periodic] LLM 헬스 이상 감지 → Slack 전송")
+
+        except Exception as e:
+            logger.error(f"[Periodic] LLM 헬스체크 실패: {e}")
+
+        await asyncio.sleep(300)  # 5분 대기
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 주기적 스캔 헬퍼 함수
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _fetch_loki_logs(container: str, window_sec: int) -> list[dict]:
+    """Loki에서 특정 컨테이너의 최근 N초 로그 조회"""
+    try:
+        end_ns   = int(time.time() * 1_000_000_000)
+        start_ns = end_ns - int(window_sec * 1_000_000_000)
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{settings.loki_url}/loki/api/v1/query_range",
+                params={
+                    "query":     f'{{container="{container}"}}',
+                    "start":     start_ns,
+                    "end":       end_ns,
+                    "limit":     200,
+                    "direction": "forward",
+                },
+            )
+            data = resp.json()
+            results = []
+            for stream in data.get("data", {}).get("result", []):
+                labels = stream.get("stream", {})
+                for ts_ns, line in stream.get("values", []):
+                    results.append({"ts": ts_ns, "line": line, "labels": labels})
+            return results
+    except Exception as e:
+        logger.warning(f"[Periodic] Loki 로그 조회 실패 ({container}): {e}")
+        return []
+
+
+async def _fetch_loki_aiops_results(window_sec: int) -> list[dict]:
+    """Loki {job='aiops-llm'}에서 최근 N초 LLM 분석 결과 조회"""
+    try:
+        end_ns   = int(time.time() * 1_000_000_000)
+        start_ns = end_ns - int(window_sec * 1_000_000_000)
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{settings.loki_url}/loki/api/v1/query_range",
+                params={
+                    "query":     '{job="aiops-llm"}',
+                    "start":     start_ns,
+                    "end":       end_ns,
+                    "limit":     50,
+                    "direction": "forward",
+                },
+            )
+            data = resp.json()
+            entries = []
+            for stream in data.get("data", {}).get("result", []):
+                for ts_ns, line in stream.get("values", []):
+                    try:
+                        entries.append(json.loads(line))
+                    except Exception:
+                        pass
+            return entries
+    except Exception as e:
+        logger.warning(f"[Periodic] Loki aiops-llm 조회 실패: {e}")
+        return []
+
+
+async def _call_llm_raw(prompt: dict) -> dict | None:
+    """주기적 스캔 전용 LLM 호출 — 결과를 dict로 반환"""
+    try:
+        async with httpx.AsyncClient(timeout=settings.llm_timeout) as client:
+            response = await client.post(
+                f"{settings.ollama_url}/api/chat",
+                json={
+                    "model": settings.llm_model,
+                    "messages": [
+                        {"role": "system", "content": prompt["system"]},
+                        {"role": "user",   "content": prompt["user"]},
+                    ],
+                    "format": "json",
+                    "stream": False,
+                },
+            )
+            response.raise_for_status()
+            raw = response.json()["message"]["content"]
+            return json.loads(raw)
+    except Exception as e:
+        logger.error(f"[Periodic] LLM 호출 실패: {e}")
+        return None
+
+
+async def send_periodic_slack(
+    issue_key: str,
+    container: str,
+    issues: list[str],
+    raw_result: dict,
+    source: str,
+) -> None:
+    """
+    주기적 스캔 이상 감지 시 Slack Block Kit 버튼 알림 전송.
+    source 필드를 버튼 value에 포함 → remediation이 출처 구분 가능.
+    """
+    if not settings.slack_webhook_url:
+        logger.debug("[Periodic] SLACK_WEBHOOK_URL 미설정, 스킵")
+        return
+
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    threat_level  = raw_result.get("threat_level", "unknown")
+    action_type   = raw_result.get("action_type", "NOTIFY")
+    action_targets = raw_result.get("action_targets", [container])
+    confidence    = raw_result.get("confidence", 0.0)
+    recommendation = raw_result.get("recommendation", "-")
+
+    # 버튼 value — source 포함하여 remediation이 출처 구분
+    action_payload = json.dumps({
+        "alertname":      issue_key,
+        "action_type":    action_type,
+        "action_targets": action_targets,
+        "source":         source,  # "periodic_log_scan" | "llm_health_check"
+    }, ensure_ascii=False)
+
+    source_label = {
+        "periodic_log_scan": "🔍 정기 로그 스캔",
+        "llm_health_check":  "🤖 LLM 헬스체크",
+    }.get(source, source)
+
+    issue_text = "\n".join(f"• {i}" for i in issues) if issues else "N/A"
+
+    payload = {
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f":rotating_light: *[APPROVAL REQUIRED]* `{container}` — {source_label}",
+                }
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*발생 시각*\n{timestamp}"},
+                    {"type": "mrkdwn", "text": f"*Threat Level*\n{threat_level}"},
+                    {"type": "mrkdwn", "text": f"*Confidence*\n{confidence:.2f}"},
+                    {"type": "mrkdwn", "text": f"*Container*\n{container}"},
+                    {"type": "mrkdwn", "text": f"*권고 조치*\n{recommendation}"},
+                    {"type": "mrkdwn", "text": f"*Issues*\n{issue_text}"},
+                ],
+            },
+            {"type": "divider"},
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "✅ Approve", "emoji": True},
+                        "style": "primary",
+                        "action_id": "approve_action",
+                        "value": action_payload,
+                        "confirm": {
+                            "title": {"type": "plain_text", "text": "조치를 승인하시겠습니까?"},
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": (
+                                    f"*{action_type}* 조치를 실행합니다.\n"
+                                    f"대상: `{'`, `'.join(action_targets) if action_targets else 'N/A'}`\n"
+                                    f"출처: {source_label}"
+                                ),
+                            },
+                            "confirm": {"type": "plain_text", "text": "승인"},
+                            "deny":    {"type": "plain_text", "text": "취소"},
+                        },
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "❌ Reject", "emoji": True},
+                        "style": "danger",
+                        "action_id": "reject_action",
+                        "value": action_payload,
+                    },
+                ],
+            },
+        ]
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                settings.slack_webhook_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            if resp.status_code == 200:
+                logger.info(f"[Periodic] Slack 전송 완료: {issue_key}")
+            else:
+                logger.error(f"[Periodic] Slack 전송 실패: {resp.status_code} {resp.text}")
+    except Exception as e:
+        logger.error(f"[Periodic] Slack 전송 예외: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 기존 헬퍼 함수 (변경 없음)
+# ═══════════════════════════════════════════════════════════════════════════════
+
 async def push_to_loki(entry: dict) -> None:
-    """LLM 분석 결과를 Loki에 구조화된 로그로 푸시"""
     ts_ns = str(int(time.time() * 1_000_000_000))
     result = entry.get("result", {})
     payload = {
@@ -338,7 +817,6 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
         if attempt == 0:
             await asyncio.sleep(5)
 
-    # 2회 모두 실패 → Loki에 원본 응답 기록
     ts_ns = str(int(time.time() * 1_000_000_000))
     try:
         async with httpx.AsyncClient(timeout=5) as client:
@@ -355,7 +833,6 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
     except Exception as e:
         logger.warning(f"[Pipeline] LLM 에러 Loki 푸시 실패 (무시): {e}")
 
-    # [FIX] fallback 반환만, Slack 전송 없음 (호출한 analyze_alerts의 except가 처리)
     return LLMAnalysisResult(
         root_cause="LLM 응답 파싱 실패 — 수동 확인 필요",
         action_type="NONE",

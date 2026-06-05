@@ -233,7 +233,7 @@ services:
       - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml
       - ./monitoring/loki/rules:/loki/rules   # ← 이거 추가
       - loki_data:/loki
-    command: -config.file=/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml -target=all
     networks:
       - mgmt-net
     restart: unless-stopped
@@ -267,11 +267,15 @@ services:
     networks:
       - mgmt-net
     restart: unless-stopped
-
+    environment:
+      OLLAMA_NUM_PARALLEL: "1"   # 동시 요청 1개로 제한 (기본값이 이미 1이지만 명시)
+      OLLAMA_MAX_QUEUE: "1"      # 큐 최대 1개 — 넘치면 503 반환
   pipeline:
     build: ./aiops/pipeline
     container_name: aiops-pipeline
     environment:
+      LLM_TIMEOUT: "180"
+      LLM_MODEL: "llama3.2:3b"
       PROMETHEUS_URL: http://prometheus:9090
       LOKI_URL: http://loki:3100
       OLLAMA_URL: http://ollama:11434

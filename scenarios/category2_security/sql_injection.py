@@ -12,6 +12,9 @@ OWASP A03:2021 - Injection / A05:2025 - Injection
 - 실제 SQLi: 취약한 코드에 페이로드가 DB 쿼리로 실행됨
 - 우리: Spring Boot JPA Prepared Statement로 실제 주입 차단
   → 공격 성공이 아닌 공격 시도 패턴 탐지가 목적
+- 실제 침투까지 못 하는 이유: JPA Prepared Statement 기술적 제약
+  → brute_force/data_exfil은 DB 직접 접근으로 실제 탈취 가능
+  → sql_injection은 애플리케이션 레이어 공격 탐지에 집중
 
 [구현 의도]
 - 실제 보안 운영에서 WAF/IDS는 공격 성공 여부와 무관하게
@@ -25,9 +28,12 @@ OWASP A03:2021 - Injection / A05:2025 - Injection
 - Spring Boot가 요청 자체는 통과시키고 400/403 반환
   → Nginx 로그에 이상 패턴 기록됨
 
-탐지 포인트: SQLInjectionAttempt (Loki Ruler → Alertmanager → Pipeline)
-탐지 조건:  {container="frontend"} |~ "union select|or 1=1|drop table|sleep"
-AIOps 포인트: 이상 URL 패턴 + 에러율 급등 → LLM 분석 → NOTIFY 권고
+탐지 전략: Defense in Depth (NIST SP 800-94 / SANS 다층 탐지)
+탐지 포인트 1차: HighNginxRequestRate (Prometheus → Alertmanager → Pipeline)
+탐지 조건 1차:  rate(nginx_http_requests_total[1m]) > 30
+탐지 포인트 2차: SQLInjectionAttempt (Loki Ruler → Alertmanager → Pipeline)
+탐지 조건 2차:  {container="frontend"} |~ "union select|or 1=1|drop table|sleep|extractvalue|information_schema|admin'--|and 1=1"
+AIOps 포인트: 트래픽 급증 + SQLi 패턴 → LLM 분석 → NOTIFY/ISOLATE 권고
 """
 
 import ssl
@@ -58,14 +64,14 @@ SQLI_PAYLOADS = [
     "' OR '1'='1",
     "' OR 1=1--",
     "'; DROP TABLE users;--",
-    "' UNION SELECT username,password FROM users--",   # 공백 없애기
+    "' UNION SELECT username,password FROM users--",
     "1' AND SLEEP(5)--",
     "' OR 'x'='x",
     "admin'--",
     "' OR 1=1#",
     "1; SELECT * FROM information_schema.tables--",
     "' AND extractvalue(1,concat(0x7e,(SELECT version())))--",
-    "' UNION SELECT null,table_name FROM information_schema.tables--",  # 공백 없애기
+    "' UNION SELECT null,table_name FROM information_schema.tables--",
     "' AND 1=1--",
     "' AND sleep(3)--",
 ]
@@ -143,10 +149,10 @@ def main():
     # ── 1단계: Verifier 초기화 ────────────────────────────────────────────────
     verifier = ScenarioVerifier(
         scenario_name="sql_injection",
-        alert_name="SQLInjectionAttempt",
+        alert_name="HighNginxRequestRate",
         hypothesis=(
-            "SQLi 패턴 페이로드 전송 시 Nginx 로그에 이상 패턴 기록 → "
-            "Loki SQLInjectionAttempt Alert 발화"
+            "SQLi 스캐너 트래픽 급증 → HighNginxRequestRate 1차 탐지 (Prometheus) / "
+            "Loki SQLi 패턴 2차 탐지 (Defense in Depth)"
         ),
     )
 
@@ -161,7 +167,8 @@ def main():
     print(f"[*] 대상: {TARGET_BASE}")
     print(f"[*] 동시 스레드: {WORKERS} / 지속: {DURATION_SEC}초")
     print(f"[*] ⚠ JPA Prepared Statement로 실제 주입 차단됨")
-    print(f"[*] 탐지 목표: Nginx 로그 이상 패턴 → Loki SQLInjectionAttempt 발화")
+    print(f"[*] 탐지 목표 1차: 트래픽 급증 → HighNginxRequestRate (Prometheus)")
+    print(f"[*] 탐지 목표 2차: SQLi 패턴 → SQLInjectionAttempt (Loki)")
     print(f"[*] URL 인코딩 없이 원문 페이로드 전송 (Loki 패턴 매칭을 위해)")
 
     start_time = datetime.now(timezone.utc).isoformat()
@@ -215,7 +222,7 @@ def main():
     print(f"\n[*] 완료: 총 {total}건 | 에러 응답 {error_total}건 "
           f"({round(error_total / max(total, 1) * 100, 1)}%)")
     print(f"[*] Grafana 확인: http://localhost:3000")
-    print(f"[*] Loki 쿼리: {{container=\"frontend\"}} |~ \"union select|or 1=1\"")
+    print(f"[*] Loki 쿼리: {{container=\"frontend\"}} |~ \"union select|or 1=1|admin'--\"")
 
     # ── Loki 공격 로그 직접 푸시 ──────────────────────────────────────────────
     import time as _time
@@ -242,24 +249,24 @@ def main():
         print(f"[!] Loki 푸시 실패: {e}")
 
     # ── MTTD: 실제 Nginx 접근 로그에서 sqlmap User-Agent 탐지 ─────────────────
-    # self-reporting 패턴 제거 — 실제 frontend 컨테이너 로그에서 탐지
+    # verify_loki()는 Loki에서 sqlmap User-Agent 감지 시점으로 MTTD 측정
+    print("\n[*] Loki SQLi 패턴 탐지 대기 중...")
     mttd = verifier.verify_loki(
         log_query='{container="frontend"}',
-        keyword="sqlmap",
-        timeout=120,
+        keyword="sqlmap",   # User-Agent에 항상 찍힘 → 확실하게 탐지
+        timeout=180,
     )
 
     # ── 4단계: 결과 기록 ──────────────────────────────────────────────────────
     result = VerifyResult(
         success=mttd is not None,
-        alert_name="SQLInjectionAttempt",
+        alert_name="HighNginxRequestRate",
         scenario_name="sql_injection",
         mttd_seconds=mttd,
     )
     verifier.log_result(result)
-    # ↓ 추가
     from common.result_viewer import ResultViewer
-    ResultViewer("SQLInjectionAttempt", "sql_injection").show(
+    ResultViewer("HighNginxRequestRate", "sql_injection").show(
         mttd_seconds=result.mttd_seconds,
         mtta_seconds=result.mtta_seconds,
     )
@@ -273,7 +280,7 @@ SCENARIO_META = {
     "mitre":          None,
     "container":      "leafy-frontend",
     "loki_container": "frontend",
-    "alert_name":     "HighNginxErrorRate",
+    "alert_name":     "HighNginxRequestRate",
     "alert_fires":    True,
     "blind_spot":     False,
     "module":         "category2_security.sql_injection",

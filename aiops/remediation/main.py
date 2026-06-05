@@ -2,9 +2,10 @@
 AIOps Remediation Agent (Final Version)
 분석 결과 수신 → 다중 타겟(Array)에 대해 명시적 조치 실행
 
-[수정] POST /slack/action 엔드포인트 추가
-       Slack Interactive Components 콜백 수신 → approve/reject 분기
-       버튼 클릭 후 Slack 메시지를 결과로 교체 (response_url 사용)
+[수정] POST /slack/action 엔드포인트에 source 분기 추가
+       - source="periodic_log_scan"  → 주기적 로그 스캔에서 온 승인
+       - source="llm_health_check"   → LLM 헬스체크에서 온 승인
+       - source="alert_triggered"    → 기존 alert 기반 승인 (기본값)
 """
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -106,19 +107,17 @@ async def execute_action(request: ActionRequest):
         return {"status": "pending_approval", "message": "High-risk action requires manual intervention."}
 
 
-# ─── [NEW] Slack Interactive Components 콜백 ─────────────
+# ─── Slack Interactive Components 콜백 ───────────────────
 
 @app.post("/slack/action")
 async def slack_interactive_action(request: Request):
     """
     Slack 버튼 클릭 시 호출되는 엔드포인트.
 
-    Slack은 application/x-www-form-urlencoded 형식으로
-    `payload` 필드에 JSON 문자열을 담아 POST 전송.
-
-    flow:
-      approve_action → _execute() 실행 → Slack 메시지 결과로 교체
-      reject_action  → Loki 기록       → Slack 메시지 거부로 교체
+    source 필드로 출처 구분:
+      alert_triggered  → 기존 alert 기반 승인 (기본값)
+      periodic_log_scan → 주기적 로그 스캔에서 온 승인
+      llm_health_check  → LLM 헬스체크에서 온 승인
     """
     # 1. Slack payload 파싱
     body = await request.body()
@@ -139,9 +138,9 @@ async def slack_interactive_action(request: Request):
         return JSONResponse(status_code=400, content={"error": "No actions in payload"})
 
     action       = actions[0]
-    action_id    = action.get("action_id", "")        # approve_action | reject_action
+    action_id    = action.get("action_id", "")
     raw_value    = action.get("value", "{}")
-    response_url = slack_payload.get("response_url", "")  # 메시지 업데이트용 URL
+    response_url = slack_payload.get("response_url", "")
     user_name    = slack_payload.get("user", {}).get("name", "unknown")
 
     try:
@@ -152,11 +151,20 @@ async def slack_interactive_action(request: Request):
     alertname      = action_data.get("alertname", "unknown")
     action_type    = action_data.get("action_type", "NONE").upper()
     action_targets = action_data.get("action_targets", [])
+    # [NEW] source 필드로 출처 구분
+    source         = action_data.get("source", "alert_triggered")
 
     logger.info(
         f"[Slack Action] id={action_id}, user={user_name}, "
-        f"alert={alertname}, type={action_type}, targets={action_targets}"
+        f"alert={alertname}, type={action_type}, targets={action_targets}, source={source}"
     )
+
+    # 출처별 로그 레이블
+    source_label = {
+        "periodic_log_scan": "정기 로그 스캔",
+        "llm_health_check":  "LLM 헬스체크",
+        "alert_triggered":   "Alert 기반",
+    }.get(source, source)
 
     # 3. 승인 / 거부 분기
     if action_id == "approve_action":
@@ -172,16 +180,25 @@ async def slack_interactive_action(request: Request):
                     "target":      target,
                     "action_type": action_type,
                     "approved_by": user_name,
+                    "source":      source,       # [NEW] 출처 기록
                     "status":      "SUCCESS" if res.startswith("Success") else "FAILED",
                     "result":      res,
                 })
         else:
             results = [f"action_type={action_type} — auto-handler 없음, 로그만 기록"]
+            await _push_soc_event("aiops-timeline", {
+                "event":       "manual_approval_logged",
+                "alert":       alertname,
+                "action_type": action_type,
+                "approved_by": user_name,
+                "source":      source,
+                "status":      "LOGGED",
+            })
 
         result_text = "\n".join(f"• {r}" for r in results)
         await _update_slack_message(
             response_url,
-            f":white_check_mark: *승인됨* (by `{user_name}`)\n"
+            f":white_check_mark: *승인됨* (by `{user_name}`) — {source_label}\n"
             f"Alert: `{alertname}` | 조치: `{action_type}`\n"
             f"{result_text}"
         )
@@ -193,11 +210,12 @@ async def slack_interactive_action(request: Request):
             "alert":       alertname,
             "action_type": action_type,
             "rejected_by": user_name,
+            "source":      source,       # [NEW] 출처 기록
             "status":      "REJECTED",
         })
         await _update_slack_message(
             response_url,
-            f":no_entry: *거부됨* (by `{user_name}`)\n"
+            f":no_entry: *거부됨* (by `{user_name}`) — {source_label}\n"
             f"Alert: `{alertname}` | 조치: `{action_type}` — 수동 조사 필요"
         )
         return JSONResponse(status_code=200, content={"status": "rejected"})
@@ -208,11 +226,6 @@ async def slack_interactive_action(request: Request):
 
 
 async def _update_slack_message(response_url: str, text: str) -> None:
-    """
-    버튼이 있던 메시지를 결과 텍스트로 교체.
-    response_url은 Slack이 Interactive payload에 제공하는 일회성 URL (30분 유효).
-    replace_original: true → 원본 메시지(버튼 포함)를 덮어씀.
-    """
     if not response_url:
         logger.warning("[Slack Action] response_url 없음 — 메시지 업데이트 스킵")
         return
@@ -228,7 +241,7 @@ async def _update_slack_message(response_url: str, text: str) -> None:
         logger.warning(f"[Slack Action] 메시지 업데이트 실패: {e}")
 
 
-# ─── 헬퍼 함수 (기존과 동일) ─────────────────────────────
+# ─── 헬퍼 함수 ───────────────────────────────────────────
 
 async def _execute(action_type: str, target: str) -> str:
     if not target:

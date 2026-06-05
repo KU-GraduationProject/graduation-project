@@ -189,8 +189,19 @@ def main():
         timeout=120,
     )
 
+    # ── 5단계: 결과 기록 ──────────────────────────────────────────────────────
+    result = VerifyResult(
+        success=mttd is not None,
+        alert_name="SecretDumpAttempt",
+        scenario_name="secret_dump",
+        mttd_seconds=mttd,
+    )
+    verifier.log_result(result)
+
     # Loki 탐지 성공 시 Pipeline 웹훅 전송
     if mttd is not None:
+        import time as _time
+        import urllib.request as _ureq
         webhook_payload = json.dumps({
             "version": "4",
             "groupKey": "secret_dump",
@@ -198,7 +209,7 @@ def main():
             "alerts": [{
                 "status": "firing",
                 "labels": {
-                    "alertname": "secret_dump",
+                    "alertname": "SecretDumpAttempt",
                     "severity": "critical",
                     "container": "leafy-backend",
                 },
@@ -220,11 +231,13 @@ def main():
         except Exception as e:
             print(f"[!] Pipeline 웹훅 전송 실패: {e}")
 
-    # secret_dump는 탐지 사각지대: Alert 없음, Pipeline 미연동
-    # Loki 자기 보고 후 즉시 탐지하는 패턴 제거 — blind spot 그대로 유지
+    from common.result_viewer import ResultViewer
+    ResultViewer("SecretDumpAttempt", "secret_dump").show(
+        mttd_seconds=result.mttd_seconds,
+        mtta_seconds=result.mtta_seconds,
+    )
+
     print(f"\n[*] 시나리오 종료: {scenario} | 환경변수 덤프 {'성공' if any_success else '실패'}")
-    print("[*] 탐지 사각지대: 별도 Alert 없음 — Loki에서 수동 확인 필요")
-    print("[*] Grafana: http://localhost:3000  → Explore → Loki → {job='security_simulation'}")
 
 
 SCENARIO_META = {

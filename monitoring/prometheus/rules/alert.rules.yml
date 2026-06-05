@@ -5,13 +5,21 @@ groups:
       # cAdvisor on Mac ARM (Docker Desktop)에는 name 라벨이 없다.
       # container_name_info (Pipeline /metrics) 의 id→name 매핑을 on(id) 조인으로 붙인다.
 
+      # [역할] 컨테이너 CPU 과부하 탐지
+      # [근거] Datadog 2024: CPU 급증은 DDoS/악성 프로세스 신호 1위
+      #        MITRE ATT&CK T1499 (Endpoint Denial of Service)
+      # [시나리오] brute_force.py RCE 단계 (COPY FROM PROGRAM)
+      #            cpu_stress.py (stress-ng 또는 Python 루프)
+      # [한계] Mac cAdvisor는 per-container 라벨 미지원
+      #        container_name_info 조인으로 보완
       - alert: HighCpuUsage
         expr: >
           sum by (name) (
             irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s])
             * on(id) group_left(name) container_name_info
-          )
-          > 0.5
+          ) > 0.5
+          and on(name)
+          container_name_info{name!~"ollama|cadvisor|node-exporter|prometheus|grafana|loki"}
         for: 30s
         labels:
           severity: warning
@@ -20,6 +28,12 @@ groups:
           summary: "컨테이너 CPU 사용률 50% 초과"
           container: "{{ $labels.name }}"
 
+      # [역할] 메모리 누수/부하 탐지
+      # [근거] 2025년 3월 실제 사건: JVM 힙 설정 오류 → OOMKill 37회
+      #        → 요청 88% 영향, p99 레이턴시 461ms → 9424ms
+      # [시나리오] memory_leak.py (90초 주기 재시작)
+      #            container_oom_restart.py (30초 주기 재시작)
+      # [임계값] 70% — 정상 앱은 50~60%, 누수는 85%+ 지속
       - alert: HighMemoryUsage
         expr: >
           (
@@ -37,23 +51,32 @@ groups:
           summary: "컨테이너 메모리 사용률 70% 초과"
           container: "{{ $labels.name }}"
 
+      # [역할] 컨테이너 비정상 재시작 탐지 (crash loop/OOM kill)
+      # [근거] MITRE ATT&CK T1529 (Service Stop/Restart — 공격 후 은폐용)
+      #        실제 사고: Kubernetes pod eviction 패턴 분석으로 초기 침입 감지
+      # [시나리오] container_oom_restart.py (30초 주기 반복 재시작)
+      #            memory_leak.py (90초 주기 강제 kill-start)
+      #            secret_dump.py 실행 후 프로세스 정리 목적
+      # [한계] changes() 함수는 값 변화만 감지 — 정상 재배포와 구분 불가
+      #        AIOps Pipeline이 횟수/빈도로 이상/정상 판별
+      # 변경 후
       - alert: ContainerRestarted
         expr: >
-          (
-            changes(container_start_time_seconds{id=~"/docker/.+"}[5m])
-            * on(id) group_left(name) container_name_info
-          ) > 0
+          sum by (image) (
+            resets(container_cpu_usage_seconds_total{image=~".*leafy-backend.*", cpu="total"}[5m])
+          ) >= 2
         for: 0m
         labels:
           severity: critical
           category: infra
         annotations:
-          summary: "컨테이너 재시작 감지"
-          container: "{{ $labels.name }}"
-
-      # Mac Docker Desktop은 네트워크 메트릭이 per-container가 아닌 id="/" 수준만 제공.
-      # id 필터 제거 → Mac(id="/")·Linux/Windows(id="/docker/...") 모두 동작.
-      # name 라벨이 없는 환경(Mac)에서는 container 어노테이션이 비어 Pipeline 수동 분석 경로로 진입.
+          summary: "컨테이너 반복 재시작 감지 (CrashLoop/OOM 가능성)"
+          container: "leafy-backend"
+      # [역할] DDoS/포트스캔 탐지 목적 — 실제 운영 환경 대응용
+      # [한계] Mac Docker Desktop에서 per-container 메트릭 미지원
+      #        name 라벨 없어서 Pipeline이 수동 분석 경로로 진입
+      # [시나리오] 직접 연결된 시나리오 없음 — 실제 공격 발생 시 탐지용
+      # [참고] id 필터 제거 → Mac(id="/")·Linux/Windows(id="/docker/...") 모두 동작
       - alert: HighNetworkReceive
         expr: >
           sum without(interface) (
@@ -63,20 +86,30 @@ groups:
         labels:
           severity: warning
           category: security
+        # 변경 후
         annotations:
           summary: "네트워크 수신량 급증 (잠재적 DDoS/스캔)"
-          container: "{{ $labels.name }}"
-
-      - alert: HighNginxErrorRate
+          container: "unknown (host-level)"
+      # [수정] alert 이름을 실제 측정값(요청량)에 맞게 변경
+      # Before: HighNginxErrorRate (에러율로 오해 유발)
+      # After:  HighNginxRequestRate (요청량 급증)
+      # 근거: NIST SP 800-137 — 알람명과 측정값 일치 원칙
+      #       LLM이 alert 이름 기반으로 분석하므로 이름 불일치 시 분석 방향 오염
+      # [시나리오] sql_injection.py — sqlmap 100 workers 대량 요청 → 발화
+      - alert: HighNginxRequestRate
         expr: rate(nginx_http_requests_total[1m]) > 30
         for: 30s
         labels:
           severity: warning
           category: security
         annotations:
-          summary: "Nginx 요청량 급증 (잠재적 SQLi/스캔)"
+          summary: "Nginx 요청량 급증 (잠재적 SQLi/DDoS/스캔)"
           container: "leafy-frontend"
 
+      # [역할] 실제 서비스 DB 과부하 탐지 목적 (연결 누수, 슬로우 쿼리 등)
+      # [참고] 브루트포스 탐지는 UnauthorizedDBAccess(Loki Ruler)가 담당
+      #        psql 브루트포스는 연결 즉시 해제라 이 룰 발화 불확실
+      #        lateral_movement/brute_force 시나리오에서는 발화 안 할 수 있음
       - alert: HighPostgresConnections
         expr: pg_stat_activity_count > 40
         for: 30s
@@ -84,5 +117,5 @@ groups:
           severity: warning
           category: security
         annotations:
-          summary: "PostgreSQL 동시 연결 수 과다"
+          summary: "PostgreSQL 동시 연결 수 과다 (서비스 과부하 또는 연결 누수)"
           container: "leafy-db"

@@ -42,7 +42,8 @@ class ResultViewer:
             style="cyan",
         )
 
-        llm_entry   = self._fetch_llm_result()
+        # [FIX] LLM 분석 완료까지 최대 60초 대기 (5초 간격으로 재시도)
+        llm_entry = self._fetch_llm_result_with_retry(timeout=60, poll_interval=5)
         remediation = self._fetch_remediation()
 
         self._print_llm_result(llm_entry)
@@ -51,10 +52,41 @@ class ResultViewer:
 
     # ── Loki 조회 ──────────────────────────────────────────────────────────────
 
+    def _fetch_llm_result_with_retry(
+        self,
+        timeout: int = 60,
+        poll_interval: int = 5,
+    ) -> dict | None:
+        """LLM 분석 결과가 Loki에 나타날 때까지 재시도."""
+        deadline = time.time() + timeout
+        attempt  = 0
+
+        while time.time() < deadline:
+            attempt += 1
+            entry = self._fetch_llm_result()
+            if entry is not None:
+                if attempt > 1:
+                    _console.print(
+                        f"  [green]→ LLM 결과 확인 완료 (시도 {attempt}회)[/green]"
+                    )
+                return entry
+
+            remaining = max(0, int(deadline - time.time()))
+            _console.print(
+                f"  [dim]→ LLM 분석 대기 중... "
+                f"(시도 {attempt}회 / 남은 시간 {remaining}초)[/dim]"
+            )
+            time.sleep(poll_interval)
+
+        _console.print("  [yellow]→ LLM 결과 대기 타임아웃 (60초)[/yellow]")
+        return None
+
     def _fetch_llm_result(self) -> dict | None:
+        # 1차: alert 레이블로 정확히 조회
         query = f'{{job="aiops-llm",alert="{self.alert_name}"}}'
         streams = self._query_loki(query)
         if not streams:
+            # 2차 fallback: 전체 조회
             streams = self._query_loki('{job="aiops-llm"}')
 
         latest_entry = None
@@ -64,12 +96,14 @@ class ResultViewer:
             for ts_ns, line in stream.get("values", []):
                 try:
                     entry = json.loads(line)
-                    if entry.get("alert_name") == self.alert_name:
-                        ts = int(ts_ns) / 1e9
-                        if ts > latest_ts:
-                            latest_ts        = ts
-                            latest_entry     = entry
-                            latest_entry["_ts"] = ts
+                    # ★ alert_name 필터를 latest_ts 비교 전에 먼저 적용
+                    if entry.get("alert_name") != self.alert_name:
+                        continue
+                    ts = int(ts_ns) / 1e9
+                    if ts > latest_ts:
+                        latest_ts           = ts
+                        latest_entry        = entry
+                        latest_entry["_ts"] = ts
                 except Exception:
                     continue
         return latest_entry
@@ -106,7 +140,7 @@ class ResultViewer:
                 "start":     start_ns,
                 "end":       end_ns,
                 "limit":     100,
-                "direction": "forward",  # 시간순 정렬
+                "direction": "forward",
             })
             url = f"{LOKI_URL}/loki/api/v1/query_range?{params}"
             req = urllib.request.Request(url, headers={"Accept": "application/json"})
