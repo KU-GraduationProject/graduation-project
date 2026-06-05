@@ -64,28 +64,12 @@ SCENARIO_REGISTRY = [
         "module": "category1_infra.cpu_stress", "custom_panel": None,
     },
     {
-        "id": "http_flood", "label": "HTTP Flood",
-        "subtitle": "300 workers × 300s  ·  FloodBot/1.0",
-        "category": "인프라", "owasp": "A05:2021", "mitre": None,
-        "container": "leafy-frontend", "loki_container": "frontend",
-        "alert_name": "HighNginxErrorRate", "alert_fires": True, "blind_spot": False,
-        "module": "category1_infra.http_flood", "custom_panel": None,
-    },
-    {
         "id": "memory_leak", "label": "메모리 누수 (OOM 시뮬)",
         "subtitle": "leafy-backend 90초 주기 4회 강제 재시작",
         "category": "인프라", "owasp": None, "mitre": None,
         "container": "leafy-backend", "loki_container": "leafy-backend",
         "alert_name": "ContainerRestarted", "alert_fires": False, "blind_spot": False,
         "module": "category1_infra.memory_leak", "custom_panel": "memory_leak",
-    },
-    {
-        "id": "redos_attack", "label": "ReDoS (HTTP 폭주)",
-        "subtitle": "300 workers  ·  ReDoSBot/1.0  ·  Nginx CPU 고갈",
-        "category": "인프라", "owasp": "A05:2021", "mitre": None,
-        "container": "leafy-frontend", "loki_container": "frontend",
-        "alert_name": "HighNginxErrorRate", "alert_fires": True, "blind_spot": False,
-        "module": "category1_infra.redos_attack", "custom_panel": None,
     },
     {
         "id": "cpu_spike_transient", "label": "CPU 급등 (일시적)",
@@ -134,14 +118,6 @@ SCENARIO_REGISTRY = [
         "container": "leafy-db", "loki_container": "leafy-db",
         "alert_name": "LateralMovement", "alert_fires": False, "blind_spot": False,
         "module": "category2_security.lateral_movement", "custom_panel": "lateral_movement",
-    },
-    {
-        "id": "n_plus_one_attack", "label": "N+1 쿼리 공격",
-        "subtitle": "100 연결 × pg_sleep(30) → PostgreSQL 연결 고갈",
-        "category": "보안", "owasp": "A04:2021", "mitre": None,
-        "container": "leafy-db", "loki_container": "leafy-db",
-        "alert_name": "HighPostgresConnections", "alert_fires": True, "blind_spot": False,
-        "module": "category2_security.n_plus_one_attack", "custom_panel": None,
     },
     {
         "id": "secret_dump", "label": "환경변수 덤프 (탐지 사각지대)",
