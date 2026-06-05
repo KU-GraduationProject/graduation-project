@@ -2536,7 +2536,7 @@
     "detail": ""
   },
   {
-    "scenario": "cpu_stress",
+    "scenario": "sql_injection",
     "alert_name": "HighCpuUsage",
     "success": true,
     "mttd_seconds": 33.7,
@@ -2547,6 +2547,46 @@
     "slack_response_text": "",
     "failure_reason": "",
     "timestamp": "2026-06-02T05:26:13.427981+00:00",
+    "category": "security",
+    "start_time": "2026-06-02T06:39:42.670336+00:00",
+    "end_time": "2026-06-02T06:44:43.496217+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 854800, \"error_responses\": 52552, \"error_rate_pct\": 6.1, \"status_counts\": {\"404\": 4644, \"0\": 789115, \"200\": 13133, \"502\": 47908}, \"payloads_used\": 13, \"encoding\": \"none (raw payload for Loki pattern matching)\", \"note\": \"JPA Prepared Statement로 실제 주입 차단. Nginx 로그의 이상 패턴을 Loki Ruler가 탐지. Loki Ruler → Alertmanager → Pipeline 자동 흐름.\"}"
+  },
+  {
+    "scenario": "sql_injection",
+    "alert_name": "SQLInjectionAttempt",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-02T06:47:43.667322+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "sql_injection",
+    "category": "security",
+    "start_time": "2026-06-02T06:58:06.383867+00:00",
+    "end_time": "2026-06-02T07:03:06.408548+00:00",
+    "status": "success",
+    "detail": "{\"total_requests\": 953100, \"error_responses\": 54906, \"error_rate_pct\": 5.8, \"status_counts\": {\"200\": 18500, \"0\": 879694, \"404\": 4180, \"502\": 50726}, \"payloads_used\": 13, \"encoding\": \"none (raw payload for Loki pattern matching)\", \"note\": \"JPA Prepared Statement로 실제 주입 차단. Nginx 로그의 이상 패턴을 Loki Ruler가 탐지. Loki Ruler → Alertmanager → Pipeline 자동 흐름.\"}"
+  },
+  {
+    "scenario": "sql_injection",
+    "alert_name": "SQLInjectionAttempt",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-02T07:06:06.697075+00:00",
     "category": "verification"
   }
 ]

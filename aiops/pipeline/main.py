@@ -1,5 +1,3 @@
-
-
 """
 AIOps Pipeline Module
 AlertManager 웹훅 수신 → 데이터 수집 → 프롬프트 조립 → LLM 호출 → 결과 반환
@@ -7,10 +5,9 @@ AlertManager 웹훅 수신 → 데이터 수집 → 프롬프트 조립 → LLM 
 
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, ValidationError  # ✅ Fix: 버그 3
+from pydantic import BaseModel, ValidationError
 from datetime import datetime, timezone
 from collections import deque
-from pathlib import Path
 import json
 import asyncio
 import logging
@@ -32,9 +29,6 @@ app = FastAPI(title="AIOps Pipeline", version="0.1.0")
 
 # 최근 분석 결과 저장 (최대 20건)
 analysis_history: deque = deque(maxlen=20)
-
-# LLM 결과 영속 저장 파일 (컨테이너 재시작 후에도 유지)
-RESULTS_FILE = Path("/app/results/llm_results.jsonl")
 
 # ─── 중복 Alert 필터 ────────────────────────────────────
 DEDUP_WINDOW_SEC = 300
@@ -84,7 +78,7 @@ async def health():
 
 @app.get("/metrics", response_class=PlainTextResponse)
 async def prometheus_metrics():
-    """컨테이너 ID → 이름/서비스 매핑을 Prometheus 텍스트 포맷으로 노출 (비동기화 완료)"""
+    """컨테이너 ID → 이름/서비스 매핑을 Prometheus 텍스트 포맷으로 노출"""
     name_lines: list[str] = [
         "# HELP container_name_info Container ID to name mapping",
         "# TYPE container_name_info gauge",
@@ -117,47 +111,6 @@ async def prometheus_metrics():
 
     return "\n".join(name_lines + [""] + count_lines) + "\n"
 
-def _append_to_file(entry: dict) -> None:
-    """LLM 분석 결과를 JSONL 파일에 한 줄씩 추가 (append-only)."""
-    try:
-        RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with RESULTS_FILE.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except Exception as e:
-        logger.warning(f"[Pipeline] 결과 파일 저장 실패 (무시): {e}")
-
-
-@app.get("/results")
-async def get_results():
-    """메모리에 있는 최근 분석 결과 최대 20건 반환."""
-    return list(analysis_history)
-
-
-@app.get("/results/latest")
-async def get_results_latest():
-    """가장 최근 분석 결과 1건 반환. 없으면 404."""
-    if not analysis_history:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="분석 결과 없음")
-    return analysis_history[-1]
-
-
-@app.get("/results/history")
-async def get_results_history():
-    """JSONL 파일에서 전체 히스토리를 읽어 반환."""
-    if not RESULTS_FILE.exists():
-        return []
-    lines = RESULTS_FILE.read_text(encoding="utf-8").splitlines()
-    results = []
-    for line in lines:
-        line = line.strip()
-        if line:
-            try:
-                results.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-    return results
-
 
 @app.post("/webhook/alert")
 async def receive_alert(payload: AlertManagerWebhook, background_tasks: BackgroundTasks):
@@ -170,7 +123,7 @@ async def receive_alert(payload: AlertManagerWebhook, background_tasks: Backgrou
     return {"message": f"{len(firing_alerts)} alert(s) queued for analysis"}
 
 
-# ─── 핵심 파이프라인 (초경량화 완료) ──────────────────────
+# ─── 핵심 파이프라인 ──────────────────────────────────────
 
 async def _resolve_top_cpu_container() -> str | None:
     """Prometheus에서 현재 CPU 사용률이 가장 높은 컨테이너 name 라벨을 반환."""
@@ -197,10 +150,8 @@ async def analyze_alerts(alerts: list[Alert]):
         del _recent_alerts[k]
 
     for alert in alerts:
-        # ★ 핵심 개선: 복잡한 Docker Socket ID 변환 없이, 웹훅에서 바로 직관적인 이름을 꺼내 씀
         container_name = alert.annotations.get("container") or alert.labels.container
 
-        # 수정: unknown이면 alertname만으로 dedup
         dedup_key = f"{alert.labels.alertname}:{container_name}" \
             if container_name and container_name != "unknown" \
             else alert.labels.alertname
@@ -211,7 +162,6 @@ async def analyze_alerts(alerts: list[Alert]):
         _recent_alerts[dedup_key] = now
 
         try:
-            # HighCpuUsage + container unknown → Prometheus에서 가장 높은 CPU 컨테이너 조회
             if alert.labels.alertname == "HighCpuUsage" and (not container_name or container_name == "unknown"):
                 container_name = await _resolve_top_cpu_container()
                 logger.info(f"[Pipeline] HighCpuUsage container 자동 조회: {container_name}")
@@ -219,14 +169,14 @@ async def analyze_alerts(alerts: list[Alert]):
             logger.info(f"[Pipeline] 분석 시작: {alert.labels.alertname} | 대상: {container_name}")
             alert_time = datetime.fromisoformat(alert.startsAt.replace("Z", "+00:00"))
 
+            # [FIX] 컨테이너 없음 → Loki 기록만, Slack/Remediation 스킵
             if not container_name or container_name == "unknown":
-                logger.warning(f"[Pipeline] 컨테이너 정보 없음, LLM 스킵: {alert.labels.alertname}")
-                
+                logger.warning(f"[Pipeline] 컨테이너 정보 없음, 스킵: {alert.labels.alertname}")
                 fallback_result = LLMAnalysisResult(
                     root_cause="컨테이너 정보 없음 — 수동 확인 필요",
                     action_type="NONE",
-                    action_targets=[],           # ← 수정
-                    action_description="manual investigation required",  # ← 수정
+                    action_targets=[],
+                    action_description="manual investigation required",
                     threat_level="medium",
                     action_risk="high",
                     evidence=[],
@@ -239,29 +189,16 @@ async def analyze_alerts(alerts: list[Alert]):
                     "result": fallback_result.model_dump(),
                 }
                 analysis_history.append(entry)
-                _append_to_file(entry)
-                try: await push_to_loki(entry)
-                except Exception: pass
-                try: await forward_to_remediation(alert, fallback_result)
-                except Exception: pass
-                try: await send_slack_notification(alert.labels.alertname, "unknown", fallback_result)
-                except Exception: pass
-                continue
+                try:
+                    await push_to_loki(entry)
+                except Exception:
+                    pass
+                continue  # [FIX] Slack/Remediation 전송 안 함
 
-            # 1. Slack 즉시 알림 (LLM 전 — MTTA 측정 기준점)
-            early_result = LLMAnalysisResult(
-                root_cause="분석 중 — LLM 처리 대기",
-                action_type="PENDING",
-                action_targets=[],
-                action_description="LLM analysis in progress",
-                threat_level=alert.labels.severity or "warning",
-                action_risk="unknown",
-                evidence=[],
-                confidence=0.0,
-            )
-            await send_slack_notification(alert.labels.alertname, container_name, early_result)
+            # [FIX] LLM 전 PENDING 알림 제거 — 노이즈만 유발
+            logger.info(f"[Pipeline] LLM 분석 시작: {alert.labels.alertname} / {container_name}")
 
-            # 2. 메트릭/로그 수집
+            # 1. 메트릭/로그 수집
             metrics = await metrics_collector.fetch_around(
                 container=container_name,
                 alert_time=alert_time,
@@ -273,7 +210,7 @@ async def analyze_alerts(alerts: list[Alert]):
                 window_minutes=5,
             )
 
-            # 3. 프롬프트 조립
+            # 2. 프롬프트 조립
             prompt = prompt_builder.build(
                 alert=alert,
                 metrics=metrics,
@@ -281,11 +218,11 @@ async def analyze_alerts(alerts: list[Alert]):
                 container_name=container_name,
             )
 
-            # 4. LLM 호출
+            # 3. LLM 호출
             result: LLMAnalysisResult = await call_llm(prompt)
             logger.info(f"[Pipeline] LLM 분석 완료: {result.model_dump()}")
 
-            # 5. 결과 저장
+            # 4. 결과 저장
             entry = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "alert_name": alert.labels.alertname,
@@ -293,32 +230,18 @@ async def analyze_alerts(alerts: list[Alert]):
                 "result": result.model_dump(),
             }
             analysis_history.append(entry)
-            _append_to_file(entry)
 
-            # 6. Loki 푸시 & 7. Remediation 전달
+            # 5. Loki 푸시 & 6. Remediation 전달 (여기서 Slack 전송됨)
             await push_to_loki(entry)
             await forward_to_remediation(alert, result)
 
         except Exception as e:
+            # [FIX] 파싱 실패는 Slack 전송 안 함 — Loki 로그만
             logger.error(f"[Pipeline] 분석 실패 ({alert.labels.alertname}): {e}")
-            try:
-                fallback_result = LLMAnalysisResult(
-                    root_cause="LLM 분석/파싱 실패 — 수동 확인 필요",
-                    action_type="NONE",
-                    action_targets=[],           # ← 수정
-                    action_description="manual investigation required",  # ← 수정
-                    threat_level="medium",
-                    action_risk="high",
-                    evidence=[],
-                    confidence=0.0,
-                )
-                await forward_to_remediation(alert, fallback_result)
-            except Exception as fe:
-                logger.error(f"[Pipeline] fallback 전달 실패: {fe}")
 
 
 async def push_to_loki(entry: dict) -> None:
-    """LLM 분석 결과를 Loki에 구조화된 로그로 푸시 (Grafana 대시보드용)"""
+    """LLM 분석 결과를 Loki에 구조화된 로그로 푸시"""
     ts_ns = str(int(time.time() * 1_000_000_000))
     result = entry.get("result", {})
     payload = {
@@ -351,58 +274,6 @@ async def push_to_loki(entry: dict) -> None:
         })
     except Exception as e:
         logger.warning(f"[Pipeline] Loki 푸시 실패 (무시): {e}")
-
-
-async def send_slack_notification(alert_name: str, container: str, result: LLMAnalysisResult) -> None:
-    if not settings.slack_webhook_url:
-        return
-
-    ts_ns = str(int(time.time() * 1_000_000_000))
-    status = "FAILED"
-    response_code: int | None = None
-
-    try:
-        message = {
-            "text": (
-                f"*🚨 Alert:* `{alert_name}`\n"
-                f"*Container:* `{container}`\n"
-                f"*Root Cause:* {result.root_cause}\n"
-                f"*Threat Level:* {result.threat_level}\n"
-                f"*Action:* {result.action_type}"
-            )
-        }
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                settings.slack_webhook_url,
-                json=message,
-                headers={"Content-Type": "application/json"},
-            )
-        response_code = resp.status_code
-        status = "SUCCESS" if resp.status_code == 200 else "FAILED"
-        logger.info(f"[Pipeline] Slack 전송 완료: {alert_name} / {resp.status_code}")
-    except Exception as e:
-        logger.warning(f"[Pipeline] Slack 전송 실패: {e}")
-
-    log_body = json.dumps({
-        "event": "slack_notification",
-        "alert_name": alert_name,
-        "slack_status": status,
-        "slack_response_code": response_code,
-    }, ensure_ascii=False)
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            await client.post(
-                f"{settings.loki_url}/loki/api/v1/push",
-                json={
-                    "streams": [{
-                        "stream": {"job": "aiops-slack", "alert": alert_name},
-                        "values": [[ts_ns, log_body]],
-                    }]
-                },
-                headers={"Content-Type": "application/json"},
-            )
-    except Exception as e:
-        logger.warning(f"[Pipeline] Slack Loki 기록 실패 (무시): {e}")
 
 
 async def push_timeline_event(event: str, fields: dict) -> None:
@@ -461,13 +332,13 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
             logger.error(f"[Pipeline] LLM 호출 실패 (시도 {attempt + 1}/2): {e}")
         except json.JSONDecodeError as e:
             logger.error(f"[Pipeline] JSON 파싱 실패 (시도 {attempt + 1}/2): {e} | 원본: {last_raw!r}")
-        except ValidationError as e:  # ✅ Fix: 버그 3 — pydantic 스키마 불일치 처리
+        except ValidationError as e:
             logger.error(f"[Pipeline] LLM 응답 스키마 불일치 (시도 {attempt + 1}/2): {e}")
 
         if attempt == 0:
             await asyncio.sleep(5)
 
-    # 2회 모두 실패 → Loki에 원본 응답 기록 후 fallback 반환
+    # 2회 모두 실패 → Loki에 원본 응답 기록
     ts_ns = str(int(time.time() * 1_000_000_000))
     try:
         async with httpx.AsyncClient(timeout=5) as client:
@@ -484,19 +355,21 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
     except Exception as e:
         logger.warning(f"[Pipeline] LLM 에러 Loki 푸시 실패 (무시): {e}")
 
+    # [FIX] fallback 반환만, Slack 전송 없음 (호출한 analyze_alerts의 except가 처리)
     return LLMAnalysisResult(
         root_cause="LLM 응답 파싱 실패 — 수동 확인 필요",
         action_type="NONE",
-        action_targets=[],           # ← 수정
-        action_description="manual investigation required",  # ← 수정
+        action_targets=[],
+        action_description="manual investigation required",
         threat_level="medium",
         action_risk="high",
         evidence=[],
         confidence=0.0,
     )
 
+
 async def forward_to_remediation(alert: Alert, result: LLMAnalysisResult):
-    """Remediation Agent에 분석 결과 전달"""
+    """Remediation Agent에 분석 결과 전달 → 여기서 Slack 전송 결정됨"""
     async with httpx.AsyncClient(timeout=30) as client:
         await client.post(
             f"{settings.remediation_url}/action",
