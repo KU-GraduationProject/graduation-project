@@ -262,6 +262,8 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
+    ports:
+      - "11434:11434"            # eval 스크립트 호스트 직접 호출용
     volumes:
       - ollama_data:/root/.ollama
     networks:
