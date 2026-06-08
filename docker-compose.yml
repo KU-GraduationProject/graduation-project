@@ -53,6 +53,7 @@ services:
     mem_limit: 512m          # ← 추가
     memswap_limit: 512m      # ← 추가 (swap 비활성화, 순수 메모리만)
     environment:
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=60.0 -XX:+UseSerialGC"
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/leafy
       SPRING_DATASOURCE_USERNAME: leafy
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-leafy_secret}
