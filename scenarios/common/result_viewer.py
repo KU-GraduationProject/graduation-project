@@ -42,8 +42,8 @@ class ResultViewer:
             style="cyan",
         )
 
-        # [FIX] LLM 분석 완료까지 최대 60초 대기 (5초 간격으로 재시도)
-        llm_entry = self._fetch_llm_result_with_retry(timeout=60, poll_interval=5)
+        # [FIX] LLM 분석 완료까지 최대 18docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi0초 대기 (5초 간격으로 재시도)
+        llm_entry = self._fetch_llm_result_with_retry(timeout=180, poll_interval=5)
         remediation = self._fetch_remediation()
 
         self._print_llm_result(llm_entry)
@@ -54,7 +54,7 @@ class ResultViewer:
 
     def _fetch_llm_result_with_retry(
         self,
-        timeout: int = 60,
+        timeout: int = 180,
         poll_interval: int = 5,
     ) -> dict | None:
         """LLM 분석 결과가 Loki에 나타날 때까지 재시도."""
@@ -78,7 +78,7 @@ class ResultViewer:
             )
             time.sleep(poll_interval)
 
-        _console.print("  [yellow]→ LLM 결과 대기 타임아웃 (60초)[/yellow]")
+        _console.print(f"  [yellow]→ LLM 결과 대기 타임아웃 ({timeout}초)[/yellow]")
         return None
 
     def _fetch_llm_result(self) -> dict | None:

@@ -3644,5 +3644,137 @@
     "failure_reason": "",
     "timestamp": "2026-06-04T20:36:25.709506+00:00",
     "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-06-08T00:42:44.061203+00:00",
+    "end_time": "2026-06-08T00:42:56.805446+00:00",
+    "status": "success",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "alert_name": "UnauthorizedDBAccess",
+    "success": true,
+    "mttd_seconds": 0.9,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-08T00:42:56.842856+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-06-08T10:53:50.817738+00:00",
+    "end_time": "2026-06-08T10:54:04.437245+00:00",
+    "status": "success",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "alert_name": "UnauthorizedDBAccess",
+    "success": true,
+    "mttd_seconds": 0.2,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-08T10:54:04.471884+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "category": "security",
+    "start_time": "2026-06-08T10:55:01.665490+00:00",
+    "end_time": "2026-06-08T10:55:51.352705+00:00",
+    "status": "success",
+    "detail": "{\"mttd\": 36.7, \"mtta\": 41.5}"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 36.7,
+    "mtta_seconds": 41.5,
+    "slack_notified": true,
+    "slack_status": "SUCCESS",
+    "slack_response_code": 200,
+    "slack_response_text": "ok",
+    "failure_reason": "",
+    "timestamp": "2026-06-08T10:55:48.962087+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "category": "security",
+    "start_time": "2026-06-08T11:00:55.737987+00:00",
+    "end_time": "2026-06-08T11:01:08.442693+00:00",
+    "status": "success",
+    "detail": "iterations=100, passwords=10"
+  },
+  {
+    "scenario": "db_bruteforce",
+    "alert_name": "UnauthorizedDBAccess",
+    "success": true,
+    "mttd_seconds": 0.2,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-08T11:01:08.487085+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "category": "security",
+    "start_time": "2026-06-08T11:01:15.600401+00:00",
+    "end_time": "2026-06-08T11:02:23.752011+00:00",
+    "status": "success",
+    "detail": "{\"mttd\": 39.7, \"mtta\": 60.7}"
+  },
+  {
+    "scenario": "db_rce_cpu",
+    "alert_name": "HighCpuUsage",
+    "success": true,
+    "mttd_seconds": 39.7,
+    "mtta_seconds": 60.7,
+    "slack_notified": true,
+    "slack_status": "SUCCESS",
+    "slack_response_code": 200,
+    "slack_response_text": "ok",
+    "failure_reason": "",
+    "timestamp": "2026-06-08T11:02:21.363960+00:00",
+    "category": "verification"
+  },
+  {
+    "scenario": "secret_dump",
+    "category": "security",
+    "start_time": "2026-06-08T11:08:41.199535+00:00",
+    "end_time": "2026-06-08T11:08:41.462487+00:00",
+    "status": "success",
+    "detail": "[{\"command\": \"printenv\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"KAKAO_REST_API_KEY=***MASKED***\\nJAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=60.0 -XX:+UseSerialGC\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nHOSTNAME=9a257bf66af4\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nPLANT_ID_API_KEY=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nSHLVL=1\\nHOME=/\"}, {\"command\": \"env\", \"exit_code\": 0, \"success\": true, \"output_masked\": \"KAKAO_REST_API_KEY=***MASKED***\\nJAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=60.0 -XX:+UseSerialGC\\nMANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,prometheus,metrics\\nHOSTNAME=9a257bf66af4\\nSPRING_DATASOURCE_PASSWORD=***MASKED***\\nPLANT_ID_API_KEY=***MASKED***\\nJWT_SECRET_KEY=***MASKED***\\nSHLVL=1\\nHOME=/\"}, {\"command\": \"cat /proc/1/envir"
+  },
+  {
+    "scenario": "secret_dump",
+    "alert_name": "SecretDumpAttempt",
+    "success": false,
+    "mttd_seconds": null,
+    "mtta_seconds": null,
+    "slack_notified": false,
+    "slack_status": "",
+    "slack_response_code": null,
+    "slack_response_text": "",
+    "failure_reason": "",
+    "timestamp": "2026-06-08T11:10:41.740216+00:00",
+    "category": "verification"
   }
 ]
