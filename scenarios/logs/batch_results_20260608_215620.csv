@@ -1,0 +1,11 @@
+﻿scenario,run,status,elapsed_sec,success,mttd,mtta,alert_fired,failure_reason,log
+escape,1,completed,121.1,False,,,False,,scenarios\logs\batch_escape_run1.log
+escape,2,completed,6.1,True,1.0,,True,,scenarios\logs\batch_escape_run2.log
+escape,3,completed,121.2,False,,,False,,scenarios\logs\batch_escape_run3.log
+escape,4,completed,6.1,True,1.0,,True,,scenarios\logs\batch_escape_run4.log
+escape,5,completed,121.0,False,,,False,,scenarios\logs\batch_escape_run5.log
+escape,6,completed,6.0,True,0.2,,True,,scenarios\logs\batch_escape_run6.log
+escape,7,completed,121.2,False,,,False,,scenarios\logs\batch_escape_run7.log
+escape,8,completed,6.1,True,0.3,,True,,scenarios\logs\batch_escape_run8.log
+escape,9,completed,120.9,False,,,False,,scenarios\logs\batch_escape_run9.log
+escape,10,completed,121.3,False,,,False,,scenarios\logs\batch_escape_run10.log

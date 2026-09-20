@@ -1,0 +1,6 @@
+﻿scenario,run,status,elapsed_sec,success,mttd,mtta,alert_fired,failure_reason,log
+escape,1,completed,6.0,True,0.7,,True,,scenarios\logs\batch_escape_run1.log
+escape,2,completed,6.2,True,0.3,,True,,scenarios\logs\batch_escape_run2.log
+escape,3,completed,121.2,False,,,False,,scenarios\logs\batch_escape_run3.log
+escape,4,completed,11.1,True,0.3,,True,,scenarios\logs\batch_escape_run4.log
+escape,5,completed,121.1,False,,,False,,scenarios\logs\batch_escape_run5.log
