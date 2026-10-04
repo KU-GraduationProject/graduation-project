@@ -4,6 +4,11 @@ system 프롬프트는 JSON 출력 형식을 강제하고,
 user 프롬프트는 실제 이상 데이터를 담는다.
 """
 import json
+import logging
+
+from prompt.network_section import build_network_section
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are an AIOps engineer. Analyze Docker container anomaly data and return JSON only. Always respond in English regardless of the input language.
 
@@ -47,15 +52,17 @@ OUTPUT: {"root_cause":"The CPU spike that triggered this alert has already resol
 MAX_PROMPT_CHARS = 6000  # ← 이 줄 추가
 
 class PromptBuilder:
-    def build(self, alert, metrics: dict, logs: list[dict], container_name: str | None = None) -> dict:
+    def build(self, alert, metrics: dict, logs: list[dict], container_name: str | None = None,
+              network=None) -> dict:
         """system + user 프롬프트 딕셔너리 반환"""
-        user_content = self._build_user(alert, metrics, logs, container_name)
+        user_content = self._build_user(alert, metrics, logs, container_name, network)
         return {
             "system": SYSTEM_PROMPT,
             "user":   user_content,
         }
 
-    def _build_user(self, alert, metrics: dict, logs: list[dict], container_name: str | None = None) -> str:
+    def _build_user(self, alert, metrics: dict, logs: list[dict], container_name: str | None = None,
+                    network=None) -> str:
         lines = []
 
         # 알람 정보
@@ -84,6 +91,8 @@ class PromptBuilder:
                 except (ValueError, OverflowError):
                     lines.append(f"{metric_name}: latest={latest}, peak={peak}, samples={len(values)}")
 
+        head_len = len("\n".join(lines))  # ALERT + METRICS 끝 위치. Network 섹션은 여기 들어간다.
+
         # 로그 (최대 50줄, 에러/경고 우선)
         lines.append("\n=== LOGS (5-min window, up to 50 lines) ===")
         error_logs = [l for l in logs if any(kw in l["line"].lower() for kw in ["error", "exception", "fatal", "warn"])]
@@ -100,4 +109,22 @@ class PromptBuilder:
         user_content = "\n".join(lines)
         if len(user_content) > MAX_PROMPT_CHARS:
             user_content = user_content[:MAX_PROMPT_CHARS] + "\n...(truncated)"
+
+        # Network Context(#11): 기존 내용을 자른 뒤 METRICS와 LOGS 사이에 끼워 넣는다.
+        # 기존 섹션은 한 글자도 바뀌지 않고, 길이 제한에 Network 섹션의 해석 규칙이 잘리지도 않는다.
+        section = self._network_section(network)
+        if section:
+            cut = min(head_len, MAX_PROMPT_CHARS)
+            user_content = user_content[:cut] + "\n" + section + user_content[cut:]
         return user_content
+
+    @staticmethod
+    def _network_section(network) -> str | None:
+        """요약 실패는 RCA를 막지 않는다 — 섹션 없이 기존 프롬프트로 진행"""
+        if network is None or not network.service:
+            return None
+        try:
+            return build_network_section(network)
+        except Exception as e:
+            logger.warning(f"[PromptBuilder] network context 요약 실패, 섹션 생략: {e!r}")
+            return None

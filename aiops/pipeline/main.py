@@ -242,7 +242,7 @@ async def analyze_alerts(alerts: list[Alert]):
                 container_name=container_name, runtime=runtime,
             )
             logs = await logs_collector.fetch(ctx)
-            # Network Context (best-effort, 예외를 던지지 않는다). 프롬프트 반영은 #11에서 한다.
+            # Network Context (best-effort, 예외를 던지지 않는다). 프롬프트에는 요약만 들어간다 (#11).
             network = await network_collector.fetch(ctx)
             logger.info(
                 f"[Pipeline] network context: service={network.service} events={len(network.events)} "
@@ -255,6 +255,7 @@ async def analyze_alerts(alerts: list[Alert]):
                 metrics=metrics,
                 logs=logs,
                 container_name=container_name,
+                network=network,
             )
 
             # 3. LLM 호출
