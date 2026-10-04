@@ -48,6 +48,7 @@ services:
       options:
         fluentd-address: "localhost:24224"
         tag: "frontend"
+        labels: "com.docker.compose.service"   # canonical service identity (#6)
 
   backend:
     image: gicks/leafy-backend:latest
@@ -87,6 +88,7 @@ services:
       options:
         fluentd-address: "localhost:24224"
         tag: "backend"
+        labels: "com.docker.compose.service"   # canonical service identity (#6)
 
   db:
     image: postgres:16
@@ -120,6 +122,7 @@ services:
       options:
         fluentd-address: "localhost:24224"
         tag: "leafy-db"
+        labels: "com.docker.compose.service"   # canonical service identity (#6)
 
   # ════════════════════════════════════════════
   # 수집기: leafy-net + mgmt-net 브릿지 역할
