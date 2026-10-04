@@ -1,0 +1,23 @@
+# TEMPORARY PoC ONLY - Issue #4 (Cross-platform Traffic Capture PoC)
+# 목적: capture 방식이 Docker Compose로 재현 가능한지(R6) 검증하기 위한 임시 파일.
+# 기존 ../../../../docker-compose.yml 은 수정하지 않는다. PoC 종료 후 삭제 가능.
+name: poc-capture
+
+services:
+  # Candidate B: service network namespace sharing (observer -> backend netns)
+  observer-ns:
+    image: poc-capture:tmp
+    container_name: poc-ns-backend
+    network_mode: "container:leafy-backend"
+    cap_add: ["NET_ADMIN", "NET_RAW"]
+    # ENTRYPOINT ["/bin/sh","-c"] 이므로 command는 반드시 "단일 문자열 1개 원소 리스트"여야 한다.
+    command: ["tcpdump -i eth0 -nn -tttt 'tcp port 8080 or tcp port 5432'"]
+
+  # Candidate A: docker bridge capture (Docker Desktop VM host netns)
+  observer-bridge:
+    image: poc-capture:tmp
+    container_name: poc-bridge
+    network_mode: host
+    cap_add: ["NET_ADMIN", "NET_RAW"]
+    # NOTE: br-<network-id> 는 runtime 생성값 -> compose에 고정 불가 (R6 제약)
+    command: ["tcpdump -i br-5557cd1b31e3 -nn -tttt 'tcp port 8080 or tcp port 5432'"]
