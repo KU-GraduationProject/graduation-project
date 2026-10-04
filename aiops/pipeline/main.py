@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ValidationError
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from collections import deque
 import json
 import asyncio
@@ -22,6 +22,7 @@ import re as _re
 _DOCKER_UDS = "/var/run/docker.sock"
 from collector.metrics import MetricsCollector
 from collector.logs import LogsCollector
+from correlation import CorrelationContext, MONITORED_SERVICES, resolve_service
 from prompt.builder import PromptBuilder
 from schemas.llm_output import LLMAnalysisResult
 from config import settings
@@ -224,16 +225,21 @@ async def analyze_alerts(alerts: list[Alert]):
             logger.info(f"[Pipeline] LLM 분석 시작: {alert.labels.alertname} / {container_name}")
 
             # 1. 메트릭/로그 수집
+            # 메트릭은 cAdvisor가 container 단위이므로 container 이름을 그대로 쓴다.
             metrics = await metrics_collector.fetch_around(
                 container=container_name,
                 alert_time=alert_time,
                 window_minutes=5,
             )
-            logs = await logs_collector.fetch_around(
-                container=container_name,
-                alert_time=alert_time,
-                window_minutes=5,
+            # 로그는 canonical service로 조회한다. (leafy-backend -> backend -> {service="backend"})
+            service, runtime = await resolve_service(container_name)
+            if not service:
+                logger.warning(f"[Pipeline] service 해석 실패, app log 조회 생략: {container_name}")
+            ctx = CorrelationContext.around(
+                service, alert_time, timedelta(minutes=5),
+                container_name=container_name, runtime=runtime,
             )
+            logs = await logs_collector.fetch(ctx)
 
             # 2. 프롬프트 조립
             prompt = prompt_builder.build(
@@ -319,15 +325,22 @@ async def periodic_log_check() -> None:
             now_ts = time.time()
             window_sec = 600  # 10분
 
-            # 모니터링 대상 컨테이너 (Fluentd tag 기준)
-            targets = ["backend", "frontend", "leafy-db"]
-
-            for container in targets:
+            # 모니터링 대상: canonical service (Network Event와 같은 이름)
+            for service in MONITORED_SERVICES:
+                container = service
                 try:
                     # Loki에서 최근 10분 로그 조회
-                    logs = await _fetch_loki_logs(container, window_sec)
+                    ctx = CorrelationContext.trailing(service, timedelta(seconds=window_sec))
+                    logs = await logs_collector.fetch(ctx)
                     if not logs:
                         continue
+
+                    # Slack / remediation 대상은 실제 컨테이너 이름이어야 한다.
+                    # 로그에 붙은 container_name label(#6)에서 얻고, 없으면 service로 둔다.
+                    container = next(
+                        (l["labels"]["container_name"] for l in logs if l["labels"].get("container_name")),
+                        service,
+                    )
 
                     # 1차 필터: 키워드 기반 빠른 체크
                     all_lines = " ".join(l.get("line", "") for l in logs).lower()
@@ -525,34 +538,6 @@ async def periodic_llm_health() -> None:
 # ═══════════════════════════════════════════════════════════════════════════════
 # 주기적 스캔 헬퍼 함수
 # ═══════════════════════════════════════════════════════════════════════════════
-
-async def _fetch_loki_logs(container: str, window_sec: int) -> list[dict]:
-    """Loki에서 특정 컨테이너의 최근 N초 로그 조회"""
-    try:
-        end_ns   = int(time.time() * 1_000_000_000)
-        start_ns = end_ns - int(window_sec * 1_000_000_000)
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                f"{settings.loki_url}/loki/api/v1/query_range",
-                params={
-                    "query":     f'{{container="{container}"}}',
-                    "start":     start_ns,
-                    "end":       end_ns,
-                    "limit":     200,
-                    "direction": "forward",
-                },
-            )
-            data = resp.json()
-            results = []
-            for stream in data.get("data", {}).get("result", []):
-                labels = stream.get("stream", {})
-                for ts_ns, line in stream.get("values", []):
-                    results.append({"ts": ts_ns, "line": line, "labels": labels})
-            return results
-    except Exception as e:
-        logger.warning(f"[Periodic] Loki 로그 조회 실패 ({container}): {e}")
-        return []
-
 
 async def _fetch_loki_aiops_results(window_sec: int) -> list[dict]:
     """Loki {job='aiops-llm'}에서 최근 N초 LLM 분석 결과 조회"""

@@ -1,41 +1,34 @@
 """
-Loki에서 이상 시점 전후 N분 로그 수집.
-컨테이너 태그 필터 적용.
+Loki에서 Application Log 수집.
+
+canonical service 기준으로 조회한다 ({service="backend"}).
+legacy {container="..."} 조회는 쓰지 않는다 — correlation.py 참고.
 """
 
 import httpx
-from datetime import datetime, timedelta
+
+from correlation import CorrelationContext, service_log_selector
 
 
 class LogsCollector:
-    def __init__(self, loki_url: str):
+    def __init__(self, loki_url: str, transport: httpx.AsyncBaseTransport | None = None):
         self.url = loki_url
+        self._transport = transport
 
-    async def fetch_around(
-        self,
-        container: str | None,
-        alert_time: datetime,
-        window_minutes: int = 5,
-        limit: int = 200,
-    ) -> list[dict]:
-        """이상 시점 ±window 범위 로그 수집"""
+    async def fetch(self, ctx: CorrelationContext, limit: int = 200) -> list[dict]:
+        """ctx.service의 [ctx.start, ctx.end] 구간 로그 수집"""
 
-        # ← 이 부분 추가
-        if not container:
+        # service를 모르면 조회하지 않는다 (잘못된 identity로 엉뚱한 로그를 가져오지 않기 위해)
+        if not ctx.service:
             return []
 
-        start_ns = int((alert_time - timedelta(minutes=window_minutes)).timestamp() * 1e9)
-        end_ns   = int((alert_time + timedelta(minutes=window_minutes)).timestamp() * 1e9)
-
-        label_filter = f'{{container="{container}"}}'
-
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, transport=self._transport) as client:
             resp = await client.get(
                 f"{self.url}/loki/api/v1/query_range",
                 params={
-                    "query": label_filter,
-                    "start": start_ns,
-                    "end":   end_ns,
+                    "query": service_log_selector(ctx.service),
+                    "start": ctx.start_ns,
+                    "end":   ctx.end_ns,
                     "limit": limit,
                     "direction": "forward",
                 },
