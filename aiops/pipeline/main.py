@@ -22,6 +22,7 @@ import re as _re
 _DOCKER_UDS = "/var/run/docker.sock"
 from collector.metrics import MetricsCollector
 from collector.logs import LogsCollector
+from collector.network import NetworkCollector
 from correlation import CorrelationContext, MONITORED_SERVICES, resolve_service
 from prompt.builder import PromptBuilder
 from schemas.llm_output import LLMAnalysisResult
@@ -85,6 +86,7 @@ class AlertManagerWebhook(BaseModel):
 # ─── 의존성 주입 ─────────────────────────────────────────
 metrics_collector = MetricsCollector(settings.prometheus_url)
 logs_collector    = LogsCollector(settings.loki_url)
+network_collector = NetworkCollector(settings.loki_url)
 prompt_builder    = PromptBuilder()
 
 _SERVICE_PREFIXES = ["leafy-", "aiops-", "graduation-project-"]
@@ -240,6 +242,12 @@ async def analyze_alerts(alerts: list[Alert]):
                 container_name=container_name, runtime=runtime,
             )
             logs = await logs_collector.fetch(ctx)
+            # Network Context (best-effort, 예외를 던지지 않는다). 프롬프트 반영은 #11에서 한다.
+            network = await network_collector.fetch(ctx)
+            logger.info(
+                f"[Pipeline] network context: service={network.service} events={len(network.events)} "
+                f"query_complete={network.query_complete} skipped={network.skipped} errors={list(network.errors)}"
+            )
 
             # 2. 프롬프트 조립
             prompt = prompt_builder.build(

@@ -27,11 +27,29 @@ MONITORED_SERVICES = ("backend", "frontend", "db")
 _SERVICE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
-def service_log_selector(service: str) -> str:
-    """canonical service의 Application Log 조회 selector."""
+def _checked(service: str) -> str:
     if not service or not _SERVICE_NAME.match(service):
         raise ValueError(f"invalid service name: {service!r}")
-    return f'{{service="{service}"}}'
+    return service
+
+
+def service_log_selector(service: str) -> str:
+    """canonical service의 Application Log 조회 selector."""
+    return f'{{service="{_checked(service)}"}}'
+
+
+def network_event_selectors(service: str) -> tuple[str, str]:
+    """
+    canonical service가 관여한 Network Event selector (#8 label 기준).
+
+    LogQL stream selector는 서로 다른 label 간 OR를 지원하지 않으므로
+    출발(src) / 도착(dst) 두 개로 나눈다. (NETWORK_EVENT_SCHEMA.md §10.2)
+    """
+    s = _checked(service)
+    return (
+        f'{{log_type="network", src_service="{s}"}}',
+        f'{{log_type="network", dst_service="{s}"}}',
+    )
 
 
 async def resolve_service(
