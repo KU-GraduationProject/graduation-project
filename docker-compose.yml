@@ -190,6 +190,8 @@ services:
       - "24224:24224/udp"
     volumes:
       - ./leafy/fluentd/fluent.conf:/fluentd/etc/fluent.conf
+      # Network Observer(#5)의 Canonical Network Event JSONL (#8 ingestion, read-only)
+      - network_events:/var/log/network-observer:ro
     networks:
       - leafy-net
       - mgmt-net
