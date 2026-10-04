@@ -19,6 +19,8 @@ volumes:
   loki_data:
   grafana_data:
   ollama_data:
+  zeek_logs:            # Zeek conn.log (observer 내부 전달용)
+  network_events:       # Canonical Network Event (JSONL) — #8 ingestion이 소비
 
 services:
 
@@ -315,4 +317,54 @@ services:
       - mgmt-net
     depends_on:
       - pipeline
+    restart: unless-stopped
+
+  # ════════════════════════════════════════════
+  # Network Observability: Network Observer (#5)
+  # Network traffic -> Zeek -> Canonical Network Event v1.0
+  # Loki ingestion은 #8 범위이므로 여기서는 JSONL 생성까지만 한다.
+  # ════════════════════════════════════════════
+
+  network-observer-zeek:
+    image: zeek/zeek:latest
+    container_name: network-observer-zeek
+    # backend의 network namespace를 공유한다 (#4에서 검증한 방식).
+    # 이 하나로 frontend->backend(inbound)와 backend->db(outbound)를 모두 관측한다.
+    network_mode: "service:backend"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    # privileged 불필요 — 위 두 capability로 충분함을 #4에서 확인했다.
+    volumes:
+      # 단일 파일이 아니라 디렉터리를 마운트한다.
+      # 파일 단위 bind mount는 편집 시 inode가 바뀌어도 컨테이너가 옛 내용을 계속 본다.
+      - ./aiops/network-observer/zeek:/opt/observer:ro
+      - zeek_logs:/zeek-logs
+    # -C : Docker 가상 NIC는 checksum offload를 쓰므로 체크섬이 무효하다.
+    #      이 옵션이 없으면 Zeek이 패킷을 무시해 conn_state=OTH, bytes=0만 남는다.
+    # -i eth0 : backend는 multi-homed(eth0=leafy-net, eth1=mgmt-net)이므로
+    #           interface를 한정해야 management traffic이 섞이지 않는다.
+    command: >
+      sh -c "cd /zeek-logs && exec zeek -C -i eth0 /opt/observer/local.zeek"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  network-observer-enricher:
+    build: ./aiops/network-observer
+    container_name: network-observer-enricher
+    environment:
+      OBSERVER_CONFIG: /app/config/observer.yml
+      ZEEK_CONN_LOG: /zeek-logs/conn.log
+      LOG_LEVEL: INFO
+    volumes:
+      - ./aiops/network-observer/config:/app/config:ro
+      - zeek_logs:/zeek-logs:ro
+      - network_events:/var/log/network-observer
+      # identity enrichment용 Docker metadata 조회 (read-only)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - mgmt-net
+    depends_on:
+      - network-observer-zeek
     restart: unless-stopped
