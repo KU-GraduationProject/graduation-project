@@ -1,0 +1,5 @@
+# Windows(RTX) 실행용: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# Mac 에서는 이 파일 없이 실행한다 (Docker Desktop for Mac 은 GPU 를 지원하지 않는다)
+services:
+  ollama:
+    gpus: all

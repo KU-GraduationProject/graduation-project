@@ -38,5 +38,5 @@ scrape_configs:
 
   - job_name: "leafy-backend"          # ← 추가
     static_configs:
-      - targets: ["backend:8080"]
+      - targets: ["backend:9090"]       # 8080 → 9090 (Actuator 관리 포트 분리)
     metrics_path: /actuator/prometheus  # ← Spring Boot Actuator 경로
