@@ -817,7 +817,8 @@ async def push_to_loki(entry: dict) -> None:
         "streams": [{
             "stream": {
                 "job": "aiops-llm",
-                "container": entry.get("container", "unknown"),
+                # 분석 대상 컨테이너. 앱 로그의 container(fluentd 태그) 라벨과 충돌하지 않도록 분리
+                "target_container": entry.get("container", "unknown"),
                 "alert": entry.get("alert_name", "unknown"),
                 "threat_level": result.get("threat_level", "unknown"),
                 "action_risk": result.get("action_risk", "unknown"),
