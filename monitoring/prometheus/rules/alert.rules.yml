@@ -57,21 +57,49 @@ groups:
       # [시나리오] container_oom_restart.py (30초 주기 반복 재시작)
       #            memory_leak.py (90초 주기 강제 kill-start)
       #            secret_dump.py 실행 후 프로세스 정리 목적
-      # [한계] changes() 함수는 값 변화만 감지 — 정상 재배포와 구분 불가
-      #        AIOps Pipeline이 횟수/빈도로 이상/정상 판별
-      # 변경 후
+      # [신호] Pipeline /metrics 의 Docker inspect 값 (name 기준 시계열 → id 변경/Exited 중에도 유지)
+      #        자동 재시작: aiops_docker_container_restarts_total (RestartCount, 재시작 정책에 의해서만 증가)
+      #        수동 재시작: aiops_docker_container_started_at_seconds (StartedAt, 모든 시작 시 변경)
+      # [자동 재시작 집계] increase()는 외삽으로 실제 +1을 2 이상으로 부풀릴 수 있어 사용하지 않는다.
+      #        5s 단계마다 직전 값과 비교한 실제 증가분만 10분간 합산 (외삽 없음, 정수 결과)
+      #        - last_over_time(...[10m]) 로 수집 공백(Pipeline 재시작 등 10분 이내)을 이어 붙여 증가분 보존
+      #        - 값 감소(recreate로 RestartCount 리셋)는 감소폭을 버리고 새 컨테이너의 현재 값만 가산
+      #        - 직전 값이 없는 신규 시계열의 첫 샘플은 가산하지 않음 (Pipeline/Prometheus 최초 수집 오탐 방지)
+      #        offset/step 5s는 scrape_interval(5s)에 맞춘 값
+      # [수동 재시작] StartedAt 변경 횟수 (manual restart는 RestartCount를 올리지 않음)
+      # [한계] 정상 재배포(recreate)는 StartedAt 1회 변경 → 임계값 2 미만. 단, 배포 후 10분 내 재시작 1회가 더해지면 발화
+      #        recreate 직후 첫 수집 전에 이전 값 이상으로 재시작한 경우(예: 1→2) RestartCount 측은 과소 집계
+      #        10분 이상 수집 중단 중의 증가분은 집계 불가. 5s 수집 주기 내 다중 재시작은 StartedAt 측에서 1회로 집계
+      #        Pipeline 다운 시 신호 없음 (aiops_docker_status_scrape_success 로 확인)
       - alert: ContainerRestarted
         expr: >
-          sum by (image) (
-            resets(container_cpu_usage_seconds_total{image=~".*leafy-backend.*", cpu="total"}[5m])
+          max by (name) (
+            sum_over_time(
+              (
+                (
+                  last_over_time(aiops_docker_container_restarts_total{name="leafy-backend"}[10m])
+                  - last_over_time(aiops_docker_container_restarts_total{name="leafy-backend"}[10m] offset 5s)
+                ) >= 0
+                or
+                (
+                  last_over_time(aiops_docker_container_restarts_total{name="leafy-backend"}[10m])
+                  < last_over_time(aiops_docker_container_restarts_total{name="leafy-backend"}[10m] offset 5s)
+                ) + 0
+              )[10m:5s]
+            )
+          ) >= 2
+          or
+          max by (name) (
+            changes(aiops_docker_container_started_at_seconds{name="leafy-backend"}[10m])
           ) >= 2
         for: 0m
+        keep_firing_for: 2m
         labels:
           severity: critical
           category: infra
         annotations:
-          summary: "컨테이너 반복 재시작 감지 (CrashLoop/OOM 가능성)"
-          container: "leafy-backend"
+          summary: "컨테이너 반복 재시작 감지 (10분 내 2회 이상, CrashLoop/OOM 가능성)"
+          container: "{{ $labels.name }}"
       # [역할] DDoS/포트스캔 탐지 목적 — 실제 운영 환경 대응용
       # [한계] Mac Docker Desktop에서 per-container 메트릭 미지원
       #        name 라벨 없어서 Pipeline이 수동 분석 경로로 진입

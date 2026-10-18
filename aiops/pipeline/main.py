@@ -100,6 +100,98 @@ def _extract_service(name: str) -> str:
     return _re.sub(r"-\d+$", "", s)
 
 
+# ─── Docker 재시작 상태 메트릭 (ContainerRestarted 룰 입력) ─────
+# cAdvisor는 RestartCount/StartedAt을 노출하지 않으므로 Docker inspect 값을 직접 노출한다.
+# 실패 시 값을 0으로 채우지 않고 해당 시계열을 생략한다 (scrape_success로 구분).
+_RESTART_WATCH_PROJECT  = "graduation-project"
+_RESTART_WATCH_SERVICES = ("frontend", "backend", "db", "minio")
+_DOCKER_STATUS_TIMEOUT  = 2.0  # 기존 container_name_info 조회(3s)와 합쳐 scrape 주기(5s) 이내
+
+
+def _parse_docker_time(value: str) -> float | None:
+    """Docker RFC3339Nano 시각 → epoch 초. 미시작('0001-01-01...')·파싱 실패는 None."""
+    if not value or value.startswith("0001-01-01"):
+        return None
+    m = _re.match(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})$", value)
+    if not m:
+        return None
+    frac = (m.group(2) or ".0")[:7]  # 나노초 → 마이크로초
+    tz = "+00:00" if m.group(3) == "Z" else m.group(3)
+    try:
+        return datetime.fromisoformat(m.group(1) + frac + tz).timestamp()
+    except ValueError:
+        return None
+
+
+async def _collect_docker_restart_metrics(client: httpx.AsyncClient) -> list[str]:
+    restarts = [
+        "# HELP aiops_docker_container_restarts_total Docker RestartCount (restart policy driven restarts)",
+        "# TYPE aiops_docker_container_restarts_total counter",
+    ]
+    started = [
+        "# HELP aiops_docker_container_started_at_seconds Docker State.StartedAt as unix seconds",
+        "# TYPE aiops_docker_container_started_at_seconds gauge",
+    ]
+    oom = [
+        "# HELP aiops_docker_container_oom_killed Docker State.OOMKilled of the last exit (1/0)",
+        "# TYPE aiops_docker_container_oom_killed gauge",
+    ]
+
+    async def _inspect(cid: str) -> dict:
+        r = await client.get(f"http://localhost/containers/{cid}/json")
+        r.raise_for_status()
+        return r.json()
+
+    async def _collect() -> None:
+        nonlocal inspect_failures
+        filters = json.dumps({"label": [f"com.docker.compose.project={_RESTART_WATCH_PROJECT}"]})
+        resp = await client.get(
+            "http://localhost/containers/json", params={"all": "true", "filters": filters}
+        )
+        resp.raise_for_status()
+        targets = [
+            c for c in resp.json()
+            if c.get("Id")
+            and (c.get("Labels") or {}).get("com.docker.compose.service") in _RESTART_WATCH_SERVICES
+        ]
+        results = await asyncio.gather(*(_inspect(c["Id"]) for c in targets), return_exceptions=True)
+        for c, info in zip(targets, results):
+            name = (c.get("Names") or [""])[0].lstrip("/")
+            if isinstance(info, BaseException):
+                inspect_failures += 1
+                logger.warning(f"[metrics] Docker inspect 실패 ({name}): {info}")
+                continue
+            service = c["Labels"]["com.docker.compose.service"]
+            labels = f'name="{name}",service="{service}"'
+            state = info.get("State") or {}
+            if type(info.get("RestartCount")) is int:
+                restarts.append(f"aiops_docker_container_restarts_total{{{labels}}} {info['RestartCount']}")
+            started_at = _parse_docker_time(state.get("StartedAt", ""))
+            if started_at is not None:
+                started.append(f"aiops_docker_container_started_at_seconds{{{labels}}} {started_at:.3f}")
+            if isinstance(state.get("OOMKilled"), bool):
+                oom.append(f"aiops_docker_container_oom_killed{{{labels}}} {int(state['OOMKilled'])}")
+
+    inspect_failures = 0
+    success = 1
+    try:
+        await asyncio.wait_for(_collect(), timeout=_DOCKER_STATUS_TIMEOUT)
+        if inspect_failures:
+            success = 0  # 일부 컨테이너 누락 — 수집된 컨테이너의 시계열은 유지
+    except Exception as e:
+        success = 0
+        logger.warning(f"[metrics] Docker 재시작 상태 조회 실패: {e!r}")
+        # 부분 수집 결과를 버려 실패를 0 값으로 오인하지 않도록 한다
+        restarts, started, oom = restarts[:2], started[:2], oom[:2]
+
+    return restarts + [""] + started + [""] + oom + [
+        "",
+        "# HELP aiops_docker_status_scrape_success Whether Docker restart status collection succeeded",
+        "# TYPE aiops_docker_status_scrape_success gauge",
+        f"aiops_docker_status_scrape_success {success}",
+    ]
+
+
 # ─── 엔드포인트 ─────────────────────────────────────────
 
 @app.get("/health")
@@ -114,10 +206,13 @@ async def prometheus_metrics():
         "# TYPE container_name_info gauge",
     ]
     count_map: dict[str, int] = {}
-    try:
-        async with httpx.AsyncClient(
-            transport=httpx.AsyncHTTPTransport(uds=_DOCKER_UDS), timeout=3
-        ) as client:
+    docker_lines: list[str] = []
+    async with httpx.AsyncClient(
+        transport=httpx.AsyncHTTPTransport(uds=_DOCKER_UDS), timeout=3
+    ) as client:
+        # 재시작 상태 수집을 기존 조회와 병행 → 최악 지연이 합산되어 scrape timeout(5s)을 넘지 않도록
+        docker_task = asyncio.create_task(_collect_docker_restart_metrics(client))
+        try:
             resp = await client.get("http://localhost/containers/json")
             for c in resp.json():
                 cid  = c.get("Id", "")
@@ -129,8 +224,9 @@ async def prometheus_metrics():
                     f'container_name_info{{id="/docker/{cid}",name="{name}",service="{service}"}} 1'
                 )
                 count_map[service] = count_map.get(service, 0) + 1
-    except Exception as e:
-        logger.warning(f"[metrics] Docker socket 조회 실패: {e}")
+        except Exception as e:
+            logger.warning(f"[metrics] Docker socket 조회 실패: {e}")
+        docker_lines = await docker_task
 
     count_lines = [
         "# HELP container_service_count Running container count per service",
@@ -139,7 +235,7 @@ async def prometheus_metrics():
     for svc, cnt in sorted(count_map.items()):
         count_lines.append(f'container_service_count{{service="{svc}"}} {cnt}')
 
-    return "\n".join(name_lines + [""] + count_lines) + "\n"
+    return "\n".join(name_lines + [""] + count_lines + [""] + docker_lines) + "\n"
 
 
 @app.post("/webhook/alert")
