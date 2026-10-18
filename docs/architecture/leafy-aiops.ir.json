@@ -1,0 +1,1338 @@
+{
+  "schema": "drawio-skill/diagram-ir/v1",
+  "metadata": {
+    "title": "Leafy AIOps — current declared architecture",
+    "sources": [
+      "docker-compose.yml",
+      "docker-compose.gpu.yml",
+      "leafy/fluentd/fluent.conf",
+      "monitoring/prometheus/prometheus.yml",
+      "monitoring/alertmanager/alertmanager.yml",
+      "aiops/pipeline/main.py",
+      "aiops/remediation/main.py"
+    ],
+    "runtime_inspected": false,
+    "remediation_status_source": "user-provided stopped state",
+    "notes": "Summary nodes and processing steps are abstractions, not additional deployed services."
+  },
+  "nodes": [
+    {
+      "id": "frontend",
+      "label": "frontend",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "leafy-net"
+        ],
+        "network_mode": null,
+        "published_ports": [
+          "${LEAFY_BIND_IP:-127.0.0.1}:80:80"
+        ],
+        "container_name": "leafy-frontend",
+        "image": "gicks/ai-ops-leafy-frontend:${FRONTEND_TAG:-latest}",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 40
+      }
+    },
+    {
+      "id": "backend",
+      "label": "backend",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "leafy-net",
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [],
+        "container_name": "leafy-backend",
+        "image": "gicks/ai-ops-leafy-backend:${BACKEND_TAG:-latest}",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 65
+      }
+    },
+    {
+      "id": "db",
+      "label": "db",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "leafy-net"
+        ],
+        "network_mode": null,
+        "published_ports": [],
+        "container_name": "leafy-db",
+        "image": "postgres:16",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 109
+      }
+    },
+    {
+      "id": "vol:postgres_data",
+      "label": "postgres_data",
+      "kind": "database",
+      "properties": {},
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 25
+      }
+    },
+    {
+      "id": "minio",
+      "label": "minio",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "leafy-net"
+        ],
+        "network_mode": null,
+        "published_ports": [],
+        "container_name": "leafy-minio",
+        "image": "gicks/minio:RELEASE.2025-09-07T16-13-09Z",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 111
+      }
+    },
+    {
+      "id": "vol:minio_data",
+      "label": "minio_data",
+      "kind": "database",
+      "properties": {},
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 30
+      }
+    },
+    {
+      "id": "node-exporter",
+      "label": "node-exporter",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [],
+        "container_name": "node-exporter",
+        "image": "prom/node-exporter:latest",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 189
+      }
+    },
+    {
+      "id": "cadvisor",
+      "label": "cadvisor",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [],
+        "container_name": "cadvisor",
+        "image": "gcr.io/cadvisor/cadvisor:latest",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 205
+      }
+    },
+    {
+      "id": "nginx-exporter",
+      "label": "nginx-exporter",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "leafy-net",
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [],
+        "container_name": "nginx-exporter",
+        "image": "nginx/nginx-prometheus-exporter:latest",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 219
+      }
+    },
+    {
+      "id": "postgres-exporter",
+      "label": "postgres-exporter",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "leafy-net",
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [],
+        "container_name": "postgres-exporter",
+        "image": "prometheuscommunity/postgres-exporter:latest",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 231
+      }
+    },
+    {
+      "id": "fluentd",
+      "label": "fluentd",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "leafy-net",
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [
+          "24224:24224",
+          "24224:24224/udp"
+        ],
+        "container_name": "fluentd",
+        "image": null,
+        "build": "./leafy/fluentd",
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 243
+      }
+    },
+    {
+      "id": "vol:network_events",
+      "label": "network_events",
+      "kind": "database",
+      "properties": {},
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 32
+      }
+    },
+    {
+      "id": "prometheus",
+      "label": "prometheus",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [
+          "9090:9090"
+        ],
+        "container_name": "prometheus",
+        "image": "prom/prometheus:latest",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 262
+      }
+    },
+    {
+      "id": "vol:prometheus_data",
+      "label": "prometheus_data",
+      "kind": "database",
+      "properties": {},
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 26
+      }
+    },
+    {
+      "id": "alertmanager",
+      "label": "alertmanager",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [
+          "9093:9093"
+        ],
+        "container_name": "alertmanager",
+        "image": "prom/alertmanager:latest",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 280
+      }
+    },
+    {
+      "id": "loki",
+      "label": "loki",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [
+          "3100:3100"
+        ],
+        "container_name": "loki",
+        "image": "grafana/loki:latest",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 293
+      }
+    },
+    {
+      "id": "vol:loki_data",
+      "label": "loki_data",
+      "kind": "database",
+      "properties": {},
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 27
+      }
+    },
+    {
+      "id": "grafana",
+      "label": "grafana",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [
+          "3000:3000"
+        ],
+        "container_name": "grafana",
+        "image": "grafana/grafana:latest",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 306
+      }
+    },
+    {
+      "id": "vol:grafana_data",
+      "label": "grafana_data",
+      "kind": "database",
+      "properties": {},
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 28
+      }
+    },
+    {
+      "id": "ollama",
+      "label": "ollama",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [
+          "11434:11434"
+        ],
+        "container_name": "ollama",
+        "image": "ollama/ollama:latest",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 328
+      }
+    },
+    {
+      "id": "vol:ollama_data",
+      "label": "ollama_data",
+      "kind": "database",
+      "properties": {},
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 29
+      }
+    },
+    {
+      "id": "pipeline",
+      "label": "pipeline",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [
+          "8000:8000"
+        ],
+        "container_name": "aiops-pipeline",
+        "image": null,
+        "build": "./aiops/pipeline",
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 343
+      }
+    },
+    {
+      "id": "remediation",
+      "label": "remediation",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [
+          "8001:8001"
+        ],
+        "container_name": "aiops-remediation",
+        "image": null,
+        "build": "./aiops/remediation",
+        "runtime_status": "stopped per user context; not independently inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 368
+      }
+    },
+    {
+      "id": "network-observer-zeek",
+      "label": "network-observer-zeek",
+      "kind": "service",
+      "properties": {
+        "networks": [],
+        "network_mode": "service:backend",
+        "published_ports": [],
+        "container_name": "network-observer-zeek",
+        "image": "zeek/zeek:latest",
+        "build": null,
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 391
+      }
+    },
+    {
+      "id": "vol:zeek_logs",
+      "label": "zeek_logs",
+      "kind": "database",
+      "properties": {},
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 31
+      }
+    },
+    {
+      "id": "network-observer-enricher",
+      "label": "network-observer-enricher",
+      "kind": "service",
+      "properties": {
+        "networks": [
+          "mgmt-net"
+        ],
+        "network_mode": null,
+        "published_ports": [],
+        "container_name": "network-observer-enricher",
+        "image": null,
+        "build": "./aiops/network-observer",
+        "runtime_status": "not inspected"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 416
+      }
+    },
+    {
+      "id": "leafy-apps",
+      "label": "Leafy 애플리케이션",
+      "kind": "service",
+      "properties": {
+        "members": [
+          "frontend",
+          "backend",
+          "db",
+          "minio"
+        ],
+        "abstraction": "logical summary; not an additional container"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 34
+      }
+    },
+    {
+      "id": "exporters",
+      "label": "메트릭 수집기",
+      "kind": "service",
+      "properties": {
+        "members": [
+          "node-exporter",
+          "cadvisor",
+          "nginx-exporter",
+          "postgres-exporter"
+        ],
+        "abstraction": "logical summary; not an additional container"
+      },
+      "provenance": {
+        "path": "monitoring/prometheus/prometheus.yml",
+        "line": 13
+      }
+    },
+    {
+      "id": "network-observer",
+      "label": "Network Observer",
+      "kind": "service",
+      "properties": {
+        "members": [
+          "network-observer-zeek",
+          "network-observer-enricher"
+        ],
+        "abstraction": "logical summary; not an additional container"
+      },
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 396
+      }
+    },
+    {
+      "id": "docker-log-driver",
+      "label": "앱 stdout / stderr",
+      "kind": "service",
+      "properties": {
+        "members": [
+          "frontend",
+          "backend",
+          "db",
+          "minio"
+        ],
+        "abstraction": "logical summary; not an additional container"
+      },
+      "provenance": {
+        "path": "leafy/fluentd/fluent.conf",
+        "line": 1
+      }
+    },
+    {
+      "id": "correlation",
+      "label": "Pipeline: 컨텍스트 수집",
+      "kind": "service",
+      "properties": {
+        "members": [],
+        "abstraction": "logical summary; not an additional container"
+      },
+      "provenance": {
+        "path": "aiops/pipeline/main.py",
+        "line": 271
+      }
+    },
+    {
+      "id": "analysis-store",
+      "label": "Pipeline: 분석 결과 기록",
+      "kind": "service",
+      "properties": {
+        "members": [],
+        "abstraction": "logical summary; not an additional container"
+      },
+      "provenance": {
+        "path": "aiops/pipeline/main.py",
+        "line": 271
+      }
+    },
+    {
+      "id": "fallback-gate",
+      "label": "Pipeline: fallback 검사",
+      "kind": "service",
+      "properties": {
+        "members": [],
+        "abstraction": "logical summary; not an additional container"
+      },
+      "provenance": {
+        "path": "aiops/pipeline/main.py",
+        "line": 271
+      }
+    },
+    {
+      "id": "docker-actions",
+      "label": "Docker API 조치",
+      "kind": "service",
+      "properties": {
+        "members": [],
+        "abstraction": "logical summary; not an additional container"
+      },
+      "provenance": {
+        "path": "aiops/remediation/main.py",
+        "line": 72
+      }
+    },
+    {
+      "id": "slack",
+      "label": "Slack 연계",
+      "kind": "service",
+      "properties": {
+        "members": [],
+        "abstraction": "logical summary; not an additional container"
+      },
+      "provenance": {
+        "path": "aiops/remediation/actions/notify.py",
+        "line": 61
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "dependency:frontend:backend",
+      "source": "frontend",
+      "target": "backend",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 40
+      }
+    },
+    {
+      "id": "dependency:frontend:minio",
+      "source": "frontend",
+      "target": "minio",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 40
+      }
+    },
+    {
+      "id": "dependency:backend:db",
+      "source": "backend",
+      "target": "db",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 65
+      }
+    },
+    {
+      "id": "dependency:backend:minio",
+      "source": "backend",
+      "target": "minio",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 65
+      }
+    },
+    {
+      "id": "dependency:db:fluentd",
+      "source": "db",
+      "target": "fluentd",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 109
+      }
+    },
+    {
+      "id": "mount:db:postgres_data",
+      "source": "db",
+      "target": "vol:postgres_data",
+      "kind": "mount",
+      "label": "volume mount"
+    },
+    {
+      "id": "mount:minio:minio_data",
+      "source": "minio",
+      "target": "vol:minio_data",
+      "kind": "mount",
+      "label": "volume mount"
+    },
+    {
+      "id": "dependency:nginx-exporter:frontend",
+      "source": "nginx-exporter",
+      "target": "frontend",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 219
+      }
+    },
+    {
+      "id": "dependency:postgres-exporter:db",
+      "source": "postgres-exporter",
+      "target": "db",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 231
+      }
+    },
+    {
+      "id": "mount:fluentd:network_events",
+      "source": "fluentd",
+      "target": "vol:network_events",
+      "kind": "mount",
+      "label": "volume mount"
+    },
+    {
+      "id": "mount:prometheus:prometheus_data",
+      "source": "prometheus",
+      "target": "vol:prometheus_data",
+      "kind": "mount",
+      "label": "volume mount"
+    },
+    {
+      "id": "mount:loki:loki_data",
+      "source": "loki",
+      "target": "vol:loki_data",
+      "kind": "mount",
+      "label": "volume mount"
+    },
+    {
+      "id": "dependency:grafana:prometheus",
+      "source": "grafana",
+      "target": "prometheus",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 306
+      }
+    },
+    {
+      "id": "dependency:grafana:loki",
+      "source": "grafana",
+      "target": "loki",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 306
+      }
+    },
+    {
+      "id": "mount:grafana:grafana_data",
+      "source": "grafana",
+      "target": "vol:grafana_data",
+      "kind": "mount",
+      "label": "volume mount"
+    },
+    {
+      "id": "mount:ollama:ollama_data",
+      "source": "ollama",
+      "target": "vol:ollama_data",
+      "kind": "mount",
+      "label": "volume mount"
+    },
+    {
+      "id": "dependency:pipeline:prometheus",
+      "source": "pipeline",
+      "target": "prometheus",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 343
+      }
+    },
+    {
+      "id": "dependency:pipeline:loki",
+      "source": "pipeline",
+      "target": "loki",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 343
+      }
+    },
+    {
+      "id": "dependency:pipeline:ollama",
+      "source": "pipeline",
+      "target": "ollama",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 343
+      }
+    },
+    {
+      "id": "dependency:remediation:pipeline",
+      "source": "remediation",
+      "target": "pipeline",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 368
+      }
+    },
+    {
+      "id": "dependency:network-observer-zeek:backend",
+      "source": "network-observer-zeek",
+      "target": "backend",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 391
+      }
+    },
+    {
+      "id": "mount:network-observer-zeek:zeek_logs",
+      "source": "network-observer-zeek",
+      "target": "vol:zeek_logs",
+      "kind": "mount",
+      "label": "volume mount"
+    },
+    {
+      "id": "dependency:network-observer-enricher:network-observer-zeek",
+      "source": "network-observer-enricher",
+      "target": "network-observer-zeek",
+      "kind": "dependency",
+      "label": "depends_on (startup)",
+      "provenance": {
+        "path": "docker-compose.yml",
+        "line": 416
+      }
+    },
+    {
+      "id": "mount:network-observer-enricher:zeek_logs",
+      "source": "network-observer-enricher",
+      "target": "vol:zeek_logs",
+      "kind": "mount",
+      "label": "volume mount"
+    },
+    {
+      "id": "mount:network-observer-enricher:network_events",
+      "source": "network-observer-enricher",
+      "target": "vol:network_events",
+      "kind": "mount",
+      "label": "volume mount"
+    },
+    {
+      "id": "flow:overview:0",
+      "source": "leafy-apps",
+      "target": "network-observer",
+      "label": "backend eth0 캡처",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "flow:overview:1",
+      "source": "leafy-apps",
+      "target": "fluentd",
+      "label": "Docker 데몬 localhost:24224",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "leafy/fluentd/fluent.conf",
+        "line": 1
+      }
+    },
+    {
+      "id": "flow:overview:2",
+      "source": "exporters",
+      "target": "prometheus",
+      "label": "메트릭 응답",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "monitoring/prometheus/prometheus.yml",
+        "line": 13
+      }
+    },
+    {
+      "id": "flow:overview:3",
+      "source": "prometheus",
+      "target": "alertmanager",
+      "label": "Alert 전송",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "monitoring/prometheus/prometheus.yml",
+        "line": 13
+      }
+    },
+    {
+      "id": "flow:overview:4",
+      "source": "network-observer",
+      "target": "fluentd",
+      "label": "이벤트\nJSONL",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "leafy/fluentd/fluent.conf",
+        "line": 1
+      }
+    },
+    {
+      "id": "flow:overview:5",
+      "source": "fluentd",
+      "target": "loki",
+      "label": "로그 적재",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "leafy/fluentd/fluent.conf",
+        "line": 1
+      }
+    },
+    {
+      "id": "flow:overview:6",
+      "source": "loki",
+      "target": "pipeline",
+      "label": "컨텍스트\n조회",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "aiops/pipeline/collector/network.py",
+        "line": 58
+      }
+    },
+    {
+      "id": "flow:overview:7",
+      "source": "alertmanager",
+      "target": "pipeline",
+      "label": "/webhook/alert",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "monitoring/alertmanager/alertmanager.yml",
+        "line": 12
+      }
+    },
+    {
+      "id": "flow:overview:8",
+      "source": "loki",
+      "target": "alertmanager",
+      "label": "Ruler Alert",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "monitoring/loki/loki-config.yml",
+        "line": 37
+      }
+    },
+    {
+      "id": "flow:overview:9",
+      "source": "pipeline",
+      "target": "ollama",
+      "label": "POST /api/chat",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "aiops/pipeline/main.py",
+        "line": 682
+      }
+    },
+    {
+      "id": "flow:overview:10",
+      "source": "pipeline",
+      "target": "remediation",
+      "label": "/action 시도\n중지 중 실패",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "aiops/remediation/main.py",
+        "line": 72
+      }
+    },
+    {
+      "id": "flow:overview:11",
+      "source": "grafana",
+      "target": "loki",
+      "label": "조회",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "monitoring/grafana/provisioning/datasources/datasources.yml",
+        "line": 16
+      }
+    },
+    {
+      "id": "flow:logs-network:0",
+      "source": "frontend",
+      "target": "backend",
+      "label": "HTTP",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "flow:logs-network:1",
+      "source": "backend",
+      "target": "db",
+      "label": "JDBC",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "flow:logs-network:2",
+      "source": "backend",
+      "target": "minio",
+      "label": "Object API",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "flow:logs-network:3",
+      "source": "docker-log-driver",
+      "target": "fluentd",
+      "label": "forward\n:24224",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "leafy/fluentd/fluent.conf",
+        "line": 1
+      }
+    },
+    {
+      "id": "flow:logs-network:4",
+      "source": "fluentd",
+      "target": "loki",
+      "label": "5초 flush",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "leafy/fluentd/fluent.conf",
+        "line": 1
+      }
+    },
+    {
+      "id": "flow:logs-network:5",
+      "source": "loki",
+      "target": "pipeline",
+      "label": "동일 service\n같은 시간창",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "aiops/pipeline/collector/network.py",
+        "line": 58
+      }
+    },
+    {
+      "id": "flow:logs-network:6",
+      "source": "backend",
+      "target": "network-observer-zeek",
+      "label": "네임스페이스 공유 / eth0만 관측",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "flow:logs-network:7",
+      "source": "network-observer-zeek",
+      "target": "vol:zeek_logs",
+      "label": "연결 로그",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "flow:logs-network:8",
+      "source": "vol:zeek_logs",
+      "target": "network-observer-enricher",
+      "label": "tail",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "flow:logs-network:9",
+      "source": "network-observer-enricher",
+      "target": "vol:network_events",
+      "label": "정규화 JSONL",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "flow:logs-network:10",
+      "source": "vol:network_events",
+      "target": "fluentd",
+      "label": "별도 @NETWORK 경로 / 원본 JSON 보존",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "leafy/fluentd/fluent.conf",
+        "line": 1
+      }
+    },
+    {
+      "id": "flow:rca-response:0",
+      "source": "prometheus",
+      "target": "alertmanager",
+      "label": "Alert",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "monitoring/prometheus/prometheus.yml",
+        "line": 13
+      }
+    },
+    {
+      "id": "flow:rca-response:1",
+      "source": "loki",
+      "target": "alertmanager",
+      "label": "Ruler Alert",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "flow:rca-response:2",
+      "source": "alertmanager",
+      "target": "pipeline",
+      "label": "webhook",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "monitoring/alertmanager/alertmanager.yml",
+        "line": 12
+      }
+    },
+    {
+      "id": "flow:rca-response:3",
+      "source": "pipeline",
+      "target": "correlation",
+      "label": "유효 대상",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "aiops/pipeline/main.py",
+        "line": 271
+      }
+    },
+    {
+      "id": "flow:rca-response:4",
+      "source": "correlation",
+      "target": "ollama",
+      "label": "프롬프트 + JSON 스키마",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "flow:rca-response:5",
+      "source": "ollama",
+      "target": "analysis-store",
+      "label": "분석 응답",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "flow:rca-response:6",
+      "source": "analysis-store",
+      "target": "fallback-gate",
+      "label": "분석 기록 후",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "flow:rca-response:7",
+      "source": "fallback-gate",
+      "target": "remediation",
+      "label": "fallback이 아닌 경우 전달 시도",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "aiops/remediation/main.py",
+        "line": 72
+      }
+    },
+    {
+      "id": "flow:rca-response:8",
+      "source": "remediation",
+      "target": "docker-actions",
+      "label": "조건 충족",
+      "kind": "dataflow",
+      "provenance": {
+        "path": "aiops/remediation/main.py",
+        "line": 72
+      }
+    },
+    {
+      "id": "flow:rca-response:9",
+      "source": "remediation",
+      "target": "slack",
+      "label": "승인 필요 / 알림만",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "flow:rca-response:10",
+      "source": "analysis-store",
+      "target": "grafana",
+      "label": "Loki 데이터 소스 조회",
+      "kind": "dataflow",
+      "provenance": {}
+    },
+    {
+      "id": "membership:leafy-apps:frontend",
+      "source": "leafy-apps",
+      "target": "frontend",
+      "label": "logical summary membership",
+      "kind": "contains"
+    },
+    {
+      "id": "membership:leafy-apps:backend",
+      "source": "leafy-apps",
+      "target": "backend",
+      "label": "logical summary membership",
+      "kind": "contains"
+    },
+    {
+      "id": "membership:leafy-apps:db",
+      "source": "leafy-apps",
+      "target": "db",
+      "label": "logical summary membership",
+      "kind": "contains"
+    },
+    {
+      "id": "membership:leafy-apps:minio",
+      "source": "leafy-apps",
+      "target": "minio",
+      "label": "logical summary membership",
+      "kind": "contains"
+    },
+    {
+      "id": "membership:exporters:node-exporter",
+      "source": "exporters",
+      "target": "node-exporter",
+      "label": "logical summary membership",
+      "kind": "contains"
+    },
+    {
+      "id": "membership:exporters:cadvisor",
+      "source": "exporters",
+      "target": "cadvisor",
+      "label": "logical summary membership",
+      "kind": "contains"
+    },
+    {
+      "id": "membership:exporters:nginx-exporter",
+      "source": "exporters",
+      "target": "nginx-exporter",
+      "label": "logical summary membership",
+      "kind": "contains"
+    },
+    {
+      "id": "membership:exporters:postgres-exporter",
+      "source": "exporters",
+      "target": "postgres-exporter",
+      "label": "logical summary membership",
+      "kind": "contains"
+    },
+    {
+      "id": "membership:network-observer:network-observer-zeek",
+      "source": "network-observer",
+      "target": "network-observer-zeek",
+      "label": "logical summary membership",
+      "kind": "contains"
+    },
+    {
+      "id": "membership:network-observer:network-observer-enricher",
+      "source": "network-observer",
+      "target": "network-observer-enricher",
+      "label": "logical summary membership",
+      "kind": "contains"
+    },
+    {
+      "id": "membership:docker-log-driver:frontend",
+      "source": "docker-log-driver",
+      "target": "frontend",
+      "label": "logical summary membership",
+      "kind": "contains"
+    },
+    {
+      "id": "membership:docker-log-driver:backend",
+      "source": "docker-log-driver",
+      "target": "backend",
+      "label": "logical summary membership",
+      "kind": "contains"
+    },
+    {
+      "id": "membership:docker-log-driver:db",
+      "source": "docker-log-driver",
+      "target": "db",
+      "label": "logical summary membership",
+      "kind": "contains"
+    },
+    {
+      "id": "membership:docker-log-driver:minio",
+      "source": "docker-log-driver",
+      "target": "minio",
+      "label": "logical summary membership",
+      "kind": "contains"
+    }
+  ],
+  "views": [
+    {
+      "id": "overview",
+      "name": "01 전체 구조",
+      "nodes": [
+        "leafy-apps",
+        "exporters",
+        "prometheus",
+        "alertmanager",
+        "network-observer",
+        "fluentd",
+        "loki",
+        "pipeline",
+        "grafana",
+        "ollama",
+        "remediation"
+      ]
+    },
+    {
+      "id": "logs-network",
+      "name": "02 로그와 네트워크",
+      "nodes": [
+        "frontend",
+        "backend",
+        "db",
+        "minio",
+        "docker-log-driver",
+        "fluentd",
+        "loki",
+        "pipeline",
+        "network-observer-zeek",
+        "vol:zeek_logs",
+        "network-observer-enricher",
+        "vol:network_events"
+      ]
+    },
+    {
+      "id": "rca-response",
+      "name": "03 분석과 대응",
+      "nodes": [
+        "prometheus",
+        "loki",
+        "alertmanager",
+        "pipeline",
+        "correlation",
+        "ollama",
+        "analysis-store",
+        "fallback-gate",
+        "remediation",
+        "docker-actions",
+        "slack",
+        "grafana"
+      ]
+    }
+  ]
+}
