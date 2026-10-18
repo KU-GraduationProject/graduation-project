@@ -33,22 +33,26 @@ groups:
       #        → 요청 88% 영향, p99 레이턴시 461ms → 9424ms
       # [시나리오] memory_leak.py (90초 주기 재시작)
       #            container_oom_restart.py (30초 주기 재시작)
-      # [임계값] 70% — 정상 앱은 50~60%, 누수는 85%+ 지속
+      # [지표] working_set (usage - inactive_file). usage_bytes는 회수 가능한 페이지 캐시를 포함해
+      #        재기동 직후 jar 캐시만으로 0.9를 넘는 오탐이 있었음 (2026-10-18, RSS 0.67 / usage 0.91)
+      # [임계값] 85% 5분 지속 — 정상 JVM working_set 0.68~0.79, 한도 512MiB·swap 없음
+      # [집계] limit=0(무제한) 컨테이너는 나누기 전에 제외(+Inf 방지), max by(name)으로 cAdvisor 라벨 제거
+      #        나누기는 전체 라벨 매칭: 재시작 정책 재시작 시 cAdvisor가 같은 id에 restartcount 라벨만 다른
+      #        시계열을 함께 노출하므로 on(id) 1:1 매칭은 평가 오류가 난다
       - alert: HighMemoryUsage
         expr: >
-          (
+          max by (name) (
             (
-              container_memory_usage_bytes{id=~"/docker/.+"}
-              / container_spec_memory_limit_bytes{id=~"/docker/.+"}
+              container_memory_working_set_bytes{id=~"/docker/.+"}
+              / (container_spec_memory_limit_bytes{id=~"/docker/.+"} > 0)
             ) * on(id) group_left(name) container_name_info
-          ) > 0.7
-          and on(id) container_spec_memory_limit_bytes{id=~"/docker/.+"} > 0
-        for: 1m
+          ) > 0.85
+        for: 5m
         labels:
           severity: warning
           category: infra
         annotations:
-          summary: "컨테이너 메모리 사용률 70% 초과"
+          summary: "컨테이너 메모리 사용률(working set) 85% 5분 이상 초과"
           container: "{{ $labels.name }}"
 
       # [역할] 컨테이너 비정상 재시작 탐지 (crash loop/OOM kill)
