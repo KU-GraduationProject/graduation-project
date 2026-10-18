@@ -1,0 +1,429 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="drawio-skill" version="26.0.0" agent="source-backed architecture">
+  <diagram id="overview" name="01 전체 구조">
+    <mxGraphModel dx="1600" dy="1120" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1120" background="#ffffff">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="overview:title" value="Leafy AIOps | 전체 아키텍처" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=28;fontStyle=1;">
+          <mxGeometry x="60" y="30" width="1480" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:subtitle" value="Compose 선언 + 현재 코드 기준의 핵심 경로이다. 실행 상태는 조회하지 않았으며, Remediation 중지는 사용자 제공 상태이다." vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=15;fontStyle=0;">
+          <mxGeometry x="60" y="80" width="1480" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:leafy-apps" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Leafy 애플리케이션&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;frontend · backend · db · minio&lt;br&gt;leafy-net (+ backend: mgmt-net)&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="leafy-apps" data-kind="service" data-properties="{&quot;members&quot;: [&quot;frontend&quot;, &quot;backend&quot;, &quot;db&quot;, &quot;minio&quot;], &quot;abstraction&quot;: &quot;logical summary; not an additional container&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 34}">
+          <mxGeometry x="60" y="180" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:exporters" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;메트릭 수집기&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;node-exporter · cadvisor&lt;br&gt;nginx-exporter&lt;br&gt;postgres-exporter&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="exporters" data-kind="service" data-properties="{&quot;members&quot;: [&quot;node-exporter&quot;, &quot;cadvisor&quot;, &quot;nginx-exporter&quot;, &quot;postgres-exporter&quot;], &quot;abstraction&quot;: &quot;logical summary; not an additional container&quot;}" data-provenance="{&quot;path&quot;: &quot;monitoring/prometheus/prometheus.yml&quot;, &quot;line&quot;: 13}">
+          <mxGeometry x="450" y="180" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:prometheus" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Prometheus :9090&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;5초 scrape / 규칙 평가&lt;br&gt;메트릭 30일 보존&lt;/span&gt;" style="shape=cylinder3;boundedLbl=1;size=15;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="prometheus" data-kind="database" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;9090:9090&quot;], &quot;container_name&quot;: &quot;prometheus&quot;, &quot;image&quot;: &quot;prom/prometheus:latest&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 262}">
+          <mxGeometry x="830" y="180" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:alertmanager" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Alertmanager :9093&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;Prometheus + Loki Alert 수신&lt;br&gt;Pipeline webhook 전달&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="alertmanager" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;9093:9093&quot;], &quot;container_name&quot;: &quot;alertmanager&quot;, &quot;image&quot;: &quot;prom/alertmanager:latest&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 280}">
+          <mxGeometry x="1220" y="180" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:network-observer" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Network Observer&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;Zeek → Enricher&lt;br&gt;backend 네임스페이스의 eth0 관측&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="network-observer" data-kind="service" data-properties="{&quot;members&quot;: [&quot;network-observer-zeek&quot;, &quot;network-observer-enricher&quot;], &quot;abstraction&quot;: &quot;logical summary; not an additional container&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 396}">
+          <mxGeometry x="60" y="480" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:fluentd" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Fluentd :24224 TCP/UDP&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;앱 forward + 네트워크 파일 tail&lt;br&gt;별도 경로로 Loki에 적재&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="fluentd" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;leafy-net&quot;, &quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;24224:24224&quot;, &quot;24224:24224/udp&quot;], &quot;container_name&quot;: &quot;fluentd&quot;, &quot;image&quot;: null, &quot;build&quot;: &quot;./leafy/fluentd&quot;, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 243}">
+          <mxGeometry x="450" y="480" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:loki" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Loki :3100&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;앱·네트워크·분석 로그 저장&lt;br&gt;로그 패턴 규칙 / Ruler&lt;/span&gt;" style="shape=cylinder3;boundedLbl=1;size=15;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="loki" data-kind="database" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;3100:3100&quot;], &quot;container_name&quot;: &quot;loki&quot;, &quot;image&quot;: &quot;grafana/loki:latest&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 293}">
+          <mxGeometry x="830" y="480" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:pipeline" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;AIOps Pipeline :8000&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;Alert → 컨텍스트 상관 → RCA&lt;br&gt;Prometheus·Loki 조회 / 결과 기록&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="pipeline" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;8000:8000&quot;], &quot;container_name&quot;: &quot;aiops-pipeline&quot;, &quot;image&quot;: null, &quot;build&quot;: &quot;./aiops/pipeline&quot;, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 343}">
+          <mxGeometry x="1220" y="480" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:grafana" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Grafana :3000&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;Prometheus + Loki 조회&lt;br&gt;메트릭·로그·RCA 타임라인&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="grafana" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;3000:3000&quot;], &quot;container_name&quot;: &quot;grafana&quot;, &quot;image&quot;: &quot;grafana/grafana:latest&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 306}">
+          <mxGeometry x="450" y="790" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:ollama" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Ollama :11434&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;llama3.2:3b / 로컬 추론&lt;br&gt;GPU override 선택&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="ollama" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;11434:11434&quot;], &quot;container_name&quot;: &quot;ollama&quot;, &quot;image&quot;: &quot;ollama/ollama:latest&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 328}">
+          <mxGeometry x="830" y="790" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:remediation" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Remediation :8001&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;현재 중지 유지&lt;br&gt;기동 시에만 Docker 조치·Slack 연계&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;dashed=1;dashPattern=7 5;" vertex="1" parent="1" data-model-id="remediation" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;8001:8001&quot;], &quot;container_name&quot;: &quot;aiops-remediation&quot;, &quot;image&quot;: null, &quot;build&quot;: &quot;./aiops/remediation&quot;, &quot;runtime_status&quot;: &quot;stopped per user context; not independently inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 368}">
+          <mxGeometry x="1220" y="790" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:overview:0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#9673a6;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitPerimeter=0;entryX=0.5;entryY=0;entryPerimeter=0;" edge="1" parent="1" source="overview:leafy-apps" target="overview:network-observer" data-model-id="flow:overview:0" data-kind="dataflow" data-source-label="backend eth0 캡처" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:label0" value="backend eth0 캡처" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="80" y="380" width="270" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:overview:1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#d79b00;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0.5;entryY=0;entryPerimeter=0;" edge="1" parent="1" source="overview:leafy-apps" target="overview:fluentd" data-model-id="flow:overview:1" data-kind="dataflow" data-source-label="Docker 데몬 localhost:24224" data-provenance="{&quot;path&quot;: &quot;leafy/fluentd/fluent.conf&quot;, &quot;line&quot;: 1}">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="400" y="250" />
+              <mxPoint x="400" y="400" />
+              <mxPoint x="585" y="400" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="overview:label1" value="Docker 데몬 localhost:24224" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="440" y="350" width="330" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:overview:2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#666666;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="overview:exporters" target="overview:prometheus" data-model-id="flow:overview:2" data-kind="dataflow" data-source-label="메트릭 응답" data-provenance="{&quot;path&quot;: &quot;monitoring/prometheus/prometheus.yml&quot;, &quot;line&quot;: 13}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:label2" value="메트릭 응답" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="730" y="200" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:overview:3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#d6b656;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="overview:prometheus" target="overview:alertmanager" data-model-id="flow:overview:3" data-kind="dataflow" data-source-label="Alert 전송" data-provenance="{&quot;path&quot;: &quot;monitoring/prometheus/prometheus.yml&quot;, &quot;line&quot;: 13}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:label3" value="Alert 전송" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="1110" y="200" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:overview:4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#9673a6;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="overview:network-observer" target="overview:fluentd" data-model-id="flow:overview:4" data-kind="dataflow" data-source-label="이벤트&#10;JSONL" data-provenance="{&quot;path&quot;: &quot;leafy/fluentd/fluent.conf&quot;, &quot;line&quot;: 1}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:label4" value="이벤트&lt;br&gt;JSONL" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="365" y="500" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:overview:5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#d79b00;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="overview:fluentd" target="overview:loki" data-model-id="flow:overview:5" data-kind="dataflow" data-source-label="로그 적재" data-provenance="{&quot;path&quot;: &quot;leafy/fluentd/fluent.conf&quot;, &quot;line&quot;: 1}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:label5" value="로그 적재" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="735" y="500" width="95" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:overview:6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#666666;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="overview:loki" target="overview:pipeline" data-model-id="flow:overview:6" data-kind="dataflow" data-source-label="컨텍스트&#10;조회" data-provenance="{&quot;path&quot;: &quot;aiops/pipeline/collector/network.py&quot;, &quot;line&quot;: 58}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:label6" value="컨텍스트&lt;br&gt;조회" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="1110" y="500" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:overview:7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#d6b656;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitPerimeter=0;entryX=0.5;entryY=0;entryPerimeter=0;" edge="1" parent="1" source="overview:alertmanager" target="overview:pipeline" data-model-id="flow:overview:7" data-kind="dataflow" data-source-label="/webhook/alert" data-provenance="{&quot;path&quot;: &quot;monitoring/alertmanager/alertmanager.yml&quot;, &quot;line&quot;: 12}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:label7" value="/webhook/alert" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="1400" y="355" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:overview:8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#d6b656;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitPerimeter=0;entryX=0;entryY=0.75;entryPerimeter=0;" edge="1" parent="1" source="overview:loki" target="overview:alertmanager" data-model-id="flow:overview:8" data-kind="dataflow" data-source-label="Ruler Alert" data-provenance="{&quot;path&quot;: &quot;monitoring/loki/loki-config.yml&quot;, &quot;line&quot;: 37}">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="965" y="400" />
+              <mxPoint x="1160" y="400" />
+              <mxPoint x="1160" y="285" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="overview:label8" value="Ruler Alert" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="990" y="345" width="150" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:overview:9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#9673a6;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.25;exitY=1;exitPerimeter=0;entryX=1;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="overview:pipeline" target="overview:ollama" data-model-id="flow:overview:9" data-kind="dataflow" data-source-label="POST /api/chat" data-provenance="{&quot;path&quot;: &quot;aiops/pipeline/main.py&quot;, &quot;line&quot;: 682}">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1295" y="690" />
+              <mxPoint x="1160" y="690" />
+              <mxPoint x="1160" y="860" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="overview:label9" value="POST /api/chat" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="1040" y="635" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:overview:10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#b85450;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.75;exitY=1;exitPerimeter=0;entryX=0.5;entryY=0;entryPerimeter=0;dashed=1;dashPattern=7 5;" edge="1" parent="1" source="overview:pipeline" target="overview:remediation" data-model-id="flow:overview:10" data-kind="dataflow" data-source-label="/action 시도&#10;중지 중 실패" data-provenance="{&quot;path&quot;: &quot;aiops/remediation/main.py&quot;, &quot;line&quot;: 72}">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1445" y="730" />
+              <mxPoint x="1370" y="730" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="overview:label10" value="/action 시도&lt;br&gt;중지 중 실패" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="1310" y="635" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:overview:11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#666666;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitPerimeter=0;entryX=0.5;entryY=1;entryPerimeter=0;" edge="1" parent="1" source="overview:grafana" target="overview:loki" data-model-id="flow:overview:11" data-kind="dataflow" data-source-label="조회" data-provenance="{&quot;path&quot;: &quot;monitoring/grafana/provisioning/datasources/datasources.yml&quot;, &quot;line&quot;: 16}">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="585" y="710" />
+              <mxPoint x="965" y="710" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="overview:label11" value="조회" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="700" y="660" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="overview:notes" value="파란색: 앱·분석 / 주황색: 수집 / 초록색: 저장 / 보라색: 네트워크·LLM / 빨간 점선: 중지된 대응 경로이다.&lt;br&gt;전체 컨테이너 연결과 양방향 요청·응답은 가독성을 위해 요약하며, 상세 흐름은 다음 페이지에 표시한다." vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=14;fontStyle=0;">
+          <mxGeometry x="60" y="1000" width="1480" height="90" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="logs-network" name="02 로그와 네트워크">
+    <mxGraphModel dx="1600" dy="1120" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1120" background="#ffffff">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="logs-network:title" value="관측 데이터 | Application Logs + Network Events" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=28;fontStyle=1;">
+          <mxGeometry x="60" y="30" width="1480" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:subtitle" value="서비스 이름은 Compose identity이다. 실선은 데이터 전달, 보라색 선은 네트워크 관측과 정규화 경로이다." vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=15;fontStyle=0;">
+          <mxGeometry x="60" y="80" width="1480" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:frontend" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;frontend / nginx&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;10.210.0.10 · 웹 :80&lt;br&gt;leafy-net&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="frontend" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;leafy-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;${LEAFY_BIND_IP:-127.0.0.1}:80:80&quot;], &quot;container_name&quot;: &quot;leafy-frontend&quot;, &quot;image&quot;: &quot;gicks/ai-ops-leafy-frontend:${FRONTEND_TAG:-latest}&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 40}">
+          <mxGeometry x="60" y="180" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:backend" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;backend / Spring Boot&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;leafy-net + mgmt-net&lt;br&gt;외부 Leafy 이미지&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="backend" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;leafy-net&quot;, &quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [], &quot;container_name&quot;: &quot;leafy-backend&quot;, &quot;image&quot;: &quot;gicks/ai-ops-leafy-backend:${BACKEND_TAG:-latest}&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 65}">
+          <mxGeometry x="450" y="180" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:db" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;db / PostgreSQL 16&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;내부 :5432&lt;br&gt;leafy-net&lt;/span&gt;" style="shape=cylinder3;boundedLbl=1;size=15;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="db" data-kind="database" data-properties="{&quot;networks&quot;: [&quot;leafy-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [], &quot;container_name&quot;: &quot;leafy-db&quot;, &quot;image&quot;: &quot;postgres:16&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 109}">
+          <mxGeometry x="830" y="180" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:minio" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;minio / Object Storage&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;내부 :9000&lt;br&gt;leafy-net&lt;/span&gt;" style="shape=cylinder3;boundedLbl=1;size=15;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="minio" data-kind="database" data-properties="{&quot;networks&quot;: [&quot;leafy-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [], &quot;container_name&quot;: &quot;leafy-minio&quot;, &quot;image&quot;: &quot;gicks/minio:RELEASE.2025-09-07T16-13-09Z&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 111}">
+          <mxGeometry x="1220" y="180" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:docker-log-driver" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;앱 stdout / stderr&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;4개 컨테이너의 fluentd 드라이버&lt;br&gt;Docker 데몬 기준 localhost:24224&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="docker-log-driver" data-kind="service" data-properties="{&quot;members&quot;: [&quot;frontend&quot;, &quot;backend&quot;, &quot;db&quot;, &quot;minio&quot;], &quot;abstraction&quot;: &quot;logical summary; not an additional container&quot;}" data-provenance="{&quot;path&quot;: &quot;leafy/fluentd/fluent.conf&quot;, &quot;line&quot;: 1}">
+          <mxGeometry x="60" y="480" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:fluentd" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Fluentd&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;앱: forward → key_value&lt;br&gt;네트워크: @NETWORK → JSON&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="fluentd" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;leafy-net&quot;, &quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;24224:24224&quot;, &quot;24224:24224/udp&quot;], &quot;container_name&quot;: &quot;fluentd&quot;, &quot;image&quot;: null, &quot;build&quot;: &quot;./leafy/fluentd&quot;, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 243}">
+          <mxGeometry x="450" y="480" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:loki" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Loki&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;앱: service / container_name&lt;br&gt;네트워크: src_service /&lt;br&gt;dst_service&lt;/span&gt;" style="shape=cylinder3;boundedLbl=1;size=15;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="loki" data-kind="database" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;3100:3100&quot;], &quot;container_name&quot;: &quot;loki&quot;, &quot;image&quot;: &quot;grafana/loki:latest&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 293}">
+          <mxGeometry x="830" y="480" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:pipeline" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Pipeline 컨텍스트 조회&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;앱: {service=…}&lt;br&gt;네트워크: src/dst 2개 selector&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="pipeline" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;8000:8000&quot;], &quot;container_name&quot;: &quot;aiops-pipeline&quot;, &quot;image&quot;: null, &quot;build&quot;: &quot;./aiops/pipeline&quot;, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 343}">
+          <mxGeometry x="1220" y="480" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:network-observer-zeek" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Zeek&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;network_mode: service:backend&lt;br&gt;zeek -C -i eth0&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="network-observer-zeek" data-kind="service" data-properties="{&quot;networks&quot;: [], &quot;network_mode&quot;: &quot;service:backend&quot;, &quot;published_ports&quot;: [], &quot;container_name&quot;: &quot;network-observer-zeek&quot;, &quot;image&quot;: &quot;zeek/zeek:latest&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 391}">
+          <mxGeometry x="60" y="790" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:vol:zeek_logs" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;zeek_logs 볼륨&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;conn.log / JSON Lines&lt;br&gt;Enricher가 읽기 전용 tail&lt;/span&gt;" style="shape=cylinder3;boundedLbl=1;size=15;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="vol:zeek_logs" data-kind="database" data-properties="{}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 31}">
+          <mxGeometry x="450" y="790" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:network-observer-enricher" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Enricher&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;Docker metadata → endpoint&lt;br&gt;identity&lt;br&gt;Canonical Network Event v1.0&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="network-observer-enricher" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [], &quot;container_name&quot;: &quot;network-observer-enricher&quot;, &quot;image&quot;: null, &quot;build&quot;: &quot;./aiops/network-observer&quot;, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 416}">
+          <mxGeometry x="830" y="790" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:vol:network_events" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;network_events 볼륨&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;network-events.jsonl&lt;br&gt;Fluentd가 읽기 전용 tail&lt;/span&gt;" style="shape=cylinder3;boundedLbl=1;size=15;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="vol:network_events" data-kind="database" data-properties="{}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 32}">
+          <mxGeometry x="1220" y="790" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:logs-network:0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#666666;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="logs-network:frontend" target="logs-network:backend" data-model-id="flow:logs-network:0" data-kind="dataflow" data-source-label="HTTP" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:label0" value="HTTP" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="350" y="200" width="95" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:logs-network:1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#666666;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="logs-network:backend" target="logs-network:db" data-model-id="flow:logs-network:1" data-kind="dataflow" data-source-label="JDBC" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:label1" value="JDBC" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="730" y="200" width="95" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:logs-network:2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#666666;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitPerimeter=0;entryX=0.5;entryY=1;entryPerimeter=0;" edge="1" parent="1" source="logs-network:backend" target="logs-network:minio" data-model-id="flow:logs-network:2" data-kind="dataflow" data-source-label="Object API" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="585" y="370" />
+              <mxPoint x="1370" y="370" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="logs-network:label2" value="Object API" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="940" y="330" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:logs-network:3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#d79b00;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="logs-network:docker-log-driver" target="logs-network:fluentd" data-model-id="flow:logs-network:3" data-kind="dataflow" data-source-label="forward&#10;:24224" data-provenance="{&quot;path&quot;: &quot;leafy/fluentd/fluent.conf&quot;, &quot;line&quot;: 1}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:label3" value="forward&lt;br&gt;:24224" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="365" y="500" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:logs-network:4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#d79b00;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="logs-network:fluentd" target="logs-network:loki" data-model-id="flow:logs-network:4" data-kind="dataflow" data-source-label="5초 flush" data-provenance="{&quot;path&quot;: &quot;leafy/fluentd/fluent.conf&quot;, &quot;line&quot;: 1}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:label4" value="5초 flush" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="735" y="500" width="90" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:logs-network:5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#666666;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="logs-network:loki" target="logs-network:pipeline" data-model-id="flow:logs-network:5" data-kind="dataflow" data-source-label="동일 service&#10;같은 시간창" data-provenance="{&quot;path&quot;: &quot;aiops/pipeline/collector/network.py&quot;, &quot;line&quot;: 58}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:label5" value="동일 service&lt;br&gt;같은 시간창" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="1110" y="500" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:logs-network:6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#9673a6;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="logs-network:backend" target="logs-network:network-observer-zeek" data-model-id="flow:logs-network:6" data-kind="dataflow" data-source-label="네임스페이스 공유 / eth0만 관측" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="400" y="250" />
+              <mxPoint x="400" y="420" />
+              <mxPoint x="30" y="420" />
+              <mxPoint x="30" y="860" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="logs-network:label6" value="네임스페이스 공유 / eth0만 관측" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="60" y="370" width="330" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:logs-network:7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#9673a6;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="logs-network:network-observer-zeek" target="logs-network:vol:zeek_logs" data-model-id="flow:logs-network:7" data-kind="dataflow" data-source-label="연결 로그" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:label7" value="연결 로그" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="360" y="810" width="90" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:logs-network:8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#9673a6;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="logs-network:vol:zeek_logs" target="logs-network:network-observer-enricher" data-model-id="flow:logs-network:8" data-kind="dataflow" data-source-label="tail" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:label8" value="tail" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="745" y="810" width="75" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:logs-network:9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#9673a6;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="logs-network:network-observer-enricher" target="logs-network:vol:network_events" data-model-id="flow:logs-network:9" data-kind="dataflow" data-source-label="정규화 JSONL" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:label9" value="정규화 JSONL" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="1100" y="810" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:logs-network:10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#9673a6;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitPerimeter=0;entryX=0.5;entryY=1;entryPerimeter=0;" edge="1" parent="1" source="logs-network:vol:network_events" target="logs-network:fluentd" data-model-id="flow:logs-network:10" data-kind="dataflow" data-source-label="별도 @NETWORK 경로 / 원본 JSON 보존" data-provenance="{&quot;path&quot;: &quot;leafy/fluentd/fluent.conf&quot;, &quot;line&quot;: 1}">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1370" y="710" />
+              <mxPoint x="585" y="710" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="logs-network:label10" value="별도 @NETWORK 경로 / 원본 JSON 보존" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="760" y="655" width="460" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="logs-network:notes" value="leafy-net: 10.210.0.0/24 / Zeek는 독립 네트워크 없이 backend 네임스페이스를 공유한다.&lt;br&gt;네트워크 이벤트는 보조 컨텍스트이다. 연결 종료 지연·관측 누락이 가능하며, 빈 결과를 정상으로 단정하지 않는다." vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=14;fontStyle=0;">
+          <mxGeometry x="60" y="1000" width="1480" height="90" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="rca-response" name="03 분석과 대응">
+    <mxGraphModel dx="1600" dy="1120" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1120" background="#ffffff">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="rca-response:title" value="Alert → Context → LLM RCA → Remediation" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=28;fontStyle=1;">
+          <mxGeometry x="60" y="30" width="1480" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:subtitle" value="Pipeline 내부 처리 단계와 외부 서비스를 구분한 흐름이다. 현재 Remediation 중지로 아래 점선 경로는 실행되지 않는다." vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=15;fontStyle=0;">
+          <mxGeometry x="60" y="80" width="1480" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:prometheus" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Prometheus 규칙&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;메트릭 임계값 Alert 6종&lt;br&gt;exporter 4종 + backend + Pipeline&lt;br&gt;수집&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="prometheus" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;9090:9090&quot;], &quot;container_name&quot;: &quot;prometheus&quot;, &quot;image&quot;: &quot;prom/prometheus:latest&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 262}">
+          <mxGeometry x="60" y="180" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:loki" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Loki Ruler&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;보안·로그 패턴 Alert 9종&lt;br&gt;애플리케이션 로그 기준&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="loki" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;3100:3100&quot;], &quot;container_name&quot;: &quot;loki&quot;, &quot;image&quot;: &quot;grafana/loki:latest&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 293}">
+          <mxGeometry x="60" y="480" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:alertmanager" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Alertmanager&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;모든 Alert → 단일 webhook&lt;br&gt;group 10초 / repeat 240초&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="alertmanager" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;9093:9093&quot;], &quot;container_name&quot;: &quot;alertmanager&quot;, &quot;image&quot;: &quot;prom/alertmanager:latest&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 280}">
+          <mxGeometry x="450" y="180" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:pipeline" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Pipeline /webhook/alert&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;firing만 처리 · 300초 중복 제거&lt;br&gt;대상 컨테이너와 service 해석&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="pipeline" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;8000:8000&quot;], &quot;container_name&quot;: &quot;aiops-pipeline&quot;, &quot;image&quot;: null, &quot;build&quot;: &quot;./aiops/pipeline&quot;, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 343}">
+          <mxGeometry x="830" y="180" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:correlation" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Pipeline: 컨텍스트 수집&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;startsAt ±5분 조회&lt;br&gt;메트릭 + 앱 로그 + 네트워크&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="correlation" data-kind="service" data-properties="{&quot;members&quot;: [], &quot;abstraction&quot;: &quot;logical summary; not an additional container&quot;}" data-provenance="{&quot;path&quot;: &quot;aiops/pipeline/main.py&quot;, &quot;line&quot;: 271}">
+          <mxGeometry x="1220" y="180" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:ollama" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Ollama /api/chat&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;llama3.2:3b · JSON 응답&lt;br&gt;동시 1 · 요청 타임아웃 180초&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="ollama" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;11434:11434&quot;], &quot;container_name&quot;: &quot;ollama&quot;, &quot;image&quot;: &quot;ollama/ollama:latest&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 328}">
+          <mxGeometry x="1220" y="480" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:analysis-store" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Pipeline: 분석 결과 기록&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;Loki aiops-llm /&lt;br&gt;aiops-timeline&lt;br&gt;근본 원인 · 증거 · 권장 조치&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="analysis-store" data-kind="service" data-properties="{&quot;members&quot;: [], &quot;abstraction&quot;: &quot;logical summary; not an additional container&quot;}" data-provenance="{&quot;path&quot;: &quot;aiops/pipeline/main.py&quot;, &quot;line&quot;: 271}">
+          <mxGeometry x="830" y="480" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:fallback-gate" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Pipeline: fallback 검사&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;confidence=0 +&lt;br&gt;action_type=NONE&lt;br&gt;해당 시 Remediation 전달 생략&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="fallback-gate" data-kind="service" data-properties="{&quot;members&quot;: [], &quot;abstraction&quot;: &quot;logical summary; not an additional container&quot;}" data-provenance="{&quot;path&quot;: &quot;aiops/pipeline/main.py&quot;, &quot;line&quot;: 271}">
+          <mxGeometry x="450" y="480" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:remediation" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Remediation /action&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;현재 중지 유지&lt;br&gt;기동 시 위험도·신뢰도로 분기&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;dashed=1;dashPattern=7 5;" vertex="1" parent="1" data-model-id="remediation" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;8001:8001&quot;], &quot;container_name&quot;: &quot;aiops-remediation&quot;, &quot;image&quot;: null, &quot;build&quot;: &quot;./aiops/remediation&quot;, &quot;runtime_status&quot;: &quot;stopped per user context; not independently inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 368}">
+          <mxGeometry x="60" y="790" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:docker-actions" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Docker API 조치&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;RESTART · ISOLATE&lt;br&gt;PAUSE · THROTTLE&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;dashed=1;dashPattern=7 5;" vertex="1" parent="1" data-model-id="docker-actions" data-kind="service" data-properties="{&quot;members&quot;: [], &quot;abstraction&quot;: &quot;logical summary; not an additional container&quot;}" data-provenance="{&quot;path&quot;: &quot;aiops/remediation/main.py&quot;, &quot;line&quot;: 72}">
+          <mxGeometry x="450" y="790" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:slack" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Slack 연계&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;승인 요청 또는 알림&lt;br&gt;Webhook + 별도 interactivity&lt;br&gt;필요&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;dashed=1;dashPattern=7 5;" vertex="1" parent="1" data-model-id="slack" data-kind="service" data-properties="{&quot;members&quot;: [], &quot;abstraction&quot;: &quot;logical summary; not an additional container&quot;}" data-provenance="{&quot;path&quot;: &quot;aiops/remediation/actions/notify.py&quot;, &quot;line&quot;: 61}">
+          <mxGeometry x="830" y="790" width="270" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:grafana" value="&lt;span style=&quot;font-size:17px&quot;&gt;&lt;b&gt;Grafana 결과 확인&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;span style=&quot;font-size:14px&quot;&gt;Prometheus 메트릭 + Loki 로그&lt;br&gt;RCA·조치 타임라인 조회&lt;/span&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontColor=#263343;fontFamily=Malgun Gothic;fontSize=16;spacing=12;" vertex="1" parent="1" data-model-id="grafana" data-kind="service" data-properties="{&quot;networks&quot;: [&quot;mgmt-net&quot;], &quot;network_mode&quot;: null, &quot;published_ports&quot;: [&quot;3000:3000&quot;], &quot;container_name&quot;: &quot;grafana&quot;, &quot;image&quot;: &quot;grafana/grafana:latest&quot;, &quot;build&quot;: null, &quot;runtime_status&quot;: &quot;not inspected&quot;}" data-provenance="{&quot;path&quot;: &quot;docker-compose.yml&quot;, &quot;line&quot;: 306}">
+          <mxGeometry x="1220" y="790" width="300" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:rca-response:0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#d6b656;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="rca-response:prometheus" target="rca-response:alertmanager" data-model-id="flow:rca-response:0" data-kind="dataflow" data-source-label="Alert" data-provenance="{&quot;path&quot;: &quot;monitoring/prometheus/prometheus.yml&quot;, &quot;line&quot;: 13}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:label0" value="Alert" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="370" y="200" width="75" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:rca-response:1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#d6b656;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0.5;entryY=1;entryPerimeter=0;" edge="1" parent="1" source="rca-response:loki" target="rca-response:alertmanager" data-model-id="flow:rca-response:1" data-kind="dataflow" data-source-label="Ruler Alert" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="400" y="550" />
+              <mxPoint x="400" y="390" />
+              <mxPoint x="585" y="390" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rca-response:label1" value="Ruler Alert" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="430" y="410" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:rca-response:2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#d6b656;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="rca-response:alertmanager" target="rca-response:pipeline" data-model-id="flow:rca-response:2" data-kind="dataflow" data-source-label="webhook" data-provenance="{&quot;path&quot;: &quot;monitoring/alertmanager/alertmanager.yml&quot;, &quot;line&quot;: 12}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:label2" value="webhook" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="730" y="200" width="95" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:rca-response:3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#666666;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="rca-response:pipeline" target="rca-response:correlation" data-model-id="flow:rca-response:3" data-kind="dataflow" data-source-label="유효 대상" data-provenance="{&quot;path&quot;: &quot;aiops/pipeline/main.py&quot;, &quot;line&quot;: 271}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:label3" value="유효 대상" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="1110" y="200" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:rca-response:4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#9673a6;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitPerimeter=0;entryX=0.5;entryY=0;entryPerimeter=0;" edge="1" parent="1" source="rca-response:correlation" target="rca-response:ollama" data-model-id="flow:rca-response:4" data-kind="dataflow" data-source-label="프롬프트 + JSON 스키마" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:label4" value="프롬프트 + JSON 스키마" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="1240" y="380" width="290" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:rca-response:5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#9673a6;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitPerimeter=0;entryX=1;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="rca-response:ollama" target="rca-response:analysis-store" data-model-id="flow:rca-response:5" data-kind="dataflow" data-source-label="분석 응답" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:label5" value="분석 응답" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="1100" y="500" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:rca-response:6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#666666;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitPerimeter=0;entryX=1;entryY=0.5;entryPerimeter=0;" edge="1" parent="1" source="rca-response:analysis-store" target="rca-response:fallback-gate" data-model-id="flow:rca-response:6" data-kind="dataflow" data-source-label="분석 기록 후" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:label6" value="분석 기록 후" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="730" y="500" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:rca-response:7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#b85450;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitPerimeter=0;entryX=0.5;entryY=0;entryPerimeter=0;dashed=1;dashPattern=7 5;" edge="1" parent="1" source="rca-response:fallback-gate" target="rca-response:remediation" data-model-id="flow:rca-response:7" data-kind="dataflow" data-source-label="fallback이 아닌 경우 전달 시도" data-provenance="{&quot;path&quot;: &quot;aiops/remediation/main.py&quot;, &quot;line&quot;: 72}">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="585" y="700" />
+              <mxPoint x="210" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rca-response:label7" value="fallback이 아닌 경우 전달 시도" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="250" y="720" width="380" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:rca-response:8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#b85450;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitPerimeter=0;entryX=0;entryY=0.5;entryPerimeter=0;dashed=1;dashPattern=7 5;" edge="1" parent="1" source="rca-response:remediation" target="rca-response:docker-actions" data-model-id="flow:rca-response:8" data-kind="dataflow" data-source-label="조건 충족" data-provenance="{&quot;path&quot;: &quot;aiops/remediation/main.py&quot;, &quot;line&quot;: 72}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:label8" value="조건 충족" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="365" y="810" width="80" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:rca-response:9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#666666;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitPerimeter=0;entryX=0.5;entryY=1;entryPerimeter=0;dashed=1;dashPattern=7 5;" edge="1" parent="1" source="rca-response:remediation" target="rca-response:slack" data-model-id="flow:rca-response:9" data-kind="dataflow" data-source-label="승인 필요 / 알림만" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="210" y="970" />
+              <mxPoint x="965" y="970" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rca-response:label9" value="승인 필요 / 알림만" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="600" y="930" width="250" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="flow:rca-response:10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=classic;endFill=1;strokeWidth=2;strokeColor=#666666;fontFamily=Malgun Gothic;fontSize=14;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitPerimeter=0;entryX=0.5;entryY=0;entryPerimeter=0;" edge="1" parent="1" source="rca-response:analysis-store" target="rca-response:grafana" data-model-id="flow:rca-response:10" data-kind="dataflow" data-source-label="Loki 데이터 소스 조회" data-provenance="{}">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="965" y="700" />
+              <mxPoint x="1370" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rca-response:label10" value="Loki 데이터 소스 조회" vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=13;fontStyle=0;">
+          <mxGeometry x="1090" y="650" width="280" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="rca-response:notes" value="자동 조치 조건은 low risk + confidence ≥0.7 + 대상 목록이다. 대상 컨테이너를 결정할 수 없으면 LLM 호출을 생략한다.&lt;br&gt;Slack 승인 실행은 RESTART/ISOLATE만 지원하며 SCALE은 미구현이다. ±5분은 조회 범위이며 미래 데이터를 기다리지 않는다." vertex="1" parent="1" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fontFamily=Malgun Gothic;fontColor=#263343;fontSize=14;fontStyle=0;">
+          <mxGeometry x="60" y="1000" width="1480" height="90" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

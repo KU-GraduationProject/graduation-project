@@ -184,7 +184,7 @@ def main():
     # ── 4단계: Loki 로그 기반 MTTD 측정 ──────────────────────────────────────
     print("\n[*] Loki 'printenv' 패턴 탐지 대기 중...")
     mttd = verifier.verify_loki(
-        log_query='{container="backend"}',
+        log_query='{service="backend"}',
         keyword="printenv",
         timeout=120,
     )

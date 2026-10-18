@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ValidationError
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from collections import deque
 import json
 import asyncio
@@ -22,6 +22,8 @@ import re as _re
 _DOCKER_UDS = "/var/run/docker.sock"
 from collector.metrics import MetricsCollector
 from collector.logs import LogsCollector
+from collector.network import NetworkCollector
+from correlation import CorrelationContext, MONITORED_SERVICES, resolve_service
 from prompt.builder import PromptBuilder
 from schemas.llm_output import LLMAnalysisResult
 from config import settings
@@ -84,6 +86,7 @@ class AlertManagerWebhook(BaseModel):
 # ─── 의존성 주입 ─────────────────────────────────────────
 metrics_collector = MetricsCollector(settings.prometheus_url)
 logs_collector    = LogsCollector(settings.loki_url)
+network_collector = NetworkCollector(settings.loki_url)
 prompt_builder    = PromptBuilder()
 
 _SERVICE_PREFIXES = ["leafy-", "aiops-", "graduation-project-"]
@@ -95,6 +98,98 @@ def _extract_service(name: str) -> str:
             s = s[len(prefix):]
             break
     return _re.sub(r"-\d+$", "", s)
+
+
+# ─── Docker 재시작 상태 메트릭 (ContainerRestarted 룰 입력) ─────
+# cAdvisor는 RestartCount/StartedAt을 노출하지 않으므로 Docker inspect 값을 직접 노출한다.
+# 실패 시 값을 0으로 채우지 않고 해당 시계열을 생략한다 (scrape_success로 구분).
+_RESTART_WATCH_PROJECT  = "graduation-project"
+_RESTART_WATCH_SERVICES = ("frontend", "backend", "db", "minio")
+_DOCKER_STATUS_TIMEOUT  = 2.0  # 기존 container_name_info 조회(3s)와 합쳐 scrape 주기(5s) 이내
+
+
+def _parse_docker_time(value: str) -> float | None:
+    """Docker RFC3339Nano 시각 → epoch 초. 미시작('0001-01-01...')·파싱 실패는 None."""
+    if not value or value.startswith("0001-01-01"):
+        return None
+    m = _re.match(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d+)?(Z|[+-]\d{2}:\d{2})$", value)
+    if not m:
+        return None
+    frac = (m.group(2) or ".0")[:7]  # 나노초 → 마이크로초
+    tz = "+00:00" if m.group(3) == "Z" else m.group(3)
+    try:
+        return datetime.fromisoformat(m.group(1) + frac + tz).timestamp()
+    except ValueError:
+        return None
+
+
+async def _collect_docker_restart_metrics(client: httpx.AsyncClient) -> list[str]:
+    restarts = [
+        "# HELP aiops_docker_container_restarts_total Docker RestartCount (restart policy driven restarts)",
+        "# TYPE aiops_docker_container_restarts_total counter",
+    ]
+    started = [
+        "# HELP aiops_docker_container_started_at_seconds Docker State.StartedAt as unix seconds",
+        "# TYPE aiops_docker_container_started_at_seconds gauge",
+    ]
+    oom = [
+        "# HELP aiops_docker_container_oom_killed Docker State.OOMKilled of the last exit (1/0)",
+        "# TYPE aiops_docker_container_oom_killed gauge",
+    ]
+
+    async def _inspect(cid: str) -> dict:
+        r = await client.get(f"http://localhost/containers/{cid}/json")
+        r.raise_for_status()
+        return r.json()
+
+    async def _collect() -> None:
+        nonlocal inspect_failures
+        filters = json.dumps({"label": [f"com.docker.compose.project={_RESTART_WATCH_PROJECT}"]})
+        resp = await client.get(
+            "http://localhost/containers/json", params={"all": "true", "filters": filters}
+        )
+        resp.raise_for_status()
+        targets = [
+            c for c in resp.json()
+            if c.get("Id")
+            and (c.get("Labels") or {}).get("com.docker.compose.service") in _RESTART_WATCH_SERVICES
+        ]
+        results = await asyncio.gather(*(_inspect(c["Id"]) for c in targets), return_exceptions=True)
+        for c, info in zip(targets, results):
+            name = (c.get("Names") or [""])[0].lstrip("/")
+            if isinstance(info, BaseException):
+                inspect_failures += 1
+                logger.warning(f"[metrics] Docker inspect 실패 ({name}): {info}")
+                continue
+            service = c["Labels"]["com.docker.compose.service"]
+            labels = f'name="{name}",service="{service}"'
+            state = info.get("State") or {}
+            if type(info.get("RestartCount")) is int:
+                restarts.append(f"aiops_docker_container_restarts_total{{{labels}}} {info['RestartCount']}")
+            started_at = _parse_docker_time(state.get("StartedAt", ""))
+            if started_at is not None:
+                started.append(f"aiops_docker_container_started_at_seconds{{{labels}}} {started_at:.3f}")
+            if isinstance(state.get("OOMKilled"), bool):
+                oom.append(f"aiops_docker_container_oom_killed{{{labels}}} {int(state['OOMKilled'])}")
+
+    inspect_failures = 0
+    success = 1
+    try:
+        await asyncio.wait_for(_collect(), timeout=_DOCKER_STATUS_TIMEOUT)
+        if inspect_failures:
+            success = 0  # 일부 컨테이너 누락 — 수집된 컨테이너의 시계열은 유지
+    except Exception as e:
+        success = 0
+        logger.warning(f"[metrics] Docker 재시작 상태 조회 실패: {e!r}")
+        # 부분 수집 결과를 버려 실패를 0 값으로 오인하지 않도록 한다
+        restarts, started, oom = restarts[:2], started[:2], oom[:2]
+
+    return restarts + [""] + started + [""] + oom + [
+        "",
+        "# HELP aiops_docker_status_scrape_success Whether Docker restart status collection succeeded",
+        "# TYPE aiops_docker_status_scrape_success gauge",
+        f"aiops_docker_status_scrape_success {success}",
+    ]
 
 
 # ─── 엔드포인트 ─────────────────────────────────────────
@@ -111,10 +206,13 @@ async def prometheus_metrics():
         "# TYPE container_name_info gauge",
     ]
     count_map: dict[str, int] = {}
-    try:
-        async with httpx.AsyncClient(
-            transport=httpx.AsyncHTTPTransport(uds=_DOCKER_UDS), timeout=3
-        ) as client:
+    docker_lines: list[str] = []
+    async with httpx.AsyncClient(
+        transport=httpx.AsyncHTTPTransport(uds=_DOCKER_UDS), timeout=3
+    ) as client:
+        # 재시작 상태 수집을 기존 조회와 병행 → 최악 지연이 합산되어 scrape timeout(5s)을 넘지 않도록
+        docker_task = asyncio.create_task(_collect_docker_restart_metrics(client))
+        try:
             resp = await client.get("http://localhost/containers/json")
             for c in resp.json():
                 cid  = c.get("Id", "")
@@ -126,8 +224,9 @@ async def prometheus_metrics():
                     f'container_name_info{{id="/docker/{cid}",name="{name}",service="{service}"}} 1'
                 )
                 count_map[service] = count_map.get(service, 0) + 1
-    except Exception as e:
-        logger.warning(f"[metrics] Docker socket 조회 실패: {e}")
+        except Exception as e:
+            logger.warning(f"[metrics] Docker socket 조회 실패: {e}")
+        docker_lines = await docker_task
 
     count_lines = [
         "# HELP container_service_count Running container count per service",
@@ -136,7 +235,7 @@ async def prometheus_metrics():
     for svc, cnt in sorted(count_map.items()):
         count_lines.append(f'container_service_count{{service="{svc}"}} {cnt}')
 
-    return "\n".join(name_lines + [""] + count_lines) + "\n"
+    return "\n".join(name_lines + [""] + count_lines + [""] + docker_lines) + "\n"
 
 
 @app.post("/webhook/alert")
@@ -224,15 +323,26 @@ async def analyze_alerts(alerts: list[Alert]):
             logger.info(f"[Pipeline] LLM 분석 시작: {alert.labels.alertname} / {container_name}")
 
             # 1. 메트릭/로그 수집
+            # 메트릭은 cAdvisor가 container 단위이므로 container 이름을 그대로 쓴다.
             metrics = await metrics_collector.fetch_around(
                 container=container_name,
                 alert_time=alert_time,
                 window_minutes=5,
             )
-            logs = await logs_collector.fetch_around(
-                container=container_name,
-                alert_time=alert_time,
-                window_minutes=5,
+            # 로그는 canonical service로 조회한다. (leafy-backend -> backend -> {service="backend"})
+            service, runtime = await resolve_service(container_name)
+            if not service:
+                logger.warning(f"[Pipeline] service 해석 실패, app log 조회 생략: {container_name}")
+            ctx = CorrelationContext.around(
+                service, alert_time, timedelta(minutes=5),
+                container_name=container_name, runtime=runtime,
+            )
+            logs = await logs_collector.fetch(ctx)
+            # Network Context (best-effort, 예외를 던지지 않는다). 프롬프트에는 요약만 들어간다 (#11).
+            network = await network_collector.fetch(ctx)
+            logger.info(
+                f"[Pipeline] network context: service={network.service} events={len(network.events)} "
+                f"query_complete={network.query_complete} skipped={network.skipped} errors={list(network.errors)}"
             )
 
             # 2. 프롬프트 조립
@@ -241,6 +351,7 @@ async def analyze_alerts(alerts: list[Alert]):
                 metrics=metrics,
                 logs=logs,
                 container_name=container_name,
+                network=network,
             )
 
             # 3. LLM 호출
@@ -319,15 +430,22 @@ async def periodic_log_check() -> None:
             now_ts = time.time()
             window_sec = 600  # 10분
 
-            # 모니터링 대상 컨테이너 (Fluentd tag 기준)
-            targets = ["backend", "frontend", "leafy-db"]
-
-            for container in targets:
+            # 모니터링 대상: canonical service (Network Event와 같은 이름)
+            for service in MONITORED_SERVICES:
+                container = service
                 try:
                     # Loki에서 최근 10분 로그 조회
-                    logs = await _fetch_loki_logs(container, window_sec)
+                    ctx = CorrelationContext.trailing(service, timedelta(seconds=window_sec))
+                    logs = await logs_collector.fetch(ctx)
                     if not logs:
                         continue
+
+                    # Slack / remediation 대상은 실제 컨테이너 이름이어야 한다.
+                    # 로그에 붙은 container_name label(#6)에서 얻고, 없으면 service로 둔다.
+                    container = next(
+                        (l["labels"]["container_name"] for l in logs if l["labels"].get("container_name")),
+                        service,
+                    )
 
                     # 1차 필터: 키워드 기반 빠른 체크
                     all_lines = " ".join(l.get("line", "") for l in logs).lower()
@@ -526,34 +644,6 @@ async def periodic_llm_health() -> None:
 # 주기적 스캔 헬퍼 함수
 # ═══════════════════════════════════════════════════════════════════════════════
 
-async def _fetch_loki_logs(container: str, window_sec: int) -> list[dict]:
-    """Loki에서 특정 컨테이너의 최근 N초 로그 조회"""
-    try:
-        end_ns   = int(time.time() * 1_000_000_000)
-        start_ns = end_ns - int(window_sec * 1_000_000_000)
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                f"{settings.loki_url}/loki/api/v1/query_range",
-                params={
-                    "query":     f'{{container="{container}"}}',
-                    "start":     start_ns,
-                    "end":       end_ns,
-                    "limit":     200,
-                    "direction": "forward",
-                },
-            )
-            data = resp.json()
-            results = []
-            for stream in data.get("data", {}).get("result", []):
-                labels = stream.get("stream", {})
-                for ts_ns, line in stream.get("values", []):
-                    results.append({"ts": ts_ns, "line": line, "labels": labels})
-            return results
-    except Exception as e:
-        logger.warning(f"[Periodic] Loki 로그 조회 실패 ({container}): {e}")
-        return []
-
-
 async def _fetch_loki_aiops_results(window_sec: int) -> list[dict]:
     """Loki {job='aiops-llm'}에서 최근 N초 LLM 분석 결과 조회"""
     try:
@@ -727,7 +817,8 @@ async def push_to_loki(entry: dict) -> None:
         "streams": [{
             "stream": {
                 "job": "aiops-llm",
-                "container": entry.get("container", "unknown"),
+                # 분석 대상 컨테이너. 앱 로그의 container(fluentd 태그) 라벨과 충돌하지 않도록 분리
+                "target_container": entry.get("container", "unknown"),
                 "alert": entry.get("alert_name", "unknown"),
                 "threat_level": result.get("threat_level", "unknown"),
                 "action_risk": result.get("action_risk", "unknown"),

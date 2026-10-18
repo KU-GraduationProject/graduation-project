@@ -59,7 +59,7 @@ SCENARIO_REGISTRY = [
         "id": "cpu_stress", "label": "CPU 스트레스",
         "subtitle": "dd/stress-ng로 leafy-backend CPU 고갈",
         "category": "인프라", "owasp": None, "mitre": None,
-        "container": "leafy-backend", "loki_container": "leafy-backend",
+        "container": "leafy-backend", "loki_service": "backend",
         "alert_name": "HighCpuUsage", "alert_fires": True, "blind_spot": False,
         "module": "category1_infra.cpu_stress", "custom_panel": None,
     },
@@ -67,7 +67,7 @@ SCENARIO_REGISTRY = [
         "id": "memory_leak", "label": "메모리 누수 (OOM 시뮬)",
         "subtitle": "leafy-backend 90초 주기 4회 강제 재시작",
         "category": "인프라", "owasp": None, "mitre": None,
-        "container": "leafy-backend", "loki_container": "leafy-backend",
+        "container": "leafy-backend", "loki_service": "backend",
         "alert_name": "ContainerRestarted", "alert_fires": False, "blind_spot": False,
         "module": "category1_infra.memory_leak", "custom_panel": "memory_leak",
     },
@@ -75,7 +75,7 @@ SCENARIO_REGISTRY = [
         "id": "cpu_spike_transient", "label": "CPU 급등 (일시적)",
         "subtitle": "절반 코어 60초 dd  ·  서비스 생존  ·  THROTTLE 케이스",
         "category": "인프라", "owasp": None, "mitre": None,
-        "container": "leafy-backend", "loki_container": "backend",
+        "container": "leafy-backend", "loki_service": "backend",
         "alert_name": "HighCpuUsage", "alert_fires": True, "blind_spot": False,
         "module": "category1_infra.cpu_spike_transient", "custom_panel": None,
     },
@@ -83,7 +83,7 @@ SCENARIO_REGISTRY = [
         "id": "memory_pressure_early", "label": "메모리 압박 (초기 단계)",
         "subtitle": "/dev/shm 200MB 점유 → OOM 없음  ·  THROTTLE 케이스",
         "category": "인프라", "owasp": None, "mitre": None,
-        "container": "leafy-backend", "loki_container": "backend",
+        "container": "leafy-backend", "loki_service": "backend",
         "alert_name": "HighMemoryUsage", "alert_fires": True, "blind_spot": False,
         "module": "category1_infra.memory_pressure_early", "custom_panel": None,
     },
@@ -91,7 +91,7 @@ SCENARIO_REGISTRY = [
         "id": "false_positive_cpu", "label": "CPU 오탐 (False Positive)",
         "subtitle": "35초 버스트 → 정상화 후 수동 웹훅  ·  NONE 케이스",
         "category": "인프라", "owasp": None, "mitre": None,
-        "container": "leafy-backend", "loki_container": "backend",
+        "container": "leafy-backend", "loki_service": "backend",
         "alert_name": "HighCpuUsage", "alert_fires": False, "blind_spot": False,
         "module": "category1_infra.false_positive_cpu", "custom_panel": None,
     },
@@ -99,7 +99,7 @@ SCENARIO_REGISTRY = [
         "id": "brute_force", "label": "DB 브루트포스 + RCE",
         "subtitle": "postgres 1000회 → 크레덴셜 탈취 → COPY FROM PROGRAM",
         "category": "보안", "owasp": None, "mitre": "TA0006 + TA0002",
-        "container": "leafy-db", "loki_container": "leafy-db",
+        "container": "leafy-db", "loki_service": "db",
         "alert_name": "HighCpuUsage", "alert_fires": True, "blind_spot": False,
         "module": "category2_security.brute_force", "custom_panel": "brute_force",
     },
@@ -107,7 +107,7 @@ SCENARIO_REGISTRY = [
         "id": "data_exfil", "label": "데이터 탈취 (탐지 사각지대)",
         "subtitle": "leaked_users 전체 덤프 → CSV  ·  alert 없음",
         "category": "보안", "owasp": "A01:2021", "mitre": "TA0010",
-        "container": "leafy-db", "loki_container": "leafy-db",
+        "container": "leafy-db", "loki_service": "db",
         "alert_name": "없음 (탐지 사각지대)", "alert_fires": False, "blind_spot": True,
         "module": "category2_security.data_exfil", "custom_panel": "data_exfil",
     },
@@ -115,7 +115,7 @@ SCENARIO_REGISTRY = [
         "id": "lateral_movement", "label": "컨테이너 횡적 이동",
         "subtitle": "침해 컨테이너 → DB 직접 접속 (backend 우회)",
         "category": "보안", "owasp": None, "mitre": "TA0008",
-        "container": "leafy-db", "loki_container": "leafy-db",
+        "container": "leafy-db", "loki_service": "db",
         "alert_name": "LateralMovement", "alert_fires": False, "blind_spot": False,
         "module": "category2_security.lateral_movement", "custom_panel": "lateral_movement",
     },
@@ -123,7 +123,7 @@ SCENARIO_REGISTRY = [
         "id": "secret_dump", "label": "환경변수 덤프 (탐지 사각지대)",
         "subtitle": "env / printenv / /proc/1/environ  ·  alert 없음",
         "category": "보안", "owasp": "A02:2021", "mitre": "TA0006",
-        "container": "leafy-backend", "loki_container": "leafy-backend",
+        "container": "leafy-backend", "loki_service": "backend",
         "alert_name": "없음 (탐지 사각지대)", "alert_fires": False, "blind_spot": True,
         "module": "category2_security.secret_dump", "custom_panel": "secret_dump",
     },
@@ -131,7 +131,7 @@ SCENARIO_REGISTRY = [
         "id": "suspicious_process_exec", "label": "의심 프로세스 실행",
         "subtitle": "C2 연결 시도 + env 덤프  ·  PAUSE 케이스",
         "category": "보안", "owasp": "A02:2021", "mitre": "T1059",
-        "container": "leafy-backend", "loki_container": "backend",
+        "container": "leafy-backend", "loki_service": "backend",
         "alert_name": "SuspiciousProcessExec", "alert_fires": True, "blind_spot": False,
         "module": "category2_security.suspicious_process_exec",
         "custom_panel": "suspicious_process_exec",
@@ -140,7 +140,7 @@ SCENARIO_REGISTRY = [
         "id": "container_escape_attempt", "label": "컨테이너 탈출 시도",
         "subtitle": "host_fs + docker.sock + ns 탐색  ·  PAUSE 케이스",
         "category": "보안", "owasp": "A05:2021", "mitre": "T1611",
-        "container": "leafy-backend", "loki_container": "backend",
+        "container": "leafy-backend", "loki_service": "backend",
         "alert_name": "ContainerEscapeAttempt", "alert_fires": True, "blind_spot": False,
         "module": "category2_security.container_escape_attempt",
         "custom_panel": "container_escape_attempt",
@@ -149,7 +149,7 @@ SCENARIO_REGISTRY = [
         "id": "sql_injection", "label": "SQL Injection 스캐닝",
         "subtitle": "sqlmap/1.7  ·  13가지 페이로드  ·  100 workers",
         "category": "보안", "owasp": "A03:2021", "mitre": None,
-        "container": "leafy-frontend", "loki_container": "frontend",
+        "container": "leafy-frontend", "loki_service": "frontend",
         "alert_name": "HighNginxErrorRate", "alert_fires": True, "blind_spot": False,
         "module": "category2_security.sql_injection", "custom_panel": None,
     },
@@ -219,13 +219,18 @@ def fetch_metrics(container: str) -> dict:
     return snap
 
 
-def fetch_logs(loki_container: str, lines: int = 12) -> list[str]:
-    """Loki에서 컨테이너 로그를 직접 조회."""
+def loki_selector(meta: dict) -> str:
+    """시나리오 meta → LogQL 셀렉터. loki_service = 표준 compose 서비스 라벨 (frontend/backend/db/minio)."""
+    return f'{{service="{meta["loki_service"]}"}}'
+
+
+def fetch_logs(selector: str, lines: int = 12) -> list[str]:
+    """Loki에서 컨테이너 로그를 직접 조회. selector는 LogQL 스트림 셀렉터 (예: {service="backend"})."""
     try:
         end_ns   = int(time.time() * 1_000_000_000)
         start_ns = end_ns - 5 * 60 * 1_000_000_000  # 최근 5분
         params   = urllib.parse.urlencode({
-            "query":     f'{{container="{loki_container}"}}',
+            "query":     selector,
             "start":     start_ns,
             "end":       end_ns,
             "limit":     lines,
@@ -604,8 +609,8 @@ def panel_remediation(result: dict):
     console.print(Panel(t, title="[bold magenta]🛡  조치 결과[/bold magenta]", border_style="magenta"))
 
 
-def panel_logs(container: str, label: str = "Loki 로그 (최근 5분)"):
-    logs = fetch_logs(container)
+def panel_logs(selector: str, label: str = "Loki 로그 (최근 5분)"):
+    logs = fetch_logs(selector)
     content = Text()
     for line in logs:
         low = line.lower()
@@ -974,7 +979,7 @@ def run_scenario(meta: dict):
         console.print()
         panel_before_after(before_snap, after_snap, collector)
         console.print()
-        panel_logs(meta["loki_container"])
+        panel_logs(loki_selector(meta))
     else:
         # ⑤ LLM 폴링 + 실시간 로그 스트림
         entry = wait_for_llm(baseline, log_path, timeout=240)
@@ -1012,7 +1017,7 @@ def run_scenario(meta: dict):
 
         # ⑧ Loki 로그
         scan_bar("Loki 로그 수집", duration=0.6, color="green")
-        panel_logs(meta["loki_container"])
+        panel_logs(loki_selector(meta))
         console.print()
 
         # ⑨ 고유 패널

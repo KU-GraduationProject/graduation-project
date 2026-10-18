@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Any, Literal
 # ── 파일 상단 import 바로 아래에 추가 ──
 _KNOWN_CONTAINERS = [
-    "leafy-backend", "leafy-frontend", "leafy-db",
+    "leafy-backend", "leafy-frontend", "leafy-db", "leafy-minio",
     "aiops-pipeline", "aiops-remediation", "ollama",
 ]
 

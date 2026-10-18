@@ -1,0 +1,70 @@
+# Network Observer 설정 (#5)
+#
+# 이 파일은 observer의 "관측 지점"과 "identity 매핑 규칙"을 정의한다.
+# 코드에는 IP / subnet / 컨테이너 이름을 하드코딩하지 않는다. 전부 여기서 주입한다.
+#
+# 참조: docs/network-observability/NETWORK_EVENT_SCHEMA.md §7 (Runtime / Identity Mapping)
+
+observer:
+  # Canonical Event의 `observer` 필드 값
+  name: network-observer
+  # 복수 배치 시 구분자. 단일 배치면 null
+  instance: null
+
+capture:
+  # observer가 공유하는 network namespace의 대상 컨테이너.
+  # Zeek 컨테이너의 network_mode와 반드시 일치해야 한다.
+  #   docker-compose.yml: network_mode: "service:backend"
+  namespace_of_service: backend
+
+  # 캡처 interface. Canonical Event의 `interface` 필드로 사용된다.
+  # backend는 multi-homed(eth0=leafy-net, eth1=mgmt-net)이므로
+  # 반드시 interface를 한정해야 management traffic이 섞이지 않는다.
+  #   -> NETWORK_EVENT_SCHEMA.md §8 (F2)
+  interface: eth0
+
+  # 위 interface가 속한 논리 network 이름.
+  # Canonical Event의 `network` 필드 기본값으로 사용된다.
+  logical_network: leafy-net
+
+# IP -> identity 매핑에 사용할 Docker network 목록.
+# key   = 실제 Docker network 이름 (compose project prefix 포함)
+# value = Canonical Event의 `network` 필드에 쓸 논리 이름
+#         (project 이름이 바뀌어도 schema가 흔들리지 않도록 분리)
+docker_networks:
+  graduation-project_leafy-net: leafy-net
+  graduation-project_mgmt-net: mgmt-net
+
+# Host runtime에 있는 service의 명시적 매핑.
+#
+# Docker inspect로는 해결되지 않는 endpoint를 여기서 선언한다.
+# Docker Desktop에서는 host 목적지가 실제 Windows host IP가 아니라
+# host-gateway 주소로 관측되므로, 그 주소를 ip로 지정한다.
+#   -> NETWORK_EVENT_SCHEMA.md §7.2 (F3)
+#
+# ip를 생략(null)하면 port만으로 매칭한다.
+# 현재 repository의 db는 아직 container이므로 이 목록은 비어 있다.
+# Target Architecture(Host PostgreSQL 17) 전환 시 아래 주석을 해제하고 ip를 채운다.
+host_endpoints: []
+# host_endpoints:
+#   - ip: "192.168.65.254"   # 환경마다 다름. 실제 값으로 교체할 것
+#     port: 5432
+#     service: db
+#     network: host-bound
+
+# IP가 어떤 Docker network / host_endpoint에도 매칭되지 않을 때 적용.
+# event를 버리지 않고 unknown으로 표기한다.
+#   -> NETWORK_EVENT_SCHEMA.md §7.3 (P6)
+unknown:
+  service: unknown
+  runtime: unknown
+
+# Docker metadata 캐시 갱신 주기(초).
+# 컨테이너 재생성 시 IP가 바뀌므로 주기적으로 다시 읽는다.
+refresh_interval_sec: 30
+
+output:
+  # Canonical Event(JSONL) 출력 파일. #8 Loki ingestion이 이 파일을 소비한다.
+  path: /var/log/network-observer/network-events.jsonl
+  # stdout에도 출력할지 (docker logs로 확인 가능)
+  stdout: true

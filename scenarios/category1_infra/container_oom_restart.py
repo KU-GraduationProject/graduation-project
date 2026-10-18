@@ -86,7 +86,7 @@ def main():
         ),
 
         steady_state_query=(
-            'sum(resets(container_cpu_usage_seconds_total{image=~".*leafy-backend.*", cpu="total"}[10m]))'
+            'max(changes(aiops_docker_container_started_at_seconds{name="leafy-backend"}[10m]))'
         ),
         steady_state_threshold=1.0,
         metric_label="컨테이너 재시작 횟수 (10분)",

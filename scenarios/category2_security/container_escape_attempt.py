@@ -167,7 +167,7 @@ def main():
     print(f"[*] Loki 쿼리: {{container=\"backend\"}} |~ \"container_escape_attempt\"")
 
     mttd = verifier.verify_loki(
-        log_query='{container="backend"}',
+        log_query='{service="backend"}',
         keyword="container_escape_attempt",
         timeout=120,
     )

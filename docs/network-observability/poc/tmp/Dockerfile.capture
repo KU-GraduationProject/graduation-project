@@ -1,0 +1,3 @@
+FROM nginx:alpine
+RUN apk add --no-cache tcpdump iproute2 conntrack-tools
+ENTRYPOINT ["/bin/sh","-c"]

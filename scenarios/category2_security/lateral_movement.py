@@ -231,7 +231,7 @@ def main():
     # verify_loki()는 로그 키워드 감지 시점으로 MTTD 측정
     print("\n[*] Loki 'authentication failed' 탐지 대기 중...")
     mttd = verifier.verify_loki(
-        log_query='{container="leafy-db"}',
+        log_query='{service="db"}',
         keyword="authentication failed",
         timeout=180,
     )
