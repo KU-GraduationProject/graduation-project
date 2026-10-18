@@ -18,7 +18,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
-LOKI_URL = os.getenv("LOKI_URL", "http://localhost:3100")
+LOKI_URL = os.getenv("LOKI_URL", "http://loki:3100")
 
 
 def _push_loki_slack_event(

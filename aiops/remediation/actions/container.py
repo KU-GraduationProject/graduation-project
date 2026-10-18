@@ -3,9 +3,12 @@ Container remediation actions using docker-py SDK.
 """
 
 import logging
+import os
 import docker
 
 logger = logging.getLogger(__name__)
+
+LEAFY_NETWORK = os.getenv("LEAFY_NETWORK", "graduation-project_leafy-net")
 
 
 class ContainerActions:
@@ -23,11 +26,11 @@ class ContainerActions:
         """Isolate a container by disconnecting it from leafy-net."""
         container = self.client.containers.get(container_name)
         try:
-            network = self.client.networks.get("graduation-project_leafy-net")
+            network = self.client.networks.get(LEAFY_NETWORK)
             network.disconnect(container)
             logger.info(f"[ContainerActions] Isolated {container_name} from leafy-net")
         except docker.errors.NotFound:
-            logger.warning(f"[ContainerActions] leafy-net not found; skipping isolation")
+            logger.warning(f"[ContainerActions] network {LEAFY_NETWORK} not found; skipping isolation")
         except docker.errors.APIError as e:
             logger.error(f"[ContainerActions] Isolate failed for {container_name}: {e}")
             raise
