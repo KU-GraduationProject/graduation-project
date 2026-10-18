@@ -19,7 +19,7 @@ groups:
             * on(id) group_left(name) container_name_info
           ) > 0.5
           and on(name)
-          container_name_info{name!~"ollama|cadvisor|node-exporter|prometheus|grafana|loki"}
+          container_name_info{name=~"leafy-frontend|leafy-backend|leafy-db|leafy-minio"}
         for: 30s
         labels:
           severity: warning
