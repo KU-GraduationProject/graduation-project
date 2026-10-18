@@ -234,7 +234,7 @@
             "type": "loki",
             "uid": "P8E80F9AEF21F6940"
           },
-          "expr": "{container=\"leafy-db\"} |= \"password authentication failed\"",
+          "expr": "{service=\"db\"} |= \"password authentication failed\"",
           "refId": "A"
         }
       ],

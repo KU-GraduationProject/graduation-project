@@ -177,7 +177,7 @@ echo "[brute] 종료: $i × {len(BRUTE_PASSWORDS)} = $((i * {len(BRUTE_PASSWORDS
     # ── MTTD 측정 ────────────────────────────────────────────────────────────
     print("\n[*] Loki 'authentication failed' 탐지 대기 중...")
     mttd = verifier.verify_loki(
-        log_query='{container="leafy-db"}',
+        log_query='{service="db"}',
         keyword="authentication failed",
         timeout=180,
     )

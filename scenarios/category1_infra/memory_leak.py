@@ -164,7 +164,7 @@ def main():
     }
 
     mttd = verifier.verify_loki(
-        log_query='{container="backend"}',
+        log_query='{service="backend"}',
         keyword="started",
         timeout=180,
     )

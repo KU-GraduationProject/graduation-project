@@ -99,7 +99,7 @@ SCENARIO_REGISTRY = [
         "id": "brute_force", "label": "DB 브루트포스 + RCE",
         "subtitle": "postgres 1000회 → 크레덴셜 탈취 → COPY FROM PROGRAM",
         "category": "보안", "owasp": None, "mitre": "TA0006 + TA0002",
-        "container": "leafy-db", "loki_container": "leafy-db",
+        "container": "leafy-db", "loki_service": "db",
         "alert_name": "HighCpuUsage", "alert_fires": True, "blind_spot": False,
         "module": "category2_security.brute_force", "custom_panel": "brute_force",
     },
@@ -107,7 +107,7 @@ SCENARIO_REGISTRY = [
         "id": "data_exfil", "label": "데이터 탈취 (탐지 사각지대)",
         "subtitle": "leaked_users 전체 덤프 → CSV  ·  alert 없음",
         "category": "보안", "owasp": "A01:2021", "mitre": "TA0010",
-        "container": "leafy-db", "loki_container": "leafy-db",
+        "container": "leafy-db", "loki_service": "db",
         "alert_name": "없음 (탐지 사각지대)", "alert_fires": False, "blind_spot": True,
         "module": "category2_security.data_exfil", "custom_panel": "data_exfil",
     },
@@ -115,7 +115,7 @@ SCENARIO_REGISTRY = [
         "id": "lateral_movement", "label": "컨테이너 횡적 이동",
         "subtitle": "침해 컨테이너 → DB 직접 접속 (backend 우회)",
         "category": "보안", "owasp": None, "mitre": "TA0008",
-        "container": "leafy-db", "loki_container": "leafy-db",
+        "container": "leafy-db", "loki_service": "db",
         "alert_name": "LateralMovement", "alert_fires": False, "blind_spot": False,
         "module": "category2_security.lateral_movement", "custom_panel": "lateral_movement",
     },
@@ -149,7 +149,7 @@ SCENARIO_REGISTRY = [
         "id": "sql_injection", "label": "SQL Injection 스캐닝",
         "subtitle": "sqlmap/1.7  ·  13가지 페이로드  ·  100 workers",
         "category": "보안", "owasp": "A03:2021", "mitre": None,
-        "container": "leafy-frontend", "loki_container": "frontend",
+        "container": "leafy-frontend", "loki_service": "frontend",
         "alert_name": "HighNginxErrorRate", "alert_fires": True, "blind_spot": False,
         "module": "category2_security.sql_injection", "custom_panel": None,
     },
@@ -220,10 +220,8 @@ def fetch_metrics(container: str) -> dict:
 
 
 def loki_selector(meta: dict) -> str:
-    """시나리오 meta → LogQL 셀렉터. loki_service(정식 compose 서비스 라벨) 우선, 없으면 loki_container(레거시 태그)."""
-    if "loki_service" in meta:
-        return f'{{service="{meta["loki_service"]}"}}'
-    return f'{{container="{meta["loki_container"]}"}}'
+    """시나리오 meta → LogQL 셀렉터. loki_service = 표준 compose 서비스 라벨 (frontend/backend/db/minio)."""
+    return f'{{service="{meta["loki_service"]}"}}'
 
 
 def fetch_logs(selector: str, lines: int = 12) -> list[str]:

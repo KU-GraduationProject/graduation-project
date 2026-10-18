@@ -11,30 +11,7 @@
   "id": null,
   "links": [],
   "templating": {
-    "list": [
-      {
-        "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
-        },
-        "datasource": {
-          "type": "loki",
-          "uid": "P8E80F9AEF21F6940"
-        },
-        "definition": "label_values(container)",
-        "hide": 0,
-        "includeAll": true,
-        "multi": false,
-        "name": "container",
-        "options": [],
-        "query": "label_values(container)",
-        "refresh": 2,
-        "sort": 1,
-        "label": "컨테이너",
-        "type": "query"
-      }
-    ]
+    "list": []
   },
   "panels": [
     {
@@ -1018,7 +995,7 @@
             "type": "loki",
             "uid": "P8E80F9AEF21F6940"
           },
-          "expr": "{container=\"frontend\"}",
+          "expr": "{service=\"frontend\"}",
           "refId": "A"
         }
       ]
@@ -1055,7 +1032,7 @@
             "type": "loki",
             "uid": "P8E80F9AEF21F6940"
           },
-          "expr": "{container=\"backend\"}",
+          "expr": "{service=\"backend\"}",
           "refId": "A"
         }
       ]
@@ -1092,7 +1069,7 @@
             "type": "loki",
             "uid": "P8E80F9AEF21F6940"
           },
-          "expr": "{container=\"leafy-db\"}",
+          "expr": "{service=\"db\"}",
           "refId": "A"
         }
       ]

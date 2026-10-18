@@ -252,7 +252,7 @@ def main():
     # verify_loki()는 Loki에서 sqlmap User-Agent 감지 시점으로 MTTD 측정
     print("\n[*] Loki SQLi 패턴 탐지 대기 중...")
     mttd = verifier.verify_loki(
-        log_query='{container="frontend"}',
+        log_query='{service="frontend"}',
         keyword="sqlmap",   # User-Agent에 항상 찍힘 → 확실하게 탐지
         timeout=180,
     )

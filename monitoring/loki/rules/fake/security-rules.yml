@@ -10,7 +10,7 @@ groups:
       - alert: UnauthorizedDBAccess
         expr: |
           sum(count_over_time(
-            {container="leafy-db"} |= "authentication failed" [2m]
+            {service="db"} |= "authentication failed" [2m]
           )) > 3
         for: 0m
         labels:
@@ -31,7 +31,7 @@ groups:
       - alert: SecretDumpAttempt
         expr: |
           sum(count_over_time(
-            {container="backend"} |= "printenv" |= "[ATTACK]" [2m]
+            {service="backend"} |= "printenv" |= "[ATTACK]" [2m]
           )) > 0
         for: 0m
         labels:
@@ -50,7 +50,7 @@ groups:
       - alert: SQLInjectionAttempt
         expr: |
           sum(count_over_time(
-            {container="frontend"} |~ "(?i)(union.{0,3}select|or.{0,3}1=1|drop.{0,3}table|sleep\\(|extractvalue|information_schema|admin'--|and.{0,3}1=1)" [2m]
+            {service="frontend"} |~ "(?i)(union.{0,3}select|or.{0,3}1=1|drop.{0,3}table|sleep\\(|extractvalue|information_schema|admin'--|and.{0,3}1=1)" [2m]
           )) > 5
         for: 0m
         labels:
@@ -71,7 +71,7 @@ groups:
       - alert: HighNginxErrorRate
         expr: |
           sum(count_over_time(
-            {container="frontend"} |~ "\" [5][0-9][0-9] " [1m]
+            {service="frontend"} |~ "\" [5][0-9][0-9] " [1m]
           )) > 10
         for: 0m
         labels:
@@ -87,7 +87,7 @@ groups:
       - alert: SuspiciousProcessExecution
         expr: |
           sum(count_over_time(
-            {container=~"backend|frontend"}
+            {service=~"backend|frontend"}
             |~ "(?i)(wget http|wget -|curl http[^s]|curl -o |nc -|netcat|/bin/bash -i|/bin/sh -i)" [2m]
           )) > 0
         for: 0m
@@ -103,7 +103,7 @@ groups:
       - alert: SuspiciousProcessExec
         expr: |
           sum(count_over_time(
-            {container="backend"} |~ "suspicious_outbound" [2m]
+            {service="backend"} |~ "suspicious_outbound" [2m]
           )) > 0
         for: 0m
         labels:
@@ -119,7 +119,7 @@ groups:
       - alert: VulnerabilityScanningDetected
         expr: |
           sum(count_over_time(
-            {container="frontend"} |~ "\" [4][0-9][0-9] " [1m]
+            {service="frontend"} |~ "\" [4][0-9][0-9] " [1m]
           )) > 50
         for: 0m
         labels:
@@ -135,7 +135,7 @@ groups:
       - alert: PathTraversalAttempt
         expr: |
           sum(count_over_time(
-            {container="frontend"} |~ "(?i)(\\.\\.\\/|\\.\\.\\\\|/etc/passwd|\\.env|/\\.git/)" [2m]
+            {service="frontend"} |~ "(?i)(\\.\\.\\/|\\.\\.\\\\|/etc/passwd|\\.env|/\\.git/)" [2m]
           )) > 0
         for: 0m
         labels:
@@ -150,7 +150,7 @@ groups:
       - alert: ContainerEscapeAttempt
         expr: |
           sum(count_over_time(
-            {container="backend"} |~ "container_escape_attempt" [2m]
+            {service="backend"} |~ "container_escape_attempt" [2m]
           )) > 0
         for: 0m
         labels:
