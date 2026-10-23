@@ -1,0 +1,53 @@
+# 팀원 Leafy compose(back/deploy/)에 병합할 logging 설정 예시. 이 파일 자체로 실행하지 않는다.
+#
+# 이 저장소에서는 back/deploy/ compose를 볼 수 없다. 서비스 이름(frontend/backend/minio)과
+# 기존 environment는 실제 파일 기준으로 맞춘다. 아래는 logging 블록과 백엔드 JSON 전환만 다룬다.
+#
+# 중앙 Fluentd가 기대하는 것
+#   - labels: com.docker.compose.service  -> Loki label service (canonical identity)
+#     compose 서비스 이름이 frontend / backend / minio 가 아니면 service 값이 달라져
+#     Pipeline({service="backend"})과 Loki 규칙이 로그를 찾지 못한다.
+#   - tag: 기존과 같은 frontend / backend / minio  -> Loki label container (LEGACY, 프롬프트 표시용)
+
+x-aiops-log-opts: &aiops-log-opts
+  fluentd-address: "${AIOPS_TAILSCALE_IP:?AIOPS_TAILSCALE_IP 를 .env 에 설정 (AIOps PC의 tailscale ip -4)}:24224"
+  labels: "com.docker.compose.service"
+  # true: AIOps PC가 꺼져 있어도 Leafy 컨테이너가 기동한다 (false면 연결 실패 시 컨테이너 시작 자체가 실패).
+  #   대가: Docker는 async일 때 종료 시 아직 못 보낸 큐를 버린다 (moby fluentd 드라이버 ForceStopAsyncSend=async).
+  #   실측: 기동 후 0.25초 안에 종료하면 0/5, 0.5초 이후 종료는 5/5 전달. Fluentd가 준비돼 있어도 같다.
+  #   → 기동 직후 바로 죽는 경우(nginx 설정 오류 등)만 해당. backend(JVM 기동 수 초)의 정상 로그는 영향 없음.
+  #   유실분은 이 PC에서 docker logs 로 확인한다 (Docker 20.10+ dual logging, 실측 확인).
+  #   연결 후 AIOps PC가 끊긴 동안은 Docker 데몬 메모리(fluentd-buffer-limit, 기본 1048576 이벤트)에 쌓았다가 재전송한다.
+  fluentd-async: "true"
+  # Fluentd가 받았다고 응답해야 보낸 것으로 친다 (연결된 뒤의 at-least-once). 문서에는 없고 moby 소스에 있는 옵션, 실측 동작 확인
+  fluentd-request-ack: "true"
+  # 기본은 초 단위 시각이라 같은 초 안의 순서가 사라진다. Network Event·인증 로그와 시간 상관분석에 필요하다.
+  fluentd-sub-second-precision: "true"
+  # 로그 전송이 밀려도 애플리케이션 stdout 쓰기가 막히지 않게 한다. 버퍼(4m)를 넘으면 그 로그는 버려진다.
+  mode: "non-blocking"
+  max-buffer-size: "4m"
+
+services:
+  frontend:
+    logging:
+      driver: fluentd
+      options:
+        <<: *aiops-log-opts
+        tag: "frontend"
+
+  backend:
+    environment:
+      # 최종 JSON 로그 (팀원 구현 클래스). 중앙 Fluentd는 TEXT도 받지만 탐지/상관분석은 JSON을 기준으로 한다.
+      LOG_FORMAT: com.leafy.global.logging.LeafyJsonFormatter
+    logging:
+      driver: fluentd
+      options:
+        <<: *aiops-log-opts
+        tag: "backend"
+
+  minio:
+    logging:
+      driver: fluentd
+      options:
+        <<: *aiops-log-opts
+        tag: "minio"

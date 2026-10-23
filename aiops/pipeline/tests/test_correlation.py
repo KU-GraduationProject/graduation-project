@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from collector.logs import LogsCollector  # noqa: E402
 from correlation import (  # noqa: E402
     CorrelationContext,
+    parse_target_map,
     resolve_service,
     service_log_selector,
     to_instant,
@@ -120,6 +121,40 @@ class ResolveServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls, [])
         # alert rule의 "unknown (host-level)"은 컨테이너가 아니므로 해석 실패
         self.assertEqual(await resolve_service("unknown (host-level)", transport=_docker(handler)), (None, None))
+
+    async def test_target_map_wins_over_local_docker(self):
+        # 원격 배포: AIOps PC에 남은 오래된 leafy-db 컨테이너(runtime=container)를 대상으로 오인하지 않는다
+        def handler(request):
+            raise AssertionError("명시적 매핑에 있으면 Docker를 조회하면 안 된다")
+        target_map = parse_target_map("leafy-backend=backend,leafy-db=db:host")
+        self.assertEqual(await resolve_service("leafy-db", transport=_docker(handler), target_map=target_map),
+                         ("db", "host"))
+        self.assertEqual(await resolve_service("leafy-backend", transport=_docker(handler), target_map=target_map),
+                         ("backend", "container"))
+
+    async def test_name_missing_from_target_map_falls_back_to_docker(self):
+        handler = lambda r: httpx.Response(404)
+        target_map = parse_target_map("leafy-backend=backend")
+        self.assertEqual(await resolve_service("aiops-pipeline", transport=_docker(handler), target_map=target_map),
+                         (None, None))
+
+
+class ParseTargetMapTest(unittest.TestCase):
+    def test_parses_service_and_runtime(self):
+        self.assertEqual(
+            parse_target_map(" leafy-frontend=frontend, leafy-backend=backend:container,leafy-db=db:host ,"),
+            {"leafy-frontend": ("frontend", "container"),
+             "leafy-backend": ("backend", "container"),
+             "leafy-db": ("db", "host")},
+        )
+
+    def test_empty_means_no_mapping(self):
+        self.assertEqual(parse_target_map(""), {})
+
+    def test_malformed_entries_fail_fast(self):
+        for bad in ("leafy-backend", "=backend", "leafy-db=db:vm", 'leafy-db=d"b', "leafy-db="):
+            with self.assertRaises(ValueError, msg=bad):
+                parse_target_map(bad)
 
 
 class LogsCollectorTest(unittest.IsolatedAsyncioTestCase):

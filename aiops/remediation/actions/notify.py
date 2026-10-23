@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 LOKI_URL = os.getenv("LOKI_URL", "http://loki:3100")
+# main.py와 같은 값. disabled면 승인해도 실행되지 않는다는 것을 메시지에 밝힌다.
+REMEDIATION_DISABLED = os.getenv("REMEDIATION_MODE", "docker") == "disabled"
+DISABLED_NOTE = "\n_자동 조치 비활성화(REMEDIATION_MODE=disabled): 승인해도 실행되지 않고 기록만 남습니다._"
 
 
 def _push_loki_slack_event(
@@ -101,6 +104,7 @@ class Notifier:
                     "text": {
                         "type": "mrkdwn",
                         "text": f":rotating_light: *[APPROVAL REQUIRED]* `{data['alertname']}`"
+                                + (DISABLED_NOTE if REMEDIATION_DISABLED else "")
                     }
                 },
                 # ── 상세 정보 ──────────────────────────────────────
@@ -138,8 +142,10 @@ class Notifier:
                                 "text": {
                                     "type": "mrkdwn",
                                     "text": (
-                                        f"*{data['action_type']}* 조치를 실행합니다.\n"
-                                        f"대상: `{'`, `'.join(data['action_targets']) if data['action_targets'] else 'N/A'}`"
+                                        (f"*{data['action_type']}* 승인을 기록합니다 (실행되지 않음).\n"
+                                         if REMEDIATION_DISABLED else
+                                         f"*{data['action_type']}* 조치를 실행합니다.\n")
+                                        + f"대상: `{'`, `'.join(data['action_targets']) if data['action_targets'] else 'N/A'}`"
                                     ),
                                 },
                                 "confirm": {"type": "plain_text", "text": "승인"},

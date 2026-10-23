@@ -1,0 +1,5 @@
+# 복사해서 leafy-backend.yml 로 저장하고 <LEAFY_TAILSCALE_IP>를 바꾼다. leafy-backend.yml 은 커밋하지 않는다.
+# site 라벨: AIOps PC 자체 지표와 구분하기 위한 값
+- targets: ["<LEAFY_TAILSCALE_IP>:9090"]
+  labels:
+    site: leafy-pc

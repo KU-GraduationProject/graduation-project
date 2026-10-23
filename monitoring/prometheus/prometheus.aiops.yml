@@ -1,0 +1,47 @@
+# AIOps 단독 배포(docker-compose.aiops.yml)용 Prometheus 설정.
+# all-in-one docker-compose.yml은 prometheus.yml을 그대로 쓴다.
+#
+# prometheus.yml과의 차이 (docs/remote/REMOTE_DEPLOYMENT.md §AS-IS):
+#   - backend:9090 / nginx-exporter / postgres-exporter는 팀원 PC에 있다 -> 서비스 이름으로 닿지 않는다.
+#     Tailscale 주소를 커밋하지 않도록 file_sd로 분리했다. targets/*.yml이 없으면 수집하지 않는다(오류 아님).
+#     job 이름은 기존과 같게 유지한다 (rule/dashboard가 metric 이름으로만 조회하므로 job 이름 변경 불필요).
+#   - node-exporter / cadvisor는 뺐다. AIOps PC에서 돌리면 AIOps PC의 호스트·컨테이너 지표가 수집되어
+#     Leafy 지표처럼 해석된다 (HighNetworkReceive, Pipeline 프롬프트의 host_cpu/host_mem 등).
+#     Leafy 쪽 cAdvisor/호스트 지표는 팀원 PC 수집 경로가 정해진 뒤 site 라벨과 함께 추가한다.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # AIOps PC 로컬 Docker 기준 (AIOps 컨테이너만 보인다. Leafy 컨테이너 정보가 아니다)
+  - job_name: "pipeline-metadata"
+    static_configs:
+      - targets: ["pipeline:8000"]
+    metrics_path: /metrics
+
+  # ── 팀원 PC (Tailscale) — targets/<job>.yml 에 주소를 넣으면 수집한다 ──
+  - job_name: "leafy-backend"
+    metrics_path: /actuator/prometheus  # Spring Boot Actuator 관리 포트(9090)
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/leafy-backend*.yml"]
+
+  - job_name: "nginx-exporter"
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/nginx-exporter*.yml"]
+
+  - job_name: "postgres-exporter"
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/postgres-exporter*.yml"]

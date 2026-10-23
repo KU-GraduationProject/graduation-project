@@ -1,0 +1,66 @@
+# 팀원 PC: Network Observer (Zeek + enricher) + network-events shipper
+#
+# Zeek은 Leafy backend의 network namespace를 공유해야 하므로 Leafy가 도는 팀원 PC에 둔다 (AIOps PC에 두면 아무것도 못 본다).
+# 이 저장소를 팀원 PC에 clone 한 뒤 이 디렉터리에서 실행한다:
+#   copy .env.example .env   (값 채우기)
+#   docker compose up -d --build
+# Leafy backend가 먼저 떠 있어야 한다. backend를 재생성(redeploy)하면 Zeek이 옛 namespace에 남으므로
+#   docker compose restart network-observer-zeek
+# 를 실행한다 (known limitation: stale netns).
+name: leafy-observer
+
+volumes:
+  zeek_logs:            # Zeek conn.log (observer 내부 전달용)
+  network_events:       # Canonical Network Event JSONL (enricher -> shipper)
+  shipper_state:        # Fluent Bit tail 위치(DB)와 전송 대기 버퍼
+
+services:
+
+  network-observer-zeek:
+    image: zeek/zeek:latest
+    container_name: network-observer-zeek
+    # 별도 compose이므로 service:backend 대신 컨테이너 이름으로 namespace를 공유한다.
+    network_mode: "container:${LEAFY_BACKEND_CONTAINER:?LEAFY_BACKEND_CONTAINER 를 .env 에 설정 (docker ps 의 backend 컨테이너 이름)}"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ../../../aiops/network-observer/zeek:/opt/observer:ro
+      - zeek_logs:/zeek-logs
+    # -C : Docker Desktop 가상 NIC의 checksum offload 때문에 필수 (ZEEK_DOCKER_DESKTOP_NOTES.md)
+    # -i eth0 : config/observer.yml 의 capture.interface 와 같아야 한다. backend가 네트워크 여러 개에
+    #           붙어 있으면 앱 트래픽 쪽 interface로 바꾼다 (docker exec <backend> cat /proc/net/dev 로 확인)
+    command: >
+      sh -c "cd /zeek-logs && exec zeek -C -i eth0 /opt/observer/local.zeek"
+    restart: unless-stopped
+
+  network-observer-enricher:
+    build: ../../../aiops/network-observer
+    container_name: network-observer-enricher
+    environment:
+      OBSERVER_CONFIG: /app/config/observer.yml
+      ZEEK_CONN_LOG: /zeek-logs/conn.log
+      LOG_LEVEL: INFO
+    volumes:
+      - ./config:/app/config:ro
+      - zeek_logs:/zeek-logs:ro
+      - network_events:/var/log/network-observer
+      # 팀원 PC의 Docker metadata로 IP -> service를 해석한다 (read-only)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - network-observer-zeek
+    restart: unless-stopped
+
+  network-events-shipper:
+    image: fluent/fluent-bit:5.1.3
+    container_name: network-events-shipper
+    command: ["-c", "/fluent-bit/etc/fluent-bit.conf"]
+    environment:
+      AIOPS_TAILSCALE_IP: ${AIOPS_TAILSCALE_IP:?AIOPS_TAILSCALE_IP 를 .env 에 설정 (AIOps PC의 tailscale ip -4)}
+    volumes:
+      - ./fluent-bit:/fluent-bit/etc:ro
+      - network_events:/var/log/network-observer:ro
+      - shipper_state:/fluent-bit/state
+    depends_on:
+      - network-observer-enricher
+    restart: unless-stopped

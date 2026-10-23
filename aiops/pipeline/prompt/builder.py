@@ -6,6 +6,7 @@ user 프롬프트는 실제 이상 데이터를 담는다.
 import json
 import logging
 
+from prompt.log_line import is_priority, render_log_line
 from prompt.network_section import build_network_section
 
 logger = logging.getLogger(__name__)
@@ -93,15 +94,15 @@ class PromptBuilder:
 
         head_len = len("\n".join(lines))  # ALERT + METRICS 끝 위치. Network 섹션은 여기 들어간다.
 
-        # 로그 (최대 50줄, 에러/경고 우선)
+        # 로그 (최대 50줄, 에러/경고 우선). JSON 로그는 핵심 필드를 먼저 담고 비밀값을 가린다 (prompt/log_line.py)
         lines.append("\n=== LOGS (5-min window, up to 50 lines) ===")
-        error_logs = [l for l in logs if any(kw in l["line"].lower() for kw in ["error", "exception", "fatal", "warn"])]
+        error_logs = [l for l in logs if is_priority(l)]
         error_set  = set(id(l) for l in error_logs)                    # ← O(n²) 성능 문제 수정
         other_logs = [l for l in logs if id(l) not in error_set]       # ← O(n²) 성능 문제 수정
         selected   = error_logs[:30] + other_logs[:20]
         selected.sort(key=lambda x: x["ts"])
         for entry in selected:
-            lines.append(f"[{entry['labels'].get('container', '?')}] {entry['line'][:200]}")
+            lines.append(render_log_line(entry))
 
         lines.append("\nAnalyze the above data and respond with JSON only.")
 

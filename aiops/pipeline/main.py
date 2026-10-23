@@ -23,8 +23,9 @@ _DOCKER_UDS = "/var/run/docker.sock"
 from collector.metrics import MetricsCollector
 from collector.logs import LogsCollector
 from collector.network import NetworkCollector
-from correlation import CorrelationContext, MONITORED_SERVICES, resolve_service
+from correlation import CorrelationContext, MONITORED_SERVICES, parse_target_map, resolve_service
 from prompt.builder import PromptBuilder
+from prompt.log_line import render_log_line
 from schemas.llm_output import LLMAnalysisResult
 from config import settings
 
@@ -88,6 +89,8 @@ metrics_collector = MetricsCollector(settings.prometheus_url)
 logs_collector    = LogsCollector(settings.loki_url)
 network_collector = NetworkCollector(settings.loki_url)
 prompt_builder    = PromptBuilder()
+# 원격 배포: alert 대상 이름 -> canonical service (로컬 Docker에 Leafy 컨테이너가 없다)
+_target_map       = parse_target_map(settings.target_service_map)
 
 _SERVICE_PREFIXES = ["leafy-", "aiops-", "graduation-project-"]
 
@@ -330,7 +333,7 @@ async def analyze_alerts(alerts: list[Alert]):
                 window_minutes=5,
             )
             # 로그는 canonical service로 조회한다. (leafy-backend -> backend -> {service="backend"})
-            service, runtime = await resolve_service(container_name)
+            service, runtime = await resolve_service(container_name, target_map=_target_map)
             if not service:
                 logger.warning(f"[Pipeline] service 해석 실패, app log 조회 생략: {container_name}")
             ctx = CorrelationContext.around(
@@ -461,10 +464,7 @@ async def periodic_log_check() -> None:
                         continue
 
                     # 2차: LLM 분석
-                    log_summary = "\n".join(
-                        f"[{l.get('labels', {}).get('container', '?')}] {l.get('line', '')[:200]}"
-                        for l in logs[:50]
-                    )
+                    log_summary = "\n".join(render_log_line(l) for l in logs[:50])
                     prompt = {
                         "system": PERIODIC_SCAN_SYSTEM_PROMPT,
                         "user": (
