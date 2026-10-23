@@ -25,10 +25,19 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 LOKI_URL = os.getenv("LOKI_URL", "http://loki:3100")
 
+# docker   : 로컬 Docker SDK로 조치를 실행한다 (기존 all-in-one docker-compose.yml)
+# disabled : 조치를 실행하지 않는다. AIOps 단독 배포에서는 Leafy가 다른 PC에 있어 로컬 Docker 조치가 대상에 닿지 않고,
+#            같은 이름의 로컬 컨테이너(남은 leafy-* 또는 AIOps 자신)를 건드릴 위험만 있다. 원격 조치 경로가 생기기 전까지 쓴다.
+#            판단·알림·승인 기록은 그대로 남기고, 실행 결과는 SKIPPED로 기록한다.
+REMEDIATION_MODE = os.getenv("REMEDIATION_MODE", "docker")
+if REMEDIATION_MODE not in ("docker", "disabled"):
+    raise ValueError(f"REMEDIATION_MODE must be docker or disabled: {REMEDIATION_MODE!r}")
+
 app = FastAPI(title="AIOps Remediation", version="0.1.0")
 
-container_actions = ContainerActions()
+container_actions = ContainerActions() if REMEDIATION_MODE == "docker" else None
 notifier = Notifier()
+logger.info(f"[Remediation] REMEDIATION_MODE={REMEDIATION_MODE}")
 
 
 class ActionRequest(BaseModel):
@@ -80,7 +89,7 @@ async def execute_action(request: ActionRequest):
                 res = await _execute(action_type, target)
                 execution_results.append(res)
                 await _push_remediation_status(alert, analysis, target, action_type, res)
-            return {"status": "executed", "results": execution_results}
+            return {"status": "executed" if container_actions else "skipped", "results": execution_results}
         else:
             slack_dispatch = await notifier.send_alert_only(alert, analysis)
             await _push_slack_status(alert, analysis, slack_dispatch, "alert_only")
@@ -181,7 +190,7 @@ async def slack_interactive_action(request: Request):
                     "action_type": action_type,
                     "approved_by": user_name,
                     "source":      source,       # [NEW] 출처 기록
-                    "status":      "SUCCESS" if res.startswith("Success") else "FAILED",
+                    "status":      _result_status(res),
                     "result":      res,
                 })
         else:
@@ -244,6 +253,9 @@ async def _update_slack_message(response_url: str, text: str) -> None:
 # ─── 헬퍼 함수 ───────────────────────────────────────────
 
 async def _execute(action_type: str, target: str) -> str:
+    if container_actions is None:
+        logger.warning(f"[Remediation] REMEDIATION_MODE=disabled — {action_type} {target} 실행하지 않음")
+        return f"Skipped: {action_type} {target} not executed (REMEDIATION_MODE=disabled, 원격 조치 미구현)"
     if not target:
         return "Error: No target container name"
     loop = asyncio.get_event_loop()
@@ -265,6 +277,12 @@ async def _execute(action_type: str, target: str) -> str:
     except Exception as e:
         logger.error(f"[Execution Error] {action_type} on {target}: {e}")
         return f"Fail: {target} ({str(e)})"
+
+
+def _result_status(result: str) -> str:
+    if result.startswith("Success"):
+        return "SUCCESS"
+    return "SKIPPED" if result.startswith("Skipped:") else "FAILED"
 
 
 async def _push_soc_event(job: str, event: dict) -> None:
@@ -291,7 +309,7 @@ async def _push_soc_event(job: str, event: dict) -> None:
 async def _push_remediation_status(
     alert: dict, analysis: dict, target: str, action_type: str, result: str
 ) -> None:
-    status     = "SUCCESS" if result.startswith("Success:") else "FAILED"
+    status     = _result_status(result)
     alert_name = alert.get("labels", {}).get("alertname", "unknown")
     await _push_soc_event("aiops-remediation", {
         "event":        "auto_remediation",

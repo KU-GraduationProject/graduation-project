@@ -1,0 +1,45 @@
+# Network Observer 설정 — 팀원 PC 배치용 (aiops/network-observer/config/observer.yml 기반)
+#
+# 원본과 다른 값은 <확인 필요>로 표시했다. 팀원 PC의 Leafy compose(back/deploy)를 이 저장소에서 볼 수 없어
+# 이름/주소를 추측하지 않았다. 아래 명령으로 확인해 채운다.
+# 참조: docs/network-observability/NETWORK_EVENT_SCHEMA.md §7 (Runtime / Identity Mapping)
+
+observer:
+  name: network-observer
+  instance: null
+
+capture:
+  # docker-compose.yml 의 network_mode: container:${LEAFY_BACKEND_CONTAINER} 와 같은 대상
+  namespace_of_service: backend
+  # docker-compose.yml 의 zeek -i 값과 같아야 한다. <확인 필요>
+  interface: eth0
+  logical_network: leafy-net
+
+# key = 팀원 PC의 실제 Docker network 이름, value = Canonical Event의 network 값(논리 이름, 그대로 둔다)
+# <확인 필요> docker inspect <backend 컨테이너> --format "{{json .NetworkSettings.Networks}}"
+#   예: deploy_default, deploy_leafy-net 처럼 compose project 접두어가 붙는다.
+# 이 값이 틀리면 모든 endpoint가 unknown이 된다 (event는 버려지지 않는다).
+docker_networks:
+  REPLACE_WITH_LEAFY_DOCKER_NETWORK: leafy-net
+
+# Host PostgreSQL 17 (Windows, container 없음). Docker Desktop에서는 host 목적지가 Windows IP가 아니라
+# host.docker.internal 주소로 관측된다 (NETWORK_EVENT_SCHEMA.md F3, 이전 PoC 실측 192.168.65.254).
+# <확인 필요> docker exec <backend 컨테이너> getent hosts host.docker.internal
+#   (getent가 없으면: docker run --rm busybox nslookup host.docker.internal)
+# backend의 JDBC URL이 host.docker.internal이 아닌 다른 주소를 쓰면 그 주소를 넣는다.
+host_endpoints:
+  - ip: "192.168.65.254"
+    port: 5432
+    service: db
+    network: host-bound
+
+unknown:
+  service: unknown
+  runtime: unknown
+
+refresh_interval_sec: 30
+
+output:
+  # network-events-shipper(Fluent Bit)가 이 파일을 tail 해 AIOps PC로 보낸다
+  path: /var/log/network-observer/network-events.jsonl
+  stdout: true

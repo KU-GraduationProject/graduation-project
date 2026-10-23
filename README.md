@@ -155,7 +155,7 @@ backend는 DB와 MinIO의 healthcheck 통과를 기다리고, db는 Fluentd에 �
 
 `frontend`, `backend`, `db`, `minio` 네 컨테이너는 Docker **fluentd 로깅 드라이버**를 사용한다. 전송 주소는 Docker 데몬 기준 `localhost:24224`이며, 호스트의 공개 포트를 통해 Fluentd의 forward 입력에 연결된다.
 
-[fluent.conf](leafy/fluentd/fluent.conf)는 로그 본문을 `message`로 옮기고 Compose 라벨의 `com.docker.compose.service`에서 논리 서비스 이름인 `service`를 얻는다. `container_name`·`runtime`·`source`와 기존 tag 기반 `container`도 Loki 라벨로 보존하며 본문은 `key_value`로 전송한다. Pipeline은 Docker 메타데이터로 `leafy-backend`를 `backend`로 해석한 뒤 `{service="backend"}`로 조회한다. 기존 `container` 값은 tag에 따라 `backend`와 `leafy-db`처럼 달라지므로 신규 상관 분석의 기준으로 사용하지 않는다.
+[fluent.conf](leafy/fluentd/fluent.conf)는 Docker가 16KB 단위로 나눈 긴 로그(partial)를 다시 이어 붙인 뒤, Compose 라벨의 `com.docker.compose.service`에서 논리 서비스 이름인 `service`를 얻는다. `container_name`·`runtime`·`source`, 기존 tag 기반 `container`, 형식 구분 `log_format`(json/text/json_invalid)을 Loki 라벨로 보존한다. 본문은 JSON이다. JSON 로그는 앱 필드를 그대로, 그 외는 원문을 `message`에 담는다 (변환: [filter_leafy_docker_log.rb](leafy/fluentd/plugins/filter_leafy_docker_log.rb)). Pipeline은 Docker 메타데이터로 `leafy-backend`를 `backend`로 해석한 뒤 `{service="backend"}`로 조회한다. 기존 `container` 값은 tag에 따라 `backend`와 `leafy-db`처럼 달라지므로 신규 상관 분석의 기준으로 사용하지 않는다.
 
 ---
 
@@ -178,7 +178,7 @@ graph LR
         Z["Zeek<br/>conn.log"]
         E["Enricher<br/>정규화 이벤트 JSONL"]
     end
-    C1 -->|Docker 데몬 localhost:24224| APP["Fluentd 앱 로그 경로<br/>service 라벨 / key_value 본문"]
+    C1 -->|Docker 데몬 localhost:24224| APP["Fluentd 앱 로그 경로<br/>service 라벨 / JSON 본문"]
     Z --> E -->|network_events 파일 tail| NET["Fluentd @NETWORK 경로<br/>log_type=network / JSON 본문"]
     APP --> LOKI["loki"]
     NET --> LOKI
@@ -338,5 +338,6 @@ python -B -m unittest discover -s tests -v
 - `docs/verification/current_info_files/` — 설계 기준선(ARCHITECTURE/DESIGN/TASKS). 구현 전 베이스라인 문서로, 실제 구현과 차이가 있을 수 있다.
 - `docs/verification/legacy_info_files/` — 과거 개발 문서 보관.
 - `docs/network-observability/` — 네트워크 이벤트 스키마 및 PoC 문서.
+- `docs/remote/` — Leafy(팀원 PC)와 AIOps(`docker-compose.aiops.yml`)를 다른 PC에서 실행하는 원격 수집 구성, JSON 전환에 따른 탐지 규칙 검토. 팀원 PC 작업은 `deploy/leafy-pc/`.
 
 **학교** 건국대학교 컴퓨터공학과 · **주제** LLM 기반 AIOps 보안 플랫폼 · **연도** 2026

@@ -23,6 +23,9 @@ COMPOSE_SERVICE_LABEL = "com.docker.compose.service"
 # 주기적 스캔 대상 (canonical service 이름)
 MONITORED_SERVICES = ("backend", "frontend", "db")
 
+# NETWORK_EVENT_SCHEMA.md §7.4
+RUNTIMES = ("container", "host", "external", "unknown")
+
 # Compose service 이름 규칙. LogQL selector에 넣기 전에 검증한다.
 _SERVICE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
@@ -52,19 +55,46 @@ def network_event_selectors(service: str) -> tuple[str, str]:
     )
 
 
+def parse_target_map(raw: str) -> dict[str, tuple[str, str]]:
+    """
+    TARGET_SERVICE_MAP -> {대상 이름: (service, runtime)}.
+
+    예: "leafy-backend=backend,leafy-db=db:host" -> {"leafy-backend": ("backend", "container"), "leafy-db": ("db", "host")}
+    runtime을 생략하면 container.
+
+    AIOps 단독 배포(docker-compose.aiops.yml)에서는 Leafy가 다른 PC에 있어 로컬 Docker로 해석할 수 없다.
+    alert annotation의 대상 이름을 canonical service로 바꾸는 명시적 매핑이다. 이름 문자열을 가공해 추측하지 않는다.
+    형식 오류는 기동 시점에 실패시킨다 (잘못된 identity로 조용히 조회하지 않기 위해).
+    """
+    mapping = {}
+    for item in filter(None, (part.strip() for part in raw.split(","))):
+        name, sep, value = item.partition("=")
+        service, _, runtime = value.strip().partition(":")
+        runtime = runtime or "container"
+        if not sep or not name.strip() or runtime not in RUNTIMES:
+            raise ValueError(f"invalid TARGET_SERVICE_MAP entry: {item!r}")
+        mapping[name.strip()] = (_checked(service), runtime)
+    return mapping
+
+
 async def resolve_service(
     container_name: str,
     transport: httpx.AsyncBaseTransport | None = None,
+    target_map: dict[str, tuple[str, str]] | None = None,
 ) -> tuple[str | None, str | None]:
     """
     container 이름 -> (service, runtime).
 
-    Docker metadata(compose service 라벨)로만 해석한다. 이름 문자열을 가공하지 않는다.
+    target_map(명시적 매핑)에 있으면 그것을 쓴다. 원격 배포에서 같은 이름의 오래된 로컬 컨테이너가
+    남아 있어도 그것을 대상으로 오인하지 않도록 Docker보다 우선한다.
+    없으면 Docker metadata(compose service 라벨)로만 해석한다. 이름 문자열을 가공하지 않는다.
     컨테이너가 없거나 compose 라벨이 없으면 (None, None) — 호출 측은 app log 조회를 건너뛴다.
     잘못된 identity로 조회해 엉뚱한 로그를 얻는 것보다 빈 결과가 낫다.
     """
     if not container_name:
         return None, None
+    if target_map and container_name in target_map:
+        return target_map[container_name]
     try:
         async with httpx.AsyncClient(
             transport=transport or httpx.AsyncHTTPTransport(uds=DOCKER_UDS),

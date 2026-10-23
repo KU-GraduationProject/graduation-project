@@ -1,0 +1,188 @@
+# AIOps 단독 배포 (내 PC). Leafy frontend/backend/MinIO와 PostgreSQL 17은 팀원 PC에서 실행된다.
+#   docker compose -f docker-compose.aiops.yml up -d --build
+#   GPU: docker compose -f docker-compose.aiops.yml -f docker-compose.gpu.yml up -d --build
+# 구성·검증·팀원 PC 작업: docs/remote/REMOTE_DEPLOYMENT.md, deploy/leafy-pc/README.md
+#
+# docker-compose.yml(all-in-one)과의 차이
+#   - Leafy 앱/DB, exporter, node-exporter/cadvisor, Zeek/enricher를 띄우지 않는다.
+#     Zeek은 팀원 PC의 backend network namespace를 봐야 하므로 deploy/leafy-pc/network-observer 로 옮겼다.
+#   - Fluentd 24224(Docker 로그 + network event)/24225(PostgreSQL)만 Tailscale IP에 publish 한다.
+#     나머지 포트는 127.0.0.1에만 publish 한다.
+#   - Remediation은 REMEDIATION_MODE=disabled (원격 조치 미구현, 로컬 Docker를 건드리지 않음).
+#   - container_name이 all-in-one과 같다. 두 구성은 같은 PC에서 동시에 띄우지 않는다.
+name: leafy-aiops
+
+# 외부 Leafy 네트워크(팀원 PC의 Docker 네트워크)와 연결하지 않는다. 팀원 PC와는 Tailscale로만 통신한다.
+networks:
+  aiops-net:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+  ollama_data:
+  fluentd_buffer:     # Loki 출력 file buffer + tail pos. Loki가 잠시 내려가도 수신한 로그를 잃지 않기 위해
+
+services:
+
+  # ════════════════════════════════════════════
+  # 수신: 팀원 PC -> Tailscale -> Fluentd
+  # ════════════════════════════════════════════
+
+  fluentd:
+    build: ./leafy/fluentd
+    container_name: fluentd
+    environment:
+      # 24225(PostgreSQL Fluent Bit) 송신자 인증. 팀원 PC Fluent Bit의 Shared_Key와 같아야 한다.
+      FLUENTD_PG_SHARED_KEY: ${FLUENTD_PG_SHARED_KEY:?FLUENTD_PG_SHARED_KEY 를 .env 에 설정 (팀원 PC Fluent Bit Shared_Key와 동일)}
+    ports:
+      # 0.0.0.0 공개 금지. Tailscale 인터페이스에만 바인딩한다 (Tailscale ACL로 팀원 PC만 허용).
+      # Docker log driver는 UDP heartbeat를 쓰지 않으므로 TCP만 연다.
+      - "${AIOPS_TAILSCALE_IP:?AIOPS_TAILSCALE_IP 를 .env 에 설정 (tailscale ip -4)}:24224:24224/tcp"
+      - "${AIOPS_TAILSCALE_IP}:24225:24225/tcp"
+    volumes:
+      - ./leafy/fluentd/fluent.conf:/fluentd/etc/fluent.conf:ro
+      - fluentd_buffer:/fluentd/log
+    networks:
+      - aiops-net
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  # ════════════════════════════════════════════
+  # 저장/탐지/시각화
+  # ════════════════════════════════════════════
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.aiops.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      # 팀원 PC exporter 주소 (file_sd). 실제 주소 파일은 커밋하지 않는다 -> targets/README.md
+      - ./monitoring/prometheus/targets:/etc/prometheus/targets:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - aiops-net
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    ports:
+      - "127.0.0.1:9093:9093"
+    networks:
+      - aiops-net
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      # 내부 API. 팀원 PC로 공개하지 않는다 (시나리오/eval 스크립트가 이 PC에서 localhost로 조회)
+      - "127.0.0.1:3100:3100"
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - ./monitoring/loki/rules:/loki/rules
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml -target=all
+    networks:
+      - aiops-net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      # 팀원이 대시보드를 봐야 하면 GRAFANA_BIND_IP=<AIOps Tailscale IP>. GRAFANA_PASSWORD도 함께 바꾼다.
+      - "${GRAFANA_BIND_IP:-127.0.0.1}:3000:3000"
+    networks:
+      - aiops-net
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+
+  # ════════════════════════════════════════════
+  # AIOps 핵심 엔진
+  # ════════════════════════════════════════════
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    # GPU 는 docker-compose.gpu.yml 에서 켠다
+    ports:
+      - "127.0.0.1:11434:11434"  # eval 스크립트 호스트 직접 호출용
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - aiops-net
+    restart: unless-stopped
+    environment:
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_QUEUE: "1"
+      OLLAMA_KEEP_ALIVE: "-1"
+
+  pipeline:
+    build: ./aiops/pipeline
+    container_name: aiops-pipeline
+    environment:
+      LLM_TIMEOUT: "180"
+      LLM_MODEL: "llama3.2:3b"
+      PROMETHEUS_URL: http://prometheus:9090
+      LOKI_URL: http://loki:3100
+      OLLAMA_URL: http://ollama:11434
+      ALERTMANAGER_URL: http://alertmanager:9093
+      REMEDIATION_URL: http://remediation:8001
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      # alert annotation의 대상 이름 -> canonical service. Leafy가 다른 PC에 있어 로컬 Docker로 해석할 수 없다.
+      # db는 Windows 호스트 PostgreSQL 17 (runtime=host). Loki의 {service="db", runtime="host"}와 같은 identity
+      TARGET_SERVICE_MAP: "leafy-frontend=frontend,leafy-backend=backend,leafy-minio=minio,leafy-db=db:host"
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # AIOps PC 로컬 Docker. /metrics의 container_name_info는 AIOps 컨테이너만 담는다 (Leafy 아님).
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./aiops/pipeline/results:/app/results
+    networks:
+      - aiops-net
+    depends_on:
+      - prometheus
+      - loki
+      - ollama
+    restart: unless-stopped
+
+  remediation:
+    build: ./aiops/remediation
+    container_name: aiops-remediation
+    environment:
+      PIPELINE_URL: http://pipeline:8000
+      LOKI_URL: http://loki:3100
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      # 원격 Leafy에 대한 조치 경로가 없다. Docker socket도 마운트하지 않는다.
+      REMEDIATION_MODE: disabled
+    ports:
+      - "127.0.0.1:8001:8001"
+    networks:
+      - aiops-net
+    depends_on:
+      - pipeline
+    restart: unless-stopped

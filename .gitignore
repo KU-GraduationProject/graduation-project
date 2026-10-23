@@ -8,6 +8,9 @@
 certs/*.crt
 certs/*.key
 
+## Prometheus 원격 수집 대상 (실제 Tailscale 주소) ##
+monitoring/prometheus/targets/*.yml
+
 ### macOS ###
 # General
 .DS_Store
