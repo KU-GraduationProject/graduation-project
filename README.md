@@ -1,343 +1,299 @@
 # Leafy AIOps
 
-**LLM 기반 AIOps 보안 관측·분석·대응 플랫폼**
-건국대학교 컴퓨터공학과 졸업 프로젝트 (2026)
+## 프로젝트 소개
 
----
+Leafy AIOps는 건국대학교 컴퓨터공학과 졸업 프로젝트로, 웹 애플리케이션의 장애와 보안 이상을 관측하고 로컬 LLM으로 원인을 분석하는 시스템입니다. 운영자가 경보를 받은 뒤 로그·메트릭·네트워크 정보를 각각 찾아야 하는 반복 작업을 줄이기 위해, 경보 발생 시점과 대상 서비스를 기준으로 데이터를 모아 근본 원인 분석(RCA)과 권장 조치를 생성합니다.
 
-## 1. 프로젝트 소개
+이 저장소는 수집·탐지 설정, FastAPI 기반 분석·대응 서비스, Grafana 대시보드, 실험 도구를 포함합니다. 관측 대상인 **Leafy frontend/backend 소스는 포함하지 않으며**, Compose에서 `gicks/ai-ops-leafy-frontend`, `gicks/ai-ops-leafy-backend` 이미지를 사용합니다. 단일 PC 통합 구성과 Tailscale 기반 2대 PC 원격 수집 구성을 제공합니다. 원격 구성은 Docker 조치를 비활성화하며 일부 메트릭 수집은 추가 구성이 필요합니다.
 
-Leafy AIOps는 데모용 웹 애플리케이션(**Leafy**)에서 발생하는 로그·메트릭·네트워크 이벤트를 수집하고, Alert를 기준으로 **로컬 LLM의 근본 원인 분석(RCA)**과 **대응(Remediation)**을 연결하는 Docker Compose 기반 졸업 프로젝트이다. 이 문서는 현재 저장소의 코드와 설정을 기준으로 설명한다.
+## 주요 기능
 
-해결하려는 문제는 다음과 같다. 전통적인 모니터링은 임계값 기반 Alert를 사람에게 전달하는 데서 멈춘다. 운영자는 Alert가 울린 뒤 메트릭·로그·네트워크를 직접 상관 분석(correlation)해 원인을 찾아야 하며, 이 과정이 느리고 반복적이다. 본 프로젝트는 Alert 발생 시점을 기준으로 **메트릭·로그·네트워크 컨텍스트를 자동으로 수집·상관**하고, 이를 LLM 프롬프트로 구성해 **원인 추정과 권장 조치를 구조화된 JSON으로 산출**하며, 위험도가 낮고 신뢰도가 높은 경우에 한해 **컨테이너 조치를 자동 실행**하는 파이프라인을 검증한다.
+- **로그 수집·정규화**: Docker fluentd 드라이버 → Fluentd → Loki. JSON/텍스트 정규화, Docker partial 로그 재조립, 서비스 라벨 부여, 큰 로그 크기 제한을 처리합니다. 원격 호스트 PostgreSQL 17 jsonlog는 Fluent Bit으로 별도 인증 포트에 전송합니다.
+- **네트워크 관측**: Zeek가 backend 네트워크 네임스페이스에서 연결을 관측하고 Python Enricher가 서비스 식별 정보를 붙인 Canonical Network Event JSONL을 생성합니다.
+- **메트릭·규칙 기반 탐지**: 통합 구성에서 Prometheus와 node-exporter·cAdvisor·nginx-exporter·postgres-exporter를 사용합니다. Prometheus 규칙 6개와 Loki 보안 규칙 9개를 Alertmanager에 연결합니다. 규칙 선언과 실제 발화 여부는 구분해야 합니다.
+- **LLM 원인 분석**: Pipeline이 경보 전후 5분의 메트릭·앱 로그·네트워크 컨텍스트를 수집하고 Ollama에 전달합니다. 원인, 조치 유형·대상, 위험도, 근거, 신뢰도를 구조화합니다.
+- **대응 판단·Slack 알림**: 저위험(`action_risk=low`)·신뢰도 0.7 이상이면 지원하는 Docker 조치를 실행하며, 다른 조건에서는 알림이나 승인 요청으로 분기합니다. 원격 구성의 `REMEDIATION_MODE=disabled`에서는 조치 실행을 건너뜁니다.
+- **시각화·실험**: Grafana에서 메트릭·로그·분석 이력을 조회하고, `scenarios/`와 `aiops/eval/`에서 장애·보안 시나리오 및 LLM 평가 도구를 제공합니다.
 
-> Leafy 애플리케이션(frontend/backend) 자체의 소스 코드는 이 저장소에 포함되지 않으며, 외부에 빌드된 컨테이너 이미지(`gicks/ai-ops-leafy-*`)로 실행된다. 이 저장소는 **관측·분석·대응(AIOps) 레이어와 그 운영 환경**을 담는다.
+## 시스템 아키텍처
 
-> 현재 작업 환경에서는 Remediation을 중지 상태로 유지한다. 아래 다이어그램은 구현된 연결 관계이며 실행 상태를 나타내지 않는다. Remediation이 중지되어 있으면 자동 조치와 해당 서비스를 통한 Slack 알림은 수행되지 않는다.
-
----
-
-## 2. 핵심 기능
-
-- **애플리케이션 로그 수집**: Leafy 컨테이너들의 로그를 Docker fluentd 드라이버로 Fluentd에 보내고, 라벨을 붙여 Loki에 적재한다.
-- **네트워크 관측(Network Observability)**: Zeek가 backend의 네트워크 네임스페이스에 붙어 트래픽을 캡처하고, Enricher가 이를 정규화된 네트워크 이벤트(Canonical Network Event)로 변환해 Loki로 보낸다.
-- **메트릭 수집**: Prometheus가 node/cadvisor/nginx/postgres exporter와 AIOps 파이프라인의 컨테이너 상태 메트릭을 수집한다.
-- **이상 탐지(Alert)**: Prometheus 룰과 Loki 룰러가 임계값/로그 패턴 기반으로 Alert를 발생시키고 Alertmanager로 보낸다.
-- **LLM 기반 RCA**: AIOps Pipeline이 Alert를 수신해 전후 ±5분의 메트릭·로그·네트워크를 수집·상관하고, 로컬 Ollama LLM으로 근본 원인과 권장 조치를 분석한다.
-- **대응(Remediation)**: 서비스가 기동된 경우 분석 결과의 위험도·신뢰도·대상에 따라 컨테이너 조치(RESTART/ISOLATE/PAUSE/THROTTLE)를 실행하거나 Slack 승인 요청을 보낸다.
-- **시각화**: Grafana 대시보드로 메트릭·로그·LLM 분석 타임라인을 조회한다.
-- **공격/장애 시나리오**: `scenarios/`에 CPU/메모리 부하와 보안 공격 재현 도구가 있다. 일부 결과 조회 기능은 미구현 API에 의존하므로 실행과 분석 결과 확인을 구분한다.
-
----
-
-## 3. 전체 시스템 아키텍처
-
-스택은 크게 세 계층으로 나뉜다. **Leafy 애플리케이션 계층**(leafy-net), **관측·분석·대응 계층**(mgmt-net), 그리고 두 계층을 잇는 **데이터 수집 경로**이다. Docker 네트워크는 `leafy-net`(bridge, 10.210.0.0/24)과 `mgmt-net`(bridge) 두 개이다.
+다음은 **단일 PC 통합 구성**의 흐름입니다. 화살표는 구현된 연결 관계이며 현재 실행 상태를 뜻하지 않습니다.
 
 ```mermaid
-graph TB
-    subgraph leafynet["leafy-net (애플리케이션, 10.210.0.0/24)"]
-        FE["frontend<br/>nginx (10.210.0.10)"]
-        BE["backend<br/>Spring Boot"]
-        DB["db<br/>postgres:16"]
-        MINIO["minio<br/>오브젝트 스토리지"]
+flowchart TB
+    subgraph Leafy["관측 대상: leafy-net"]
+        FE["frontend / Nginx"] --> BE["backend / Spring Boot"]
+        BE --> DB["PostgreSQL 16"]
+        BE --> MINIO["MinIO"]
     end
-
-    subgraph mgmtnet["mgmt-net (관측·분석·대응)"]
-        subgraph obs["수집/저장"]
-            FLU["fluentd"]
-            LOKI["loki"]
-            PROM["prometheus"]
-            AM["alertmanager"]
-            GRAF["grafana"]
-        end
-        subgraph aiops["AIOps"]
-            PIPE["pipeline<br/>FastAPI RCA"]
-            REM["remediation<br/>FastAPI"]
-            OLLAMA["ollama<br/>LLM"]
-        end
-        EXP["node-exporter / cadvisor<br/>nginx-exporter / postgres-exporter"]
-        ENR["network-observer-enricher"]
+    subgraph Collection["수집"]
+        FD["Fluentd"]
+        ZEEK["Zeek: backend 네임스페이스 공유"]
+        ENR["Network Enricher"]
+        EXP["node / cAdvisor / Nginx / PostgreSQL exporters"]
     end
-
-    ZEEK["network-observer-zeek<br/>backend 네임스페이스 공유"]
-
-    FE --> BE --> DB
-    BE --> MINIO
-    FE -. "로그" .-> FLU
-    BE -. "로그" .-> FLU
-    DB -. "로그" .-> FLU
-    MINIO -. "로그" .-> FLU
-    BE -. "eth0 트래픽 관측" .-> ZEEK
-    ZEEK -->|conn.log| ENR
-    ENR -->|이벤트 JSONL| FLU
-    FLU --> LOKI
-    EXP -->|메트릭 응답| PROM
-    BE -->|Actuator 메트릭| PROM
+    subgraph Management["관측·분석·대응: mgmt-net"]
+        LOKI["Loki / Ruler"]
+        PROM["Prometheus"]
+        AM["Alertmanager"]
+        PIPE["Pipeline / FastAPI"]
+        LLM["Ollama"]
+        REM["Remediation / FastAPI"]
+        GF["Grafana"]
+    end
+    FE & BE & DB & MINIO -->|Docker 로그| FD
+    BE -.->|eth0 트래픽 관측| ZEEK
+    ZEEK -->|conn.log| ENR -->|JSONL| FD --> LOKI
+    EXP -->|메트릭| PROM
+    BE -->|Actuator| PROM
     PIPE -->|상태 메트릭| PROM
-    PROM -->|Alert 전송| AM
-    LOKI -->|ruler| AM
-    AM -->|webhook| PIPE
-    PROM -->|메트릭 조회 응답| PIPE
-    LOKI -->|로그와 네트워크 조회 응답| PIPE
-    PIPE --> OLLAMA
-    PIPE --> LOKI
+    PROM & LOKI -->|경보| AM -->|webhook| PIPE
+    PIPE -->|컨텍스트 조회| PROM & LOKI
+    PIPE -->|추론 요청| LLM
+    LLM -->|구조화 결과| PIPE
+    PIPE -->|분석·타임라인 저장| LOKI
     PIPE --> REM
-    REM -. "기동 시 Docker API 조치" .-> BE
-    GRAF --> LOKI
-    GRAF --> PROM
+    REM -.->|docker 모드에서 대상 조치| Leafy
+    REM -->|알림·승인 요청| SLACK["Slack"]
+    GF -->|조회| PROM & LOKI
 ```
 
-> `network-observer-zeek`는 자체 네트워크를 갖지 않고 `network_mode: "service:backend"`로 backend의 네임스페이스를 공유한다. 다이어그램의 "eth0 트래픽 관측" 화살표는 이 인터페이스에서 캡처하는 관계를 뜻한다.
+`leafy-net`은 `10.210.0.0/24`이며 frontend IP는 `10.210.0.10`입니다. backend와 일부 수집기는 관리 네트워크에도 연결됩니다. Zeek는 `network_mode: service:backend`로 backend 네임스페이스를 공유합니다. 인터페이스 배치가 달라지면 캡처 설정을 확인해야 합니다.
 
-Remediation의 점선은 backend를 대상으로 하는 조치의 예시이다. 실제 조치 대상은 LLM 응답의 `action_targets`로 결정된다. nginx/postgres exporter는 두 네트워크에 연결되며, 위 다이어그램에서는 수집기 노드 하나로 묶어 표시한다. 상세 정의는 [docker-compose.yml](docker-compose.yml)과 [Prometheus 설정](monitoring/prometheus/prometheus.yml)에 있다.
+**원격 구성**에서는 Leafy 앱·호스트 PostgreSQL 17·Zeek/Enricher·Fluent Bit이 대상 PC에 있고, AIOps PC에는 수집·저장·분석 서비스 8개가 있습니다. Docker 로그와 네트워크 이벤트는 Tailscale의 24224/TCP, PostgreSQL 로그는 공유 키 인증을 사용하는 24225/TCP로 Fluentd에 전달합니다. Pipeline의 `TARGET_SERVICE_MAP`으로 원격 대상을 식별하며, 원격 조치 경로는 구현되어 있지 않습니다.
 
----
+상세 자료: [아키텍처 파일](docs/architecture/README.md), [원격 배포](docs/remote/REMOTE_DEPLOYMENT.md), [네트워크 이벤트 스키마](docs/network-observability/NETWORK_EVENT_SCHEMA.md).
 
-## 4. Docker Compose 서비스 및 네트워크 구조
+## 기술 스택
 
-스택은 `docker-compose.yml` 하나로 정의되며, `docker-compose.gpu.yml`은 Windows(RTX) 환경에서 `ollama`에 GPU를 할당하는 오버라이드이다. Compose 프로젝트 이름은 `graduation-project`로 고정되는데, 이는 Remediation이 `graduation-project_leafy-net`이라는 네트워크 이름에 의존하기 때문이다.
-
-### 네트워크
-
-| 네트워크 | 종류 | 용도 |
-|---|---|---|
-| `leafy-net` | bridge (10.210.0.0/24) | Leafy 애플리케이션 계층. frontend는 고정 IP 10.210.0.10 |
-| `mgmt-net` | bridge | 관측·분석·대응 계층 |
-
-### 명명 볼륨
-
-| 볼륨 | 데이터와 연결 |
+| 영역 | 코드·설정에서 확인한 기술 |
 |---|---|
-| `postgres_data` | DB 데이터 → db의 `/var/lib/postgresql/data` |
-| `minio_data` | 업로드·오브젝트 데이터 → minio의 `/data` |
-| `prometheus_data`, `loki_data`, `grafana_data` | 메트릭·로그·대시보드 상태 → 각 저장소 |
-| `ollama_data` | 내려받은 모델 → ollama의 `/root/.ollama` |
-| `zeek_logs` | Zeek 쓰기 → Enricher 읽기 전용 |
-| `network_events` | Enricher 쓰기 → Fluentd 읽기 전용 |
+| 분석·대응 API | Python 3.11 컨테이너, FastAPI, Uvicorn, Pydantic 2, HTTPX |
+| 네트워크 Enricher | Python 3.12 컨테이너, Docker SDK 7.1.0, PyYAML 6.0.2 |
+| LLM | Ollama, Compose 모델 `llama3.2:3b` |
+| 로그 | Fluentd 1.16, Ruby 필터, fluent-plugin-grafana-loki 1.3.0, fluent-plugin-concat 2.6.2, Loki, 원격 Fluent Bit |
+| 메트릭·알림·시각화 | Prometheus, Alertmanager, Grafana, node-exporter, cAdvisor, Nginx/PostgreSQL exporters, Slack webhook |
+| 네트워크·배포 | Zeek, Docker Compose v2, 원격 Tailscale, 선택적 NVIDIA GPU 오버레이 |
+| 관측 대상 | 외부 Leafy Nginx/Spring Boot 이미지, PostgreSQL 16(통합) / 호스트 17(원격), MinIO |
 
-설정 파일은 저장소에서 bind mount한다. Pipeline의 `results` 디렉터리도 bind mount하지만 현재 Alert 분석 경로에는 JSONL 파일 저장 코드가 없으며, 결과는 Loki에 기록한다.
+현재 추적 파일에는 루트 `package.json`, 공통 Python 의존성 파일, GitHub Actions 워크플로가 없습니다. Python 의존성은 서비스별 `requirements.txt`, 실행 진입점은 각 `Dockerfile`에 있습니다. 다수 인프라 이미지는 `latest`를 사용합니다.
 
-### 서비스
+## 디렉터리 구조
 
-포트는 `호스트:컨테이너` 형식이며, 별도 표기가 없으면 TCP이다. `없음`은 호스트 publish가 없다는 뜻이다.
-
-| 서비스 | 이미지 / 빌드 | 공개 포트 | 네트워크 | 역할 |
-|---|---|---|---|---|
-| `frontend` | `gicks/ai-ops-leafy-frontend:${FRONTEND_TAG:-latest}` | `${LEAFY_BIND_IP:-127.0.0.1}:80:80` | leafy-net | Leafy 웹 프런트(nginx) |
-| `backend` | `gicks/ai-ops-leafy-backend:${BACKEND_TAG:-latest}` | 없음 | leafy-net, mgmt-net | Leafy API(Spring Boot, `dev` 프로필) |
-| `db` | `postgres:16` | 없음 | leafy-net | 애플리케이션 DB. 접속·슬로우쿼리 로깅 활성화 |
-| `minio` | `gicks/minio:RELEASE.2025-09-07T16-13-09Z` | 없음 | leafy-net | 오브젝트 스토리지 |
-| `fluentd` | `./leafy/fluentd` 빌드 | `24224:24224` TCP/UDP | leafy-net, mgmt-net | 로그 수집 → Loki 전송 |
-| `loki` | `grafana/loki` | `3100:3100` | mgmt-net | 로그 저장소 + 룰러 |
-| `prometheus` | `prom/prometheus` | `9090:9090` | mgmt-net | 메트릭 수집(5s), 30일 보존 |
-| `alertmanager` | `prom/alertmanager` | `9093:9093` | mgmt-net | Alert 라우팅 → pipeline webhook |
-| `grafana` | `grafana/grafana` | `3000:3000` | mgmt-net | 대시보드 |
-| `node-exporter` | `prom/node-exporter` | 없음 | mgmt-net | 호스트 메트릭 |
-| `cadvisor` | `gcr.io/cadvisor/cadvisor` | 없음 | mgmt-net | 컨테이너 메트릭 |
-| `nginx-exporter` | `nginx/nginx-prometheus-exporter` | 없음 | leafy-net, mgmt-net | nginx 메트릭 |
-| `postgres-exporter` | `prometheuscommunity/postgres-exporter` | 없음 | leafy-net, mgmt-net | postgres 메트릭 |
-| `ollama` | `ollama/ollama` | `11434:11434` | mgmt-net | 로컬 LLM 추론 |
-| `pipeline` | `./aiops/pipeline` 빌드 | `8000:8000` | mgmt-net | Alert 수신·상관·LLM RCA |
-| `remediation` | `./aiops/remediation` 빌드 | `8001:8001` | mgmt-net | 기동 시 컨테이너 대응, 현재 환경에서는 중지 유지 |
-| `network-observer-zeek` | `zeek/zeek` | 없음 | backend 네임스페이스 공유 | 트래픽 캡처(conn.log) |
-| `network-observer-enricher` | `./aiops/network-observer` 빌드 | 없음 | mgmt-net | conn.log → 정규화 이벤트 |
-
-`backend`의 `container_name`은 `leafy-backend`이며 frontend/db/minio도 `leafy-*` 이름을 쓴다. Pipeline과 Remediation의 이름은 각각 `aiops-pipeline`, `aiops-remediation`이며 나머지는 서비스 이름과 같다.
-
-backend는 DB와 MinIO의 healthcheck 통과를 기다리고, db는 Fluentd에 의존한다. Pipeline은 Prometheus·Loki·Ollama에, Remediation은 Pipeline에 의존한다. Enricher는 Zeek에, Zeek는 backend에 의존한다. `depends_on`만으로 모든 서비스의 준비 상태가 보장되지는 않으며 Ollama 모델도 별도로 준비한다.
-
-> `pipeline`은 Docker 메타데이터 조회를 위해, `remediation`은 실제 조치를 위해 Docker 소켓(`/var/run/docker.sock`)을 마운트한다. Enricher도 메타데이터 조회용 소켓을 `:ro`로 마운트한다. `frontend`를 제외한 공개 포트는 호스트 IP 제한이 없다.
-
----
-
-## 5. Leafy Application Logging 흐름
-
-`frontend`, `backend`, `db`, `minio` 네 컨테이너는 Docker **fluentd 로깅 드라이버**를 사용한다. 전송 주소는 Docker 데몬 기준 `localhost:24224`이며, 호스트의 공개 포트를 통해 Fluentd의 forward 입력에 연결된다.
-
-[fluent.conf](leafy/fluentd/fluent.conf)는 Docker가 16KB 단위로 나눈 긴 로그(partial)를 다시 이어 붙인 뒤, Compose 라벨의 `com.docker.compose.service`에서 논리 서비스 이름인 `service`를 얻는다. `container_name`·`runtime`·`source`, 기존 tag 기반 `container`, 형식 구분 `log_format`(json/text/json_invalid)을 Loki 라벨로 보존한다. 본문은 JSON이다. JSON 로그는 앱 필드를 그대로, 그 외는 원문을 `message`에 담는다 (변환: [filter_leafy_docker_log.rb](leafy/fluentd/plugins/filter_leafy_docker_log.rb)). Pipeline은 Docker 메타데이터로 `leafy-backend`를 `backend`로 해석한 뒤 `{service="backend"}`로 조회한다. 기존 `container` 값은 tag에 따라 `backend`와 `leafy-db`처럼 달라지므로 신규 상관 분석의 기준으로 사용하지 않는다.
-
----
-
-## 6. Zeek 기반 Network Observability 흐름
-
-Zeek는 backend의 네트워크 네임스페이스를 공유하며 `zeek -C -i eth0`로 캡처한다. frontend→backend와 backend→db 등 해당 인터페이스를 지나는 연결이 관측 대상이며, 전체 스택의 모든 트래픽을 수집하는 구조는 아니다. `-C`는 Docker 가상 NIC의 checksum offload를 고려하는 옵션이다.
-
-[local.zeek](aiops/network-observer/zeek/local.zeek)는 로그 회전을 끄고 `Conn::LOG`만 남겨 `conn.log`를 `zeek_logs` 볼륨에 JSON으로 기록한다. **Enricher**는 파일을 tail하면서 Docker 네트워크 IP와 Compose 라벨로 출발·도착 서비스 identity를 해석한다. 결과는 **Canonical Network Event v1.0** JSONL이며 `network_events` 볼륨의 `network-events.jsonl`과 stdout으로 출력된다. identity를 찾지 못하면 이벤트를 버리지 않고 `unknown`으로 표시한다.
-
-Fluentd는 JSONL을 별도 `@NETWORK` 경로로 수집하므로 애플리케이션 로그 변환 필터를 거치지 않는다. 본문은 원본 이벤트 JSON이며 Loki 라벨은 `log_type`, `event_type`, `src_service`, `dst_service`, `protocol`, `network`이다. 이벤트 시각은 연결 시작 시각이다. Pipeline은 `service`에 대응하는 출발·도착 셀렉터 두 개로 조회한 뒤 중복을 제거한다.
-
-> 현재 네트워크 이벤트는 **LLM 프롬프트의 NETWORK CONTEXT로만 활용**된다. 네트워크 이벤트 전용 Grafana 패널이나 전용 Alert 룰은 아직 없다. Enricher 설정의 `host_endpoints`는 비어 있어, 호스트 상의 DB를 대상으로 하는 구성은 활성화되어 있지 않다.
-
-```mermaid
-graph LR
-    subgraph app["애플리케이션 로그"]
-        C1["frontend / backend<br/>db / minio"]
-    end
-    subgraph netobs["네트워크 이벤트"]
-        Z["Zeek<br/>conn.log"]
-        E["Enricher<br/>정규화 이벤트 JSONL"]
-    end
-    C1 -->|Docker 데몬 localhost:24224| APP["Fluentd 앱 로그 경로<br/>service 라벨 / JSON 본문"]
-    Z --> E -->|network_events 파일 tail| NET["Fluentd @NETWORK 경로<br/>log_type=network / JSON 본문"]
-    APP --> LOKI["loki"]
-    NET --> LOKI
-    LOKI --> GRAF["grafana (앱 로그)"]
-    LOKI --> RULER["loki ruler<br/>(보안 로그 룰)"]
-    LOKI --> PIPE["pipeline<br/>service별 앱 로그와 네트워크 상관 분석"]
+```text
+.
+├── aiops/
+│   ├── pipeline/          # 경보 수신, 컨텍스트 수집·상관, 프롬프트, 스키마·테스트
+│   ├── remediation/       # 조치 판단, Docker 조작, Slack 알림·승인·테스트
+│   ├── network-observer/  # Zeek 설정, 연결 이벤트 정규화·서비스 식별
+│   └── eval/              # LLM 평가 케이스·실행기·기록
+├── leafy/
+│   ├── fluentd/           # 이미지, 수집 라우팅, Ruby 필터·테스트
+│   └── db/                # 통합 PostgreSQL 초기화 SQL
+├── monitoring/            # Prometheus, Loki, Alertmanager, Grafana provisioning
+├── deploy/                # 대상 PC 수집 설정, AIOps PC 연결 확인 도구
+├── scenarios/             # 장애·보안 재현, TUI, 배치·평가 도구와 기록
+└── docs/                  # 아키텍처, 원격 배포, 네트워크 PoC, 설계·검증 이력
 ```
 
----
+루트에는 `.env.example`, 통합 구성 `docker-compose.yml`, 원격 구성 `docker-compose.aiops.yml`, GPU 오버레이 `docker-compose.gpu.yml`이 있습니다. `docs/verification/current_info_files/`는 구현 전 설계 기준선도 포함하므로 기능 구현 여부는 현재 소스와 함께 확인해야 합니다.
 
-## 7. Metrics, Logs, Alerts 수집 및 처리 흐름
+## 설치 및 실행 방법
 
-- **Metrics**: Prometheus가 5초 주기로 node-exporter(`9100`), cadvisor(`8080`), nginx-exporter(`9113`), postgres-exporter(`9187`), 자신, `pipeline:8000/metrics`, `backend:9090/actuator/prometheus`를 수집한다. Pipeline은 Docker 소켓에서 이름 매핑과 감시 대상 서비스의 재시작/기동 시각/OOM 상태를 읽어 `container_name_info`, `aiops_docker_*` 메트릭을 노출한다. Prometheus 보존 기간은 Compose에서 30일로 설정된다.
-- **Logs**: 위 5·6절 경로로 Loki에 적재된다.
-- **Alerts**:
-  - Prometheus 룰 6종: `HighCpuUsage`, `HighMemoryUsage`, `ContainerRestarted`(leafy-backend 한정), `HighNetworkReceive`, `HighNginxRequestRate`, `HighPostgresConnections`.
-  - Loki 룰러 룰 9종(보안 로그 패턴): `UnauthorizedDBAccess`, `SecretDumpAttempt`, `SQLInjectionAttempt`, `HighNginxErrorRate`, `SuspiciousProcessExecution` 등.
-  - Prometheus와 Loki 룰러가 각각 Alertmanager로 Alert를 보내고, Alertmanager는 **모든 Alert를 단일 webhook `http://pipeline:8000/webhook/alert`로 라우팅**한다(group_wait/interval 10s, repeat 240s).
+### 준비 및 환경 변수
 
-규칙은 [Prometheus rules](monitoring/prometheus/rules/alert.rules.yml)와 [Loki security rules](monitoring/loki/rules/fake/security-rules.yml)에 정의된다. Alertmanager는 resolved 알림도 전송하지만 Pipeline이 이를 건너뛴다. 설정된 scrape target이나 규칙의 존재가 실제 수집 성공을 보장하지는 않는다.
+Docker와 Compose v2를 준비합니다. Windows에서는 Linux 컨테이너를 실행할 수 있는 Docker Desktop 환경을 사용합니다. Python 서비스만 로컬 실행하려면 Python과 가상환경이 필요합니다. 아래 셸 예시는 **저장소 루트에서 PowerShell 기준**입니다.
 
----
-
-## 8. AIOps Pipeline → LLM RCA → Remediation 구조
-
-Alert가 Pipeline의 `/webhook/alert`로 들어오면 다음 순서로 처리된다.
-
-1. **필터·중복 제거**: resolved 상태 Alert는 건너뛰고, `alertname:container` 키로 300초 윈도 내 중복을 제거한다. 컨테이너가 없거나 `unknown`이면 `alertname`만 키로 사용한다.
-2. **대상 컨테이너 결정**: annotation/label에서 컨테이너를 얻고, `HighCpuUsage`에 컨테이너가 없으면 CPU topk 질의로 보완한다. 대상이 없거나 `unknown`이면 LLM 호출 없이 fallback 결과만 Loki에 기록한다.
-3. **컨텍스트 수집(±5분)**: `startsAt` 전후 5분을 조회 범위로 메트릭(cAdvisor/호스트), 로그(`{service="..."}`, 최대 200건), 네트워크(출발/도착 각각 최대 500건)를 수집·상관한다. 미래 구간이 끝날 때까지 기다리지 않으므로 실행 시점에 존재하는 데이터만 얻는다. 서비스 해석 실패 시 앱 로그·네트워크 조회를 생략하며, 네트워크 조회 실패는 보조 컨텍스트 오류로 남겨 RCA를 계속한다.
-4. **프롬프트 구성**: JSON 스키마와 few-shot 예시를 system 프롬프트로 사용한다. ALERT/METRICS/LOGS는 6000자에서 자르고 절단 표시를 붙이며, 이후 최대 1200자의 NETWORK CONTEXT를 삽입한다. 로그는 에러·경고 우선으로 최대 50줄을 선택한다.
-5. **LLM 호출**: 로컬 Ollama(`POST {OLLAMA_URL}/api/chat`, `format: json`, 모델 `llama3.2:3b`, 요청별 타임아웃 180s)를 세마포어(동시 1)로 호출한다. 타임아웃·HTTP 오류 응답·JSON/스키마 오류는 최대 2회 시도 후 fallback을 반환한다. 그 밖의 예외는 상위 분석 오류 처리로 넘어갈 수 있다.
-6. **결과 적재**: 분석 결과를 `job="aiops-llm"`(라벨 `target_container`/`alert`/`threat_level`/`action_risk`)과 `job="aiops-timeline"`으로 Loki에 기록한다.
-7. **Remediation 연계**: fallback이 아니면 `{alert, analysis}`를 `REMEDIATION_URL/action`으로 POST한다. 현재처럼 Remediation이 중지되어 있으면 앞 단계의 Loki 분석 기록은 남지만 전달·조치는 완료되지 않는다.
-
-Remediation은 위험도(`action_risk`)·신뢰도(`confidence`)·조치 유형에 따라 분기한다.
-
-```mermaid
-graph TD
-    A["Prometheus / Loki 룰"] --> AM["alertmanager"]
-    AM -->|webhook| P["pipeline /webhook/alert"]
-    P --> F{"대상 컨테이너<br/>유효?"}
-    F -->|no| FB["fallback 기록<br/>(LLM 미호출)"]
-    F -->|yes| CTX["메트릭·로그·네트워크<br/>±5분 수집"]
-    CTX --> LLM["Ollama LLM<br/>llama3.2:3b"]
-    LLM --> R{"fallback?"}
-    R -->|yes| STOP["Remediation 생략"]
-    R -->|no| RUN{"Remediation 기동 여부"}
-    RUN -->|중지| OFF["분석 기록 유지<br/>전달 실패 / 조치 없음"]
-    RUN -->|기동| REM["remediation /action"]
-    REM --> D{"risk=low &<br/>confidence>=0.7 &<br/>조치 가능?"}
-    D -->|yes| AUTO["컨테이너 자동 조치<br/>RESTART / ISOLATE /<br/>PAUSE / THROTTLE"]
-    D -->|no| SLACK["Slack 승인 요청<br/>또는 알림만"]
+```powershell
+git clone https://github.com/KU-GraduationProject/graduation-project.git
+cd graduation-project
+Copy-Item .env.example .env  # 최초 설정 때만 실행
 ```
 
-**조치 동작**(`actions/container.py`): RESTART는 `container.restart()`, ISOLATE는 `leafy-net`에서 분리, PAUSE는 `container.pause()`, THROTTLE는 `cpu_quota=50000` 적용이다. Slack 승인 콜백(`/slack/action`)은 **RESTART와 ISOLATE만 실제 실행**하며, PAUSE/THROTTLE는 로그만 남기고 SCALE에는 핸들러가 없다.
+`.env`의 빈 값을 채우고 커밋하지 않습니다. 기존 `.env`가 있으면 복사로 덮어쓰지 말고 필요한 항목을 추가합니다.
 
-LLM 출력 스키마(`schemas/llm_output.py`)의 `action_type`은 `RESTART / ISOLATE / SCALE / PAUSE / THROTTLE / NOTIFY / NONE` 중 하나이다.
-
-자동 조치는 대상 목록이 있어야 수행된다. 저위험·저신뢰 분석이나 중·고위험 조치는 승인 요청으로 분기하며, 중위험이면서 위협 수준이 낮으면 알림만 전송한다. Slack 전송에는 `SLACK_WEBHOOK_URL`이 필요하고 버튼 승인은 별도의 interactivity 연결이 필요하다. 위 다이어그램의 기동 여부 분기는 운영 상태를 설명하며 코드에 기동 상태 확인 분기가 구현되어 있다는 뜻은 아니다.
-
-모델 `llama3.2:3b`는 Compose가 지정하는 값이다. [config.py](aiops/pipeline/config.py)의 단독 실행 기본값은 `llama3.1:8b`이므로 Compose 밖에서 Pipeline을 실행한다면 `LLM_MODEL`과 실제 준비한 모델을 일치시킨다.
-
----
-
-## 9. 실행 방법 및 검증 방법
-
-### 사전 요구와 환경 변수
-
-Docker와 Docker Compose가 필요하다. GPU 오버라이드는 GPU를 사용할 수 있는 Windows/RTX 환경에서 Ollama에 `gpus: all`을 추가하는 설정이다. Mac 구성은 오버라이드 없이 사용하며, 네트워크 관측 등 환경별 제약은 [PoC 문서](docs/network-observability/poc/WINDOWS_TRAFFIC_CAPTURE_POC.md)와 함께 확인한다.
-
-명령은 `docker-compose.yml`이 있는 저장소 루트에서 실행하는 사용 예시이다. 이 문서 정리 작업에서는 실행하지 않는다. 새 환경에서는 `.env.example`을 `.env`로 복사하고 값을 채운다. 기존 환경에서는 `.env`를 덮어쓰거나 Secret을 교체하지 않는다.
-
-| 변수 | 역할 |
+| 변수 | 용도 및 적용 구성 |
 |---|---|
-| `JWT_SECRET_KEY_DEV` | backend의 dev 인증 설정이다. Compose 주석과 예제는 Base64로 인코딩한 256bit 이상 키를 요구한다. 검증 구현은 외부 backend 이미지에 있다. |
-| `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY` | backend와 MinIO가 공유하는 자격 증명이다. Secret은 8자 이상을 사용하도록 예제에 안내되어 있다. |
-| `DB_PASSWORD` | DB·backend·postgres-exporter에 공통으로 전달되는 비밀번호이다. |
-| `FRONTEND_TAG`, `BACKEND_TAG`, `LEAFY_BIND_IP` | 이미지 태그와 웹 바인딩 주소를 선택한다. 미설정 시 Compose 기본값이 적용된다. |
-| `GRAFANA_PASSWORD`, `SLACK_WEBHOOK_URL` | Grafana 관리자 비밀번호와 선택적인 Slack 전송 설정이다. |
-| `PLANT_ID_API_KEY`, `OPENAI_API_KEY`, `NONGSARO_API_KEY`, `AIR_PURIFIY_KEY`, `OPEN_WEATHER_API_KEY` | Leafy 앱의 외부 API 설정이다. AIOps RCA는 `OPENAI_API_KEY` 대신 로컬 Ollama를 사용한다. |
+| `JWT_SECRET_KEY_DEV` | 통합 필수. backend dev 인증용 Base64 인코딩 256bit 이상 키 |
+| `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY` | 통합 필수. backend/MinIO 공통 자격 증명, secret 8자 이상 |
+| `DB_PASSWORD` | 통합 DB·backend·exporter 공통 비밀번호 |
+| `FRONTEND_TAG`, `BACKEND_TAG`, `LEAFY_BIND_IP` | 통합 이미지 태그(기본 `latest`), frontend 바인딩 IP(기본 `127.0.0.1`) |
+| `GRAFANA_PASSWORD`, `SLACK_WEBHOOK_URL` | Grafana 관리자 비밀번호(기본 `admin`), 선택적 Slack 알림 |
+| `PLANT_ID_API_KEY`, `OPENAI_API_KEY`, `NONGSARO_API_KEY`, `AIR_PURIFIY_KEY`, `OPEN_WEATHER_API_KEY` | 외부 Leafy 앱 API 설정. AIOps RCA는 Ollama 사용 |
+| `AIOPS_TAILSCALE_IP`, `FLUENTD_PG_SHARED_KEY` | 원격 필수. 수집기 바인딩 IP와 대상 PC Fluent Bit의 공유 키 |
+| `GRAFANA_BIND_IP` | 원격 Grafana 바인딩 IP(기본 `127.0.0.1`) |
 
-`LLM_MODEL`, `LLM_TIMEOUT`, `PROMETHEUS_URL`, `LOKI_URL`, `OLLAMA_URL`, `REMEDIATION_URL`은 현재 Compose의 Pipeline `environment`에 직접 지정된다. `.env`에 같은 이름을 추가하는 것만으로 이 값들이 바뀌지는 않는다.
+Pipeline의 `LLM_MODEL`, `LLM_TIMEOUT`, `PROMETHEUS_URL`, `LOKI_URL`, `OLLAMA_URL`, `REMEDIATION_URL`은 Compose의 `environment`에 직접 지정되어 있습니다. `.env`에 같은 이름만 추가해도 덮어써지지 않습니다. 변경하려면 Compose 환경 설정이나 오버레이를 수정합니다. 로컬 Python에서는 프로세스 환경 변수로 지정합니다. `config.py`의 모델 기본값은 `llama3.1:8b`이므로 아래에서는 Compose와 같은 모델을 명시합니다.
 
-### Remediation을 제외한 기동 예시
+### Docker: 단일 PC 통합 구성
 
-현재 Remediation 중지 상태를 유지하기 위해 서비스 이름을 명시한다. 전체 서비스에 대한 `docker compose up -d`는 Remediation도 기동하므로 이 구성에서는 사용하지 않는다. 다음 명령은 이미 실행 중인 Remediation을 중지하는 명령은 아니다.
+먼저 정적으로 설정을 검사합니다. `config --quiet`는 비밀값을 출력하지 않습니다.
 
-```bash
-# 로그 수신기를 먼저 준비한다.
-docker compose up -d fluentd
-
-# remediation을 제외한 서비스만 지정한다.
-docker compose up -d frontend backend db minio node-exporter cadvisor nginx-exporter postgres-exporter prometheus alertmanager loki grafana ollama pipeline network-observer-zeek network-observer-enricher
-
-# Compose는 모델을 자동으로 내려받지 않는다.
+```powershell
+docker compose -f docker-compose.yml config --quiet
+docker compose -f docker-compose.yml up -d --build fluentd
+docker compose -f docker-compose.yml up -d --build frontend backend db minio node-exporter cadvisor nginx-exporter postgres-exporter prometheus alertmanager loki grafana ollama pipeline network-observer-zeek network-observer-enricher
 docker exec ollama ollama pull llama3.2:3b
+docker compose -f docker-compose.yml ps
 ```
 
-GPU 구성을 사용하는 경우에는 위 두 `docker compose` 명령의 `up` 앞에 `-f docker-compose.yml -f docker-compose.gpu.yml`을 추가한다. 명시한 서비스 목록은 그대로 유지한다.
+로그 드라이버가 연결할 Fluentd를 먼저 시작합니다. 위 목록은 **Remediation을 새로 기동하지 않는 관측·분석 구성**이며, 이미 실행 중인 Remediation을 중지하지는 않습니다. Pipeline은 대응 서비스가 없으면 전달 실패를 기록할 수 있습니다. 대응까지 실험하려는 경우에만 다음을 별도로 실행합니다. 통합 구성의 기본 모드는 `docker`이므로 조건에 따라 실제 컨테이너 조치를 수행합니다.
 
-### 실행 중인 환경의 읽기 전용 검증
-
-아래 항목은 서비스가 이미 기동된 환경에서 확인하는 절차이다. `/health`는 프로세스 응답 확인이며 전체 수집·분석 경로의 정상 동작을 증명하지 않는다.
-
-| 확인 대상 | 경로와 확인 내용 |
-|---|---|
-| Pipeline | `http://127.0.0.1:8000/health`, `/metrics`에서 응답과 메트릭을 확인한다. |
-| Prometheus | `http://127.0.0.1:9090/targets`에서 exporter·backend·Pipeline의 수집 상태를 확인한다. |
-| Alertmanager | `http://127.0.0.1:9093`에서 수신 Alert를 확인한다. |
-| Grafana | `http://127.0.0.1:3000`에서 provision된 대시보드와 데이터 소스를 확인한다. 관리자 비밀번호는 `GRAFANA_PASSWORD` 설정을 따른다. |
-| Loki 데이터 | Grafana Explore에서 `{service="backend"}`, `{log_type="network"}`, `{job="aiops-llm"}`, `{job="aiops-timeline"}`을 조회한다. 데이터가 발생한 시간 범위를 선택한다. |
-| Leafy | 기본 주소 `http://127.0.0.1:80` 또는 `LEAFY_BIND_IP`의 웹 포트로 접근한다. |
-| Remediation | 현재 중지 유지 대상이므로 `:8001/health` 성공을 검증 조건으로 삼지 않는다. |
-
-### 오프라인 단위 테스트와 시나리오 도구
-
-Python 환경에 [Pipeline 의존성](aiops/pipeline/requirements.txt)을 준비한 뒤 다음 테스트를 실행한다. 기존 52개 테스트는 `httpx.MockTransport` 등을 사용해 identity·시간 구간·네트워크 조회·프롬프트 조립을 검증하며 실제 Docker나 LLM을 호출하지 않는다.
-
-```bash
-cd aiops/pipeline
-python -B -m unittest discover -s tests -v
+```powershell
+docker compose -f docker-compose.yml up -d --build remediation
 ```
 
-`python scenarios/run.py`는 `rich`와 Docker SDK를 사용하는 시나리오 TUI이다. CPU/메모리 부하·공격 재현은 실행 상태를 바꾸고 `scenarios/logs/`에 기록하므로 읽기 전용 검증 절차와 분리한다. TUI의 결과 개수 확인·LLM 대기는 미구현 `/results` API에 의존하며, 일부 다른 도구는 `/results/latest`와 `/debug/*`도 호출한다. 현재 코드 기준으로 이 도구들의 전체 성공 판정을 보장할 수 없으며, 분석 결과는 Loki/Grafana에서 확인한다.
+GPU 사용 시 위 명령의 `-f docker-compose.yml` 대신 `-f docker-compose.yml -f docker-compose.gpu.yml`을 사용합니다. 이 오버레이는 Ollama에 NVIDIA GPU를 요청하며 드라이버와 Docker GPU 지원이 필요합니다.
 
-### Token 스크립트 검토 결과
+통합 구성은 Fluentd 컨테이너에 PostgreSQL 공유 키 변수를 전달하지 않으며 24225도 publish하지 않습니다. 호스트 PostgreSQL 로그 수신은 아래 원격 구성을 기준으로 설정합니다.
 
-두 파일은 통합하지 않고 그대로 유지한다. 둘 다 CLI 인자 처리와 환경변수 읽기가 없으며 `jwt.encode`로 HS256을 사용한다. 공통 payload는 `sub`, `role`, 현재 시각 `iat`, 24시간 뒤 `exp`이며 issuer/audience는 지정하지 않는다.
+<!-- TODO: 최신 Fluentd 설정의 통합 구성 기동(24225 shared_key 미전달 포함)을 Docker 엔진이 있는 환경에서 검증한다. -->
 
-| 파일 | 키 처리와 출력 계약 |
+### Docker: 2대 PC 원격 수집 구성
+
+두 구성은 `container_name`이 겹치므로 같은 PC에서 동시에 실행하지 않습니다. 전환이 필요하면 사용 중인 구성의 `down`으로 컨테이너를 정리하고 볼륨은 보존합니다(`-v` 제외). Tailscale 연결·공유·ACL을 먼저 설정하고 `.env`의 원격 필수값을 채웁니다.
+
+```powershell
+docker compose -f docker-compose.aiops.yml config --quiet
+docker compose -f docker-compose.aiops.yml up -d --build
+docker exec ollama ollama pull llama3.2:3b
+docker compose -f docker-compose.aiops.yml ps
+```
+
+GPU 실행은 `docker compose -f docker-compose.aiops.yml -f docker-compose.gpu.yml up -d --build`입니다. Leafy 앱·DB·exporter·Zeek는 AIOps PC에 실행하지 않습니다. 대상 PC는 [배포 안내](deploy/leafy-pc/README.md)에 따라 Docker 로그, PostgreSQL Fluent Bit, [Network Observer](deploy/leafy-pc/network-observer/docker-compose.yml)를 설정합니다.
+
+Prometheus 원격 대상은 [targets 안내](monitoring/prometheus/targets/README.md)에 따라 `.yml.example`을 복사하고 실제 주소로 변경합니다. 대상 PC의 메트릭 포트와 exporter가 준비되기 전에는 해당 지표를 수집할 수 없습니다. 원격 구성에는 cAdvisor/node-exporter도 없어 CPU·메모리·재시작 탐지를 통합 구성과 동일하게 사용할 수 없습니다. 세부 상태는 [원격 배포 문서](docs/remote/REMOTE_DEPLOYMENT.md)에 있습니다.
+
+<!-- TODO: 원격 메트릭 포트·exporter 배치 합의 및 CPU·메모리·재시작 탐지 경로 검증을 완료한다. -->
+
+### Python 의존성 설치 및 로컬 실행
+
+Pipeline과 Remediation은 각각 자신의 디렉터리를 기준으로 import합니다. 개발용 공통 가상환경 설치 예시입니다.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r aiops/pipeline/requirements.txt -r aiops/remediation/requirements.txt
+```
+
+Docker로 Prometheus·Loki·Ollama를 준비하고 모델을 내려받은 뒤, Pipeline을 별도 터미널에서 실행합니다. Python 코드는 `.env`를 자동으로 읽지 않습니다.
+
+```powershell
+$env:PROMETHEUS_URL = 'http://127.0.0.1:9090'
+$env:LOKI_URL = 'http://127.0.0.1:3100'
+$env:OLLAMA_URL = 'http://127.0.0.1:11434'
+$env:REMEDIATION_URL = 'http://127.0.0.1:8001'
+$env:LLM_MODEL = 'llama3.2:3b'
+Set-Location aiops/pipeline
+..\..\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+Remediation은 다른 터미널에서 저장소 루트부터 실행합니다. 이 예시는 조치를 비활성화합니다.
+
+```powershell
+$env:REMEDIATION_MODE = 'disabled'
+$env:LOKI_URL = 'http://127.0.0.1:3100'
+Set-Location aiops/remediation
+..\..\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8001
+```
+
+Compose의 Pipeline/Remediation을 실행 중이면 해당 서비스를 중지하거나 로컬 포트를 변경해야 합니다. 호스트 서비스는 Compose 내부의 `pipeline`/`remediation` DNS 경로를 자동으로 대체하지 않습니다. Windows 직접 Python 실행에서는 코드가 사용하는 Unix Docker 소켓(`/var/run/docker.sock`)으로 메타데이터를 읽을 수 없어, 컨테이너 메트릭·서비스 자동 식별 검증에는 Docker 구성을 사용합니다. 원격 대상에는 `TARGET_SERVICE_MAP`을 지정할 수 있습니다([correlation.py](aiops/pipeline/correlation.py)).
+
+### 테스트 및 검증 범위
+
+저장소 루트에서 실행합니다.
+
+```powershell
+Push-Location aiops/pipeline
+..\..\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
+Pop-Location
+
+Push-Location aiops/remediation
+..\..\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
+Pop-Location
+```
+
+Fluentd Ruby 필터 테스트는 [원격 문서의 테스트 절차](docs/remote/REMOTE_DEPLOYMENT.md#5-테스트)를 참고합니다. 시나리오 도구는 컨테이너 상태를 변경하며 일부는 현재 없는 결과 조회 API를 전제로 합니다. 단위 테스트와 시나리오 전체 성공은 구분합니다.
+
+README 갱신 시 확인한 범위(2026-10-24): Windows / Python 3.13.5 가상환경에서 위 두 서비스의 의존성을 설치하고 Pipeline 70개·Remediation 6개 테스트가 통과했습니다. Uvicorn으로 두 API를 임시 포트에 기동해 `/health`, `/docs`, OpenAPI 경로를 확인했고, Pipeline의 resolved webhook 건너뛰기 응답을 확인했습니다. 통합·원격 Compose와 각각의 GPU 조합은 `config --quiet`가 통과했습니다. Docker 엔진에 연결할 수 없어 이미지 빌드·컨테이너 기동과 실제 외부 서비스 연동은 이번 검증에 포함되지 않았습니다.
+
+<!-- TODO: Docker 이미지 빌드·컨테이너 기동·실제 LLM 분석·Slack 왕복·원격 PC 수집을 실행 환경에서 검증한다. -->
+
+## 사용 예시 및 API 개요
+
+### 접속 및 데이터 확인
+
+| 서비스 | 기본 로컬 주소 | 확인 내용 |
+|---|---|---|
+| Leafy | `http://127.0.0.1:80` | 통합 앱 화면 (`LEAFY_BIND_IP`에 따라 변경) |
+| Grafana | `http://127.0.0.1:3000` | 대시보드와 Explore, 초기 사용자 `admin` |
+| Prometheus | `http://127.0.0.1:9090/targets` | 실제 scrape 상태 |
+| Alertmanager | `http://127.0.0.1:9093` | 경보 수신·라우팅 |
+| Loki | `http://127.0.0.1:3100/ready` | 저장소 준비 상태 |
+| Pipeline | `http://127.0.0.1:8000/docs` | FastAPI 대화형 API 문서 |
+| Remediation | `http://127.0.0.1:8001/docs` | 기동한 경우 대응 API 문서 |
+
+통합 구성은 frontend 외 공개 포트가 호스트 IP로 제한되지 않습니다. 원격 구성은 Fluentd를 Tailscale IP에, 내부 API를 `127.0.0.1`에 바인딩하며 Grafana는 선택적으로 공개합니다. Grafana 공유 시 `GRAFANA_PASSWORD`를 설정합니다.
+
+Grafana Explore에서 Loki 데이터 소스를 선택해 조회합니다. 호스트 DB 선택자는 원격 구성에 해당하며, 실제 데이터 발생 시간으로 조회 범위를 맞춥니다.
+
+```logql
+{service="backend"}
+{service="db", runtime="host"}
+{log_type="network"}
+{job="aiops-llm"}
+{job="aiops-timeline"}
+```
+
+### 구현된 API
+
+| 서비스 | 메서드·경로 | 동작 |
+|---|---|---|
+| Pipeline | `GET /health` | 프로세스 상태 응답 |
+| Pipeline | `GET /metrics` | Prometheus 형식의 컨테이너 식별·Docker 상태 메트릭 |
+| Pipeline | `POST /webhook/alert` | Alertmanager payload에서 firing 경보를 백그라운드 분석에 등록 |
+| Remediation | `GET /health` | 프로세스 상태 응답 |
+| Remediation | `POST /action` | `alert`, `analysis` 객체로 판단·알림·조치 처리 |
+| Remediation | `POST /slack/action` | Slack 상호작용 payload로 승인·거부 처리 |
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+Invoke-RestMethod http://127.0.0.1:8001/health
+```
+
+분석은 Alertmanager → `POST /webhook/alert`로 시작합니다. Payload에는 `version`, `groupKey`, `status`, `alerts`가, 각 경보에는 `status`, `labels.alertname`, `startsAt`이 필요합니다. 대상은 `annotations.container` 또는 `labels.container`로 전달합니다. `queued for analysis` 응답은 등록을 뜻하며 추론·알림·조치 완료를 보장하지 않습니다.
+
+[분석 결과 스키마](aiops/pipeline/schemas/llm_output.py) 예시이며 실제 측정 결과는 아닙니다.
+
+```json
+{
+  "root_cause": "수집된 근거에 대한 원인 추정",
+  "action_type": "NOTIFY",
+  "action_targets": ["leafy-backend"],
+  "action_description": "운영자 확인 요청",
+  "threat_level": "medium",
+  "action_risk": "low",
+  "evidence": ["수집된 로그 또는 메트릭 근거"],
+  "confidence": 0.8
+}
+```
+
+현재 구현 범위와 제한:
+
+- Pipeline에는 `/results`, `/results/latest`, `/debug/*`가 없습니다. 일부 실험 도구의 호출은 동작하지 않습니다. 분석 결과는 Loki에서 조회하며 메모리에는 최근 20건을 보관합니다. `results/` 마운트가 있어도 현재 경보 처리 경로는 JSONL을 자동 갱신하지 않습니다.
+- 주기적 로그 스캔·LLM 상태 검사 함수는 있으나 시작 태스크가 주석 처리되어 있습니다. 현재 분석 시작점은 webhook입니다.
+- `RESTART`, `ISOLATE`, `PAUSE`, `THROTTLE` 실행 코드가 있습니다. `SCALE`은 스키마에서 허용하지만 실행 핸들러는 없습니다. `ISOLATE`는 `leafy-net`만 분리합니다.
+- 원격 조치가 비활성화되어도 판단·알림·승인 기록은 남길 수 있습니다. Slack webhook은 선택 설정이며 상호작용 URL 배포와 서명 검증은 별도 보완이 필요합니다.
+- 루트 `api-docs.json`은 HTML 내용으로 현재 API 명세가 아닙니다. 서비스 코드와 `/docs`, `/openapi.json`을 기준으로 확인합니다.
+
+<!-- TODO: 결과 조회 API와 실험 도구를 일치시키고, Slack 콜백 서명 검증 및 배포 설정을 보완한다. -->
+
+## 팀원 및 역할
+
+레포지토리 [원격 배포 문서](docs/remote/REMOTE_DEPLOYMENT.md)에 기재된 식별자와 배포 담당 범위입니다. 전체 개발 기여 분담을 뜻하지 않습니다.
+
+| 문서 내 식별자 | 확인 가능한 담당 범위 |
 |---|---|
-| [gen_token.py](gen_token.py) | 하드코딩된 키 문자열 하나를 그대로 사용하고 토큰 한 개를 stdout에 출력한다. |
-| [gen_token2.py](gen_token2.py) | 원문 문자열·Base64 디코딩 문자열·hex 문자열·hex bytes의 네 후보를 시도하고 번호가 붙은 결과 또는 오류를 출력한다. 첫 후보는 `gen_token.py`의 키와 같다. |
+| GC | Leafy 대상 PC: frontend/backend/MinIO, 호스트 PostgreSQL 17, Zeek/Enricher, Fluent Bit |
+| JH | AIOps PC: `docker-compose.aiops.yml` 기반 독립 관측·분석 스택 |
 
-검색 시점의 저장소에서는 두 파일의 호출 참조가 발견되지 않았다. 그러나 외부 호출과 stdout 의존성은 확인할 수 없으며, backend JWT 검증 구현도 외부 이미지에 있어 키 해석·인증 호환성을 입증할 수 없다. Mock으로 호출 인자와 출력 계약을 비교해도 실제 backend의 수락 여부까지 검증하지는 못한다. 따라서 단순 중복으로 간주해 통합하지 않는다. 서비스별 requirements에는 이 스크립트의 JWT 의존성도 선언되어 있지 않다. 이번 정리에서는 Token 스크립트 실행·실제 토큰 발급·Secret 출력·인증 설정 변경을 하지 않는다.
-
----
-
-## 10. 알려진 제약사항 및 주의사항
-
-- **Leafy 앱 소스 비포함**: frontend/backend는 외부 이미지로 실행된다. nginx `stub_status`(8081), backend Actuator(9090) 등은 이미지 내부 구성에 의존하며 이 저장소에서 검증되지 않는다.
-- **Remediation 선언과 실행 상태 구분**: Compose에는 일반 서비스로 선언되며 별도의 dry-run/비활성 플래그는 없다. 기동하면 조건에 따라 실제 조치를 수행한다. 현재 환경의 중지 상태를 유지하며, 이 문서의 다이어그램을 현재 가동 상태로 해석하지 않는다.
-- **조치의 한계**: ISOLATE는 `leafy-net`만 분리하므로 backend의 `mgmt-net` 연결까지 끊는 완전 격리는 아니다. 대상 네트워크가 없으면 경고 후 반환해 상위 계층이 성공으로 기록할 수 있다. SCALE은 실행 핸들러가 없으며 Slack 승인 경로에서는 PAUSE/THROTTLE도 실행하지 않는다.
-- **Slack 콜백 검증 부재**: Slack 서명 검증·리플레이 방지가 없으며, 공개 interactivity URL 설정도 포함되어 있지 않다.
-- **주기적 LLM 스캔 비활성**: `periodic_log_check`, `periodic_llm_health` 함수는 존재하지만 lifespan의 태스크 시작 코드가 주석 처리되어 비활성 상태이다. 이를 켜는 환경 변수는 없다.
-- **통계·ML 이상탐지 모듈 없음**: 여기서의 "이상 탐지"는 Prometheus/Loki의 임계값·패턴 룰과 LLM 분석을 의미하며, 별도의 통계/ML 기반 모델은 구현되어 있지 않다.
-- **네트워크 관측의 한계**: 이벤트는 LLM 보조 컨텍스트이며 전용 패널/Alert 룰은 없다. `host_endpoints`는 비어 있고 DB는 현재 `postgres:16` 컨테이너이다. 장기 연결은 종료 시 기록될 수 있으므로 빈 조회 결과가 무트래픽·정상을 뜻하지 않는다. backend 재생성 시 observer가 이전 네임스페이스에 남는 문제가 생길 수 있으며 캡처 인터페이스 배치도 환경에서 확인해야 한다.
-- **수집 이력과 저장 공간**: Enricher는 최초 파일 열기에서 기존 `conn.log` 내용을 건너뛴다. Zeek 로그 회전은 비활성이고 `network_events` JSONL의 보존 정책도 별도로 구현되어 있지 않다. Fluentd의 tail 위치 파일은 명명 볼륨이 아니므로 재생성 시 재수집 여부에 주의한다.
-- **결과 API·파일 저장 제한**: Pipeline의 현재 API는 `/health`, `/metrics`, `/webhook/alert`이다. `/results`, `/results/latest`, `/debug/*`와 JSONL 결과 파일 자동 갱신은 구현되어 있지 않다. 메모리 이력은 최근 20건이며 지속적인 결과 조회는 Loki를 기준으로 한다.
-- **포트 노출**: frontend를 제외한 공개 포트는 모든 인터페이스에 바인딩된다. 외부 네트워크에 노출된 호스트에서는 방화벽·바인딩 주소를 조정한다.
-
----
-
-## 문서
-
-- `docs/verification/current_info_files/` — 설계 기준선(ARCHITECTURE/DESIGN/TASKS). 구현 전 베이스라인 문서로, 실제 구현과 차이가 있을 수 있다.
-- `docs/verification/legacy_info_files/` — 과거 개발 문서 보관.
-- `docs/network-observability/` — 네트워크 이벤트 스키마 및 PoC 문서.
-- `docs/remote/` — Leafy(팀원 PC)와 AIOps(`docker-compose.aiops.yml`)를 다른 PC에서 실행하는 원격 수집 구성, JSON 전환에 따른 탐지 규칙 검토. 팀원 PC 작업은 `deploy/leafy-pc/`.
-
-**학교** 건국대학교 컴퓨터공학과 · **주제** LLM 기반 AIOps 보안 플랫폼 · **연도** 2026
+<!-- TODO: 전체 팀원의 실명·GitHub 계정과 개발 역할은 팀 확인 후 기재한다. GC/JH와 커밋 작성자의 대응 관계는 추정하지 않는다. -->
