@@ -1,0 +1,64 @@
+# S2/C-a — 대체 배치: Sink 를 분리된 sink-net 에 두는 구성 (UNVERIFIED)
+#
+# 기본 배치(docker-compose.s2.yml, leafy-net)를 쓰지 않고 Sink를 별도 bridge로
+# 분리하고 싶을 때의 대체안이다. 사용:
+#   docker compose -f docker-compose.yml -f docker-compose.s2.sink-net.yml up -d
+#
+# ⚠ 관측 미보장 (반드시 Step 1 실측으로 확인할 것):
+#   backend 는 sink-net 에 붙으면 새 인터페이스(eth2 등)로 Sink 에 접근한다.
+#   현재 Zeek(network-observer-zeek)는 `-i eth0`(leafy-net) 만 캡처하므로
+#   sink-net 으로 나가는 전송을 놓칠 수 있다. 이 배치를 쓰려면 Zeek 캡처
+#   인터페이스를 sink-net 쪽으로 바꾸거나 추가해야 한다(아래 주석 참고).
+#   검증 전에는 이 배치에서 전송이 탐지된다고 단정하지 않는다.
+#
+# 실측·전환 방법은 scenarios/network/README.md "Sink 배치" 절 참고.
+
+networks:
+  sink-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.211.0.0/24
+
+services:
+  backend:
+    # backend 가 sink-net 으로 나갈 경로를 갖도록 추가 연결만 한다(기존 연결 유지).
+    networks:
+      sink-net:
+        ipv4_address: 10.211.0.10
+
+  sink-a:
+    build: ./scenarios/network/sink
+    image: s2-sink:latest
+    container_name: s2-sink-a
+    environment:
+      SINK_ROLE: "A"
+      SINK_NAME: "sink-a"
+      TZ: Asia/Seoul
+    ports:
+      - "127.0.0.1:8091:8080"
+    networks:
+      sink-net:
+        ipv4_address: 10.211.0.30
+    restart: unless-stopped
+
+  sink-b:
+    build: ./scenarios/network/sink
+    image: s2-sink:latest
+    container_name: s2-sink-b
+    environment:
+      SINK_ROLE: "B"
+      SINK_NAME: "sink-b"
+      TZ: Asia/Seoul
+    ports:
+      - "127.0.0.1:8092:8080"
+    networks:
+      sink-net:
+        ipv4_address: 10.211.0.31
+    restart: unless-stopped
+
+  # 이 배치로 전환하면 Zeek가 sink-net 인터페이스도 보도록 아래처럼 조정해야 한다.
+  # (backend netns 안에서 sink-net 인터페이스 이름을 확인한 뒤 -i 로 지정)
+  # network-observer-zeek:
+  #   command: >
+  #     sh -c "cd /zeek-logs && exec zeek -C -i eth0 -i eth2 /opt/observer/local.zeek"
