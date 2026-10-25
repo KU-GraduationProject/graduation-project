@@ -352,11 +352,15 @@ services:
       ALERTMANAGER_URL: http://alertmanager:9093
       REMEDIATION_URL: http://remediation:8001
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      # P3: Loki 규칙과 같은 Allowlist 정책을 LLM Network Context 가 읽어 일관성 유지
+      ALLOWLIST_PATH: /app/config/allowlist.yml
     ports:
       - "8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./aiops/pipeline/results:/app/results
+      # P3: 단일 정책 소스(읽기 전용). rulegen 이 같은 파일로 Loki 규칙을 만든다.
+      - ./aiops/policy/allowlist.yml:/app/config/allowlist.yml:ro
     networks:
       - mgmt-net
     depends_on:

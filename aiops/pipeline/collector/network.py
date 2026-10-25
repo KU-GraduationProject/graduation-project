@@ -137,9 +137,16 @@ class NetworkCollector:
 
     @staticmethod
     def _dedup_key(event: dict):
-        """connection_id 우선. 없으면 연결 시작 시각 + observed 5-tuple (같은 순간의 같은 연결)."""
+        """
+        같은 이벤트 중복(두 selector 모두에 걸린 src==dst==service 등)만 제거한다.
+
+        event_type 을 키에 포함해, 같은 connection_id 라도 최종(connection)과 조기
+        (connection_threshold) 이벤트는 서로 다른 이벤트로 보존한다. (P6: 둘은 의미가
+        다르므로 dedup 으로 지우면 안 된다. 바이트 중복 집계 방지는 소비자 쪽에서 한다.)
+        """
+        event_type = event.get("event_type") or "connection"
         if event.get("connection_id"):
-            return ("id", event["connection_id"])
-        return ("tuple", event.get("timestamp"), event.get("protocol"),
+            return ("id", event_type, event["connection_id"])
+        return ("tuple", event_type, event.get("timestamp"), event.get("protocol"),
                 event.get("src_ip"), event.get("src_port"),
                 event.get("dst_ip"), event.get("dst_port"))

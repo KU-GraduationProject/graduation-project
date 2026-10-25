@@ -37,7 +37,10 @@
 |------|------|
 | `scenarios/network/sink/sink_server.py` | 수신 Sink (바이트·SHA-256 기록, `/stats` 조회) |
 | `scenarios/network/payload.py` | 전송 파일 생성(원본+합성, 결정적, 해시) — P1 순수 로직 |
-| `scenarios/network/policy/allowlist.yml` | 목적지 Allowlist(사람 작성) — P3 단일 정책 소스 |
+| `aiops/policy/allowlist.yml` | 목적지 Allowlist(사람 작성) — P3 단일 정책 소스 |
+| `aiops/pipeline/policy/` | Allowlist 평가기 + LogQL 규칙 생성기 (P3) |
+| `aiops/network-observer/zeek/local.zeek` | Zeek conn.log + ConnThreshold 조기 이벤트 (P6) |
+| `monitoring/loki/rules/fake/network-allowlist.yml` | 생성된 Loki Ruler 규칙 (누적+조기) |
 | `docker-compose.s2.yml` | 기본 Sink 배치(leafy-net) 오버레이 |
 | `docker-compose.s2.sink-net.yml` | 대체 Sink 배치(sink-net, UNVERIFIED) |
 
@@ -87,7 +90,43 @@ docker exec network-observer-zeek sh -c "tail -n 50 /zeek-logs/conn.log" \
 
 ### 배치 전환
 기본(leafy-net) ↔ 대체(sink-net)는 `up` 시 오버레이 파일만 바꾼다. Allowlist의
-IP(`policy/allowlist.yml`)도 선택한 배치의 실측 IP로 맞춘다.
+IP(`aiops/policy/allowlist.yml`)도 선택한 배치의 실측 IP로 맞춘 뒤 규칙을 재생성한다.
+
+## 탐지 (Step 3 / P3 · P6)
+
+### P3 — Allowlist 기반 탐지
+`aiops/policy/allowlist.yml` 하나가 단일 정책 소스다. Loki Ruler 규칙과 LLM Network
+Context 가 모두 이 파일을 읽어 일관성을 유지한다.
+
+- **허용 방식**: `endpoint`(ip:port 정확 비교, 인가 Sink) / `service`(dst_service 라벨,
+  정상 내부 peer db·minio·frontend — 오탐 방지).
+- **경보 조건**: 비인가 목적지 + 전송 바이트 누적 임계 초과. `dst_service=unknown`
+  단독으로는 공격이 아니다 (목적지 정책 + 전송량으로 판단).
+- Loki Ruler 는 YAML 을 직접 읽지 않는다. 정책을 바꾸면 규칙을 재생성·검증·커밋한다:
+  ```bash
+  cd aiops/pipeline && python -m policy.rulegen ../policy/allowlist.yml \
+    ../../monitoring/loki/rules/fake/network-allowlist.yml
+  ```
+  (`test_policy.py` 가 커밋된 규칙과 정책의 일치를 검사한다 — 드리프트 방지.)
+
+생성되는 규칙 2개:
+- `UnauthorizedDataTransfer` (누적, `event_type=connection`): 분할된 여러 연결의
+  전송 바이트를 window 안에서 합산 → V1 분할 전송 탐지.
+- `UnauthorizedTransferEarly` (조기, `event_type=connection_threshold`): 아래 P6.
+
+### P6 — 전송 중(연결 종료 전) 조기 탐지
+`local.zeek` 가 ConnThreshold 로 originator 전송 바이트가 임계값 N(`byte_threshold`,
+기본 1MB, redef 가능)을 넘는 순간 `conn_threshold.log` 에 중간 이벤트를 1회(single-shot)
+남긴다. enricher 가 이를 `event_type=connection_threshold` canonical event 로 바꾸고,
+조기 규칙이 비인가 목적지의 이런 이벤트가 나타나면 즉시 경보한다. 저속 전송(V2)이
+연결 종료 전에 탐지되도록 한다.
+
+**중복 집계 방지**: 조기·최종 이벤트는 같은 `connection_id` 를 갖지만 `event_type` 이
+다르다. NetworkCollector dedup 은 둘을 보존하고, 규칙은 event_type 으로 분리해(누적은
+connection, 조기는 threshold) 바이트를 이중 계산하지 않는다.
+
+**동결 대상(Step 5/6)**: 임계값 N, 전송률 R, 탐지 제한시간 T, min_transfer_bytes 는
+아직 FROZEN 이 아니다. 개발용 저속 케이스로 튜닝 후 V2 전에 동결한다 (E4).
 
 ## 송신 (Step 2 / P1 · E1)
 

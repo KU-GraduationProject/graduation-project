@@ -10,6 +10,12 @@ from datetime import datetime, timezone
 
 SCHEMA_VERSION = "1.0"
 EVENT_TYPE_CONNECTION = "connection"
+# P6: 연결이 종료되기 전, orig 바이트가 임계값을 넘은 순간 발생하는 중간(조기) 이벤트.
+# 최종 conn.log(EVENT_TYPE_CONNECTION)와 같은 connection_id 를 갖지만 의미가 다르다:
+#   connection           = 연결 종료 시점의 최종 집계 (권위 있는 바이트)
+#   connection_threshold = 전송 중 임계 도달 신호 (조기 탐지용, 바이트는 진행 상황)
+# 둘을 단순 합산하면 중복 집계가 되므로 소비자(collector/network_section)가 구분해야 한다.
+EVENT_TYPE_THRESHOLD = "connection_threshold"
 
 # Zeek conn_state -> canonical connection_state enum (NETWORK_EVENT_SCHEMA.md §6.3)
 #
