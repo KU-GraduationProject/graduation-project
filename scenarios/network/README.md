@@ -89,6 +89,35 @@ docker exec network-observer-zeek sh -c "tail -n 50 /zeek-logs/conn.log" \
 기본(leafy-net) ↔ 대체(sink-net)는 `up` 시 오버레이 파일만 바꾼다. Allowlist의
 IP(`policy/allowlist.yml`)도 선택한 배치의 실측 IP로 맞춘다.
 
+## 송신 (Step 2 / P1 · E1)
+
+실제 DB 조회와 HTTP 전송은 **backend 의 netns 를 공유하는 사이드카**(`s2-sender`)가
+수행한다(Zeek 와 같은 `network_mode: container:leafy-backend` 패턴). 이렇게 하면
+전송이 backend 의 eth0 로 나가 Zeek 가 `src=backend` 로 관측하고, Spring 앱 이미지는
+건드리지 않는다.
+
+> E1 설계 결정: 사용자 계획은 "backend 내부에서 직접 실행"을 요구한다. backend 이미지에
+> `psql`/`curl` 이 있는지 이 환경에서는 확인할 수 없어(그리고 Spring 앱 비침습 우선),
+> 이미지 내용에 의존하지 않고 E1(전송이 backend 네트워크 공간에서 발생)을 보장하는
+> netns 사이드카를 1순위로 구현했다. backend 이미지에 도구가 있어 `docker exec` 방식을
+> 선호한다면 아래 실측 명령으로 확인 후 전환할 수 있다.
+> ```bash
+> docker exec leafy-backend sh -lc 'command -v psql curl python3 || true'
+> ```
+
+구성 요소:
+- `sender/send.py` — 사이드카 안에서 실행: psql CSV 조회(자격증명은 `PGPASSWORD`
+  env 로만) → `payload.py` 확장 → 모드별 HTTP 전송 → 송신 메타데이터 독립 기록.
+- `sender/Dockerfile` — `python:3.12-slim + postgresql-client`. 빌드 컨텍스트는
+  `scenarios/network` (`docker build -t s2-sender:latest -f sender/Dockerfile .`).
+- `orchestrator.py` — 호스트에서 지휘: 이미지 빌드 → 사이드카 1회 실행 → 로그에서
+  `SENDER_META` 파싱 → Sink `/stats` 와 **교차검증**(송신/수신 바이트·SHA-256 일치).
+- `transfer_spec.py` — S2/C-a 는 `TransferSpec` 를 공유하고 **목적지만 다르다**(E2).
+  GT 라벨(`should_alert`)은 평가 전용이며 송신기/탐지기/LLM 에 넣지 않는다.
+
+전송 모드: `single`(한 번에) · `split`(여러 연결, V1 튜닝) · `slow`(한 연결 전송률 제한,
+V2 저속·P6 조기탐지 대상).
+
 ## 테스트
 
 ```bash
