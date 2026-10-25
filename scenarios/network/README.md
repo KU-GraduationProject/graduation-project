@@ -177,10 +177,37 @@ MTTD = **t2(Ruler firing 전이 activeAt) − t0(송신 시작)**. polling 으�
 시각과 전이 시각을 구분해 둘 다 기록한다. Alertmanager group_wait 은 MTTD 에 넣지
 않는다. 기존 `scenarios/common/verifier.py`(Prometheus 검증)는 손대지 않는다.
 
+## 실험·평가 (Step 5 V1 / Step 6 V2)
+
+`experiment.py` 가 송신(orchestrator) · 검증(verifier) · 판정/집계(evaluation) · 동결
+(freeze)을 묶는다. 같은 전송 코드로 S2/C-a 를 반복 실행하고 TP/FP/TN/FN · MTTD 를
+기록한다.
+
+- **E3 판정**: S2 탐지=TP·미탐=FN, C-a 오탐=FP·무오탐=TN. 전송 교차검증 실패 실행은
+  무효(invalid)로 집계 제외. Confusion Matrix + precision/recall/specificity/FPR/F1/MTTD.
+- **실행 간 격리**: 매 실행 전 Sink `/stats` 초기화 + `wait_ruler_inactive`.
+- **E4**: V1(분할)·dev-slow(저속)은 튜닝용, **V2(저속)는 held-out**. V2 는 동결 스냅샷을
+  요구하고, 평가 직전 파일 해시가 동결 당시와 다르면(drift) 평가를 거부한다.
+- **기본 반복**: S2-V2=30, C-a-V2=75(50~100), 설정 가능.
+- **동결 지문**: allowlist·규칙·zeek 파일 SHA-256 + N·T·전송 파라미터 + Git SHA + 시각.
+
+```bash
+cd scenarios/network
+# (1) V1 튜닝 (분할 전송)
+DB_PASSWORD=... python3 experiment.py run V1 --s2-reps 5 --ca-reps 5
+# (2) 최종 평가 전 설정 동결
+python3 experiment.py freeze --out results/frozen.json --N 1048576 --T 60
+# (3) V2 held-out 최종 평가 (동결 필수)
+DB_PASSWORD=... python3 experiment.py run V2 --frozen results/frozen.json
+```
+
+> ⚠ 실제 실행(전송·Zeek·Loki·FIRING·MTTD)은 Docker/Loki 런타임이 있어야 한다. 이
+> 환경엔 없으므로 **최종 수치는 UNVERIFIED** 다. 추정 TP/FN/FP/TN·MTTD 를 만들지 않는다.
+
 ## 테스트
 
 ```bash
-cd scenarios/network && python3 -m unittest discover -s tests -v   # Sink/송신/정책/검증기
+cd scenarios/network && python3 -m unittest discover -s tests -v   # Sink/송신/정책/검증기/평가/동결
 cd aiops/pipeline     && python3 -m unittest discover -s tests -v   # 정책/규칙/Network Context
 cd aiops/network-observer && PYTHONPATH=enricher python3 -m unittest discover -s tests -v
 ```
