@@ -11,6 +11,24 @@ from prompt.network_section import build_network_section
 
 logger = logging.getLogger(__name__)
 
+# Allowlist 정책 평가기 (P4): Loki 규칙과 같은 정책 소스를 LLM 근거에 쓴다.
+# 한 번만 로드하고 실패(파일 없음 등)는 None 으로 캐시한다 — 정책이 없어도 RCA 는 진행한다.
+_POLICY_SENTINEL = object()
+_policy_cache = _POLICY_SENTINEL
+
+
+def _load_policy():
+    global _policy_cache
+    if _policy_cache is _POLICY_SENTINEL:
+        try:
+            from policy.allowlist import PolicyEvaluator
+            _policy_cache = PolicyEvaluator.from_file()
+            logger.info("[PromptBuilder] Allowlist 정책 로드 성공")
+        except Exception as e:
+            logger.info("[PromptBuilder] Allowlist 정책 미사용(%r) — 위반 표기 생략", e)
+            _policy_cache = None
+    return _policy_cache
+
 SYSTEM_PROMPT = """You are an AIOps engineer. Analyze Docker container anomaly data and return JSON only. Always respond in English regardless of the input language.
 
 SCHEMA (all fields required):
@@ -125,7 +143,7 @@ class PromptBuilder:
         if network is None or not network.service:
             return None
         try:
-            return build_network_section(network)
+            return build_network_section(network, policy=_load_policy())
         except Exception as e:
             logger.warning(f"[PromptBuilder] network context 요약 실패, 섹션 생략: {e!r}")
             return None

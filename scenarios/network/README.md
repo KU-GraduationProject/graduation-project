@@ -157,10 +157,32 @@ connection, 조기는 threshold) 바이트를 이중 계산하지 않는다.
 전송 모드: `single`(한 번에) · `split`(여러 연결, V1 튜닝) · `slow`(한 연결 전송률 제한,
 V2 저속·P6 조기탐지 대상).
 
+## RCA·검증 (Step 4 / P4 · P5)
+
+### P4 — LLM Network Context 개선 (`aiops/pipeline/prompt/network_section.py`)
+flow 를 (src, dst_service, dst_ip, dst_port, protocol)로 집계해 **IP/포트가 다른 흐름을
+합치지 않는다.** LLM 에게 목적지 IP:포트, 전송 바이트, 프로토콜·상태, **Allowlist 위반
+여부**(같은 정책 평가기 사용 → Loki 규칙과 일관), 조기(threshold) 신호 시각을 제공한다.
+조기/최종 중복집계 방지를 위해 bytes_sent 는 최종 이벤트만 합산하고 조기 이벤트는
+`early=` 신호로만 표기한다. 토큰 예산(NETWORK_MAX_CHARS) 안에서 수집 상태·해석 규칙은
+자르지 않는다. Allowlist 위반은 정책 근거이지 정답 라벨이 아니다.
+
+### P5 — ScenarioVerifier (`scenarios/network/verifier.py`)
+세 단계를 **독립적으로** 검증한다: A) Loki Ruler FIRING, B) Alertmanager 수신,
+C) 전달(AIOps/Slack). 이전 실행 경보와 섞이지 않도록 t0 이후의 activeAt/startsAt
+occurrence 만 선택하고, 실험 간 쿨다운(`wait_ruler_inactive`)으로 Ruler inactive 를
+확인한다.
+
+MTTD = **t2(Ruler firing 전이 activeAt) − t0(송신 시작)**. polling 으로 처음 관측한
+시각과 전이 시각을 구분해 둘 다 기록한다. Alertmanager group_wait 은 MTTD 에 넣지
+않는다. 기존 `scenarios/common/verifier.py`(Prometheus 검증)는 손대지 않는다.
+
 ## 테스트
 
 ```bash
-cd scenarios/network && python3 -m unittest discover -s tests -v
+cd scenarios/network && python3 -m unittest discover -s tests -v   # Sink/송신/정책/검증기
+cd aiops/pipeline     && python3 -m unittest discover -s tests -v   # 정책/규칙/Network Context
+cd aiops/network-observer && PYTHONPATH=enricher python3 -m unittest discover -s tests -v
 ```
 
 ## 검증 상태
