@@ -124,6 +124,13 @@ def build_early_logql(ev: PolicyEvaluator) -> str:
     )
 
 
+def _annotations(ev: PolicyEvaluator, summary: str, description: str) -> dict:
+    # container: pipeline 이 RCA 대상으로 읽는 값. 없으면 RCA 가 건너뛰어진다 (validate 가 잡는다).
+    ann = {"container": ev.alert_container} if ev.alert_container else {}
+    ann.update({"summary": summary, "description": description})
+    return ann
+
+
 def build_rule_group(ev: PolicyEvaluator) -> dict:
     return {
         "groups": [
@@ -136,14 +143,13 @@ def build_rule_group(ev: PolicyEvaluator) -> dict:
                         "for": "0m",
                         "labels": {"severity": "critical", "category": "security",
                                    "detection": "cumulative"},
-                        "annotations": {
-                            "summary": "비인가 목적지로의 대용량 데이터 전송 탐지",
-                            "description": (
-                                "backend 가 Allowlist 에 없는 목적지로 임계 초과 전송 "
-                                "(dst {{ $labels.dst_ip }}:{{ $labels.dst_port }}, "
-                                "누적 {{ $value }} bytes)"
-                            ),
-                        },
+                        "annotations": _annotations(
+                            ev,
+                            "비인가 목적지로의 대용량 데이터 전송 탐지",
+                            "backend 가 Allowlist 에 없는 목적지로 임계 초과 전송 "
+                            "(dst {{ $labels.dst_ip }}:{{ $labels.dst_port }}, "
+                            "누적 {{ $value }} bytes)",
+                        ),
                     },
                     {
                         "alert": ALERT_NAME_EARLY,
@@ -151,13 +157,12 @@ def build_rule_group(ev: PolicyEvaluator) -> dict:
                         "for": "0m",
                         "labels": {"severity": "critical", "category": "security",
                                    "detection": "early"},
-                        "annotations": {
-                            "summary": "비인가 목적지로의 전송 중 조기 탐지 (연결 종료 전)",
-                            "description": (
-                                "backend 의 단일 연결이 Allowlist 에 없는 목적지로 바이트 임계값을 "
-                                "초과함 (dst {{ $labels.dst_ip }}:{{ $labels.dst_port }})"
-                            ),
-                        },
+                        "annotations": _annotations(
+                            ev,
+                            "비인가 목적지로의 전송 중 조기 탐지 (연결 종료 전)",
+                            "backend 의 단일 연결이 Allowlist 에 없는 목적지로 바이트 임계값을 "
+                            "초과함 (dst {{ $labels.dst_ip }}:{{ $labels.dst_port }})",
+                        ),
                     },
                 ],
             }
@@ -179,9 +184,15 @@ def validate(rendered: str) -> list[str]:
         return [f"YAML 파싱 실패: {exc}"]
 
     try:
-        rules = {r["alert"]: r["expr"] for r in doc["groups"][0]["rules"]}
+        raw_rules = doc["groups"][0]["rules"]
+        rules = {r["alert"]: r["expr"] for r in raw_rules}
     except (KeyError, IndexError, TypeError):
         return ["groups[0].rules 구조가 없음"]
+
+    for r in raw_rules:
+        if not (r.get("annotations") or {}).get("container"):
+            problems.append(f"{r['alert']} 에 annotations.container 없음 — pipeline 이 RCA 를 건너뛴다 "
+                            "(allowlist.yml 의 alert_container 설정)")
 
     if ALERT_NAME not in rules:
         problems.append(f"{ALERT_NAME} 규칙 없음")

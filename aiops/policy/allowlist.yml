@@ -23,6 +23,10 @@ version: 1
 sources:
   - backend
 
+# 경보 annotation.container 값. AIOps pipeline 이 이 값을 RCA 대상 컨테이너로 쓴다
+# (security-rules.yml 과 같은 관례). 비우면 pipeline 이 "컨테이너 정보 없음"으로 RCA 를 건너뛴다.
+alert_container: leafy-backend
+
 allow:
   # 인가된 전송 목적지 (C-a). ip:port 정확 비교 — 데모의 핵심 판정 기준.
   - service: sink-a

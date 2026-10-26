@@ -17,6 +17,7 @@ groups:
       category: security
       detection: cumulative
     annotations:
+      container: leafy-backend
       summary: 비인가 목적지로의 대용량 데이터 전송 탐지
       description: backend 가 Allowlist 에 없는 목적지로 임계 초과 전송 (dst {{ $labels.dst_ip }}:{{
         $labels.dst_port }}, 누적 {{ $value }} bytes)
@@ -33,6 +34,7 @@ groups:
       category: security
       detection: early
     annotations:
+      container: leafy-backend
       summary: 비인가 목적지로의 전송 중 조기 탐지 (연결 종료 전)
       description: backend 의 단일 연결이 Allowlist 에 없는 목적지로 바이트 임계값을 초과함 (dst {{ $labels.dst_ip
         }}:{{ $labels.dst_port }})

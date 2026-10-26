@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -210,6 +211,68 @@ def evaluate_stages(t0: datetime, ruler_alerts, am_alerts, delivery_ok: bool,
     return result
 
 
+def _loki_entries(obj, since: datetime):
+    """Loki query_range 응답 -> (labels, ts_ns, line) 반복. since 이전 항목은 버린다."""
+    since_ns = int(since.timestamp() * 1e9) if since else 0
+    for stream in ((obj or {}).get("data") or {}).get("result") or []:
+        labels = stream.get("stream") or {}
+        for ts_ns, line in stream.get("values") or []:
+            try:
+                if int(ts_ns) < since_ns:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            yield labels, int(ts_ns), line
+
+
+def parse_delivery(llm_obj, slack_obj, alertnames=DEFAULT_ALERTS,
+                   since: datetime | None = None) -> tuple[bool, str]:
+    """
+    Stage C 판정 (순수).
+      ok = t0 이후 대상 경보에 대해 pipeline 이 RCA 를 실제 수행해 {job="aiops-llm"} 에 남겼는가.
+      pipeline 은 container 가 비었거나 "unknown" 이면 RCA 를 건너뛰고 fallback 만 남기므로
+      그 항목은 전달로 치지 않는다 (규칙 annotations.container 누락의 증상).
+      Slack({job="aiops-slack"}) 상태는 detail 에만 기록한다 (webhook 미설정 환경도 있음).
+    """
+    names = set(alertnames)
+    rca, skipped = [], 0
+    for labels, _ts, line in _loki_entries(llm_obj, since):
+        if labels.get("alert") not in names:
+            continue
+        try:
+            entry = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        container = entry.get("container") or labels.get("target_container")
+        if not container or container == "unknown":
+            skipped += 1
+        else:
+            rca.append((labels.get("alert"), container))
+
+    slack_status = []
+    for labels, _ts, line in _loki_entries(slack_obj, since):
+        try:
+            entry = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        if entry.get("event") != "slack_notification":
+            continue
+        alert = entry.get("alert_name") or entry.get("alert") or labels.get("alert")
+        if alert in names:
+            slack_status.append(entry.get("slack_status") or entry.get("status") or "?")
+
+    parts = []
+    if rca:
+        alert, container = rca[-1]
+        parts.append(f"RCA {len(rca)}건 ({alert} → {container})")
+    if skipped:
+        parts.append(f"RCA 건너뜀 {skipped}건 (container 없음/unknown)")
+    if not rca and not skipped:
+        parts.append("t0 이후 대상 경보의 RCA 결과 없음")
+    parts.append("slack=" + (",".join(slack_status) if slack_status else "기록 없음"))
+    return (bool(rca), "; ".join(parts))
+
+
 # --------------------------------------------------------------------------- #
 # HTTP 래퍼 + 폴링 (런타임 — Loki/Alertmanager 필요, UNVERIFIED)
 # --------------------------------------------------------------------------- #
@@ -232,22 +295,29 @@ class NetworkScenarioVerifier:
     def fetch_am_alerts(self) -> list[AmAlert]:
         return parse_am_alerts(self._get_json(f"{self.am_url}/api/v2/alerts"))
 
+    def _query_range(self, query: str, since: datetime) -> dict:
+        params = urllib.parse.urlencode({
+            "query": query, "start": int(since.timestamp() * 1e9),
+            "limit": 50, "direction": "forward",
+        })
+        return self._get_json(f"{self.loki_url}/loki/api/v1/query_range?{params}")
+
     def fetch_delivery(self, since: datetime) -> tuple[bool, str]:
         """
-        전달 증거: pipeline 이 webhook 수신 후 분석 결과/Slack 전송을 Loki 에 남기는지로 확인.
-        (파이프라인 로그 스트림에서 전달 흔적을 찾는다. 환경에 맞게 조정 가능.)
+        전달 증거: pipeline 이 Loki 에 직접 push 하는 {job="aiops-llm"}(RCA 결과)와
+        remediation 의 {job="aiops-slack"}(Slack 전송 상태)를 t0 이후로 조회한다.
+        판정은 parse_delivery (순수 함수).
         """
-        start_ns = int(since.timestamp() * 1e9)
-        query = '{service="aiops-pipeline"} |~ "(?i)(slack|webhook|analysis)"'
-        import urllib.parse
-        params = urllib.parse.urlencode({"query": query, "start": start_ns, "limit": 5})
+        alert_re = "|".join(self.alertnames)
         try:
-            obj = self._get_json(f"{self.loki_url}/loki/api/v1/query_range?{params}")
-            streams = (obj.get("data") or {}).get("result") or []
-            hits = sum(len(s.get("values", [])) for s in streams)
-            return (hits > 0, f"delivery evidence lines={hits}")
+            llm = self._query_range(f'{{job="aiops-llm", alert=~"{alert_re}"}}', since)
         except Exception as exc:
-            return (False, f"delivery 조회 실패: {exc!r}")
+            return (False, f"aiops-llm 조회 실패: {exc!r}")
+        try:
+            slack = self._query_range(f'{{job="aiops-slack", alert=~"{alert_re}"}}', since)
+        except Exception:
+            slack = None   # Slack 은 부가 정보 — 조회 실패해도 RCA 판정은 유지
+        return parse_delivery(llm, slack, self.alertnames, since)
 
     def verify(self, t0: datetime, timeout: int = 120, poll_interval: int = 5
                ) -> NetworkVerifyResult:

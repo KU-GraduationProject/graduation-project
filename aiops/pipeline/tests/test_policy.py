@@ -31,6 +31,7 @@ from policy.rulegen import (  # noqa: E402
 POLICY = {
     "version": 1,
     "sources": ["backend"],
+    "alert_container": "leafy-backend",
     "allow": [
         {"service": "sink-a", "match": "endpoint", "ip": "10.210.0.30", "port": 8080},
         {"service": "db", "match": "service"},
@@ -136,11 +137,19 @@ class RuleGenTest(unittest.TestCase):
         self.assertIn(ALERT_NAME, rules)
         self.assertIn(ALERT_NAME_EARLY, rules)        # 누적 + 조기 두 규칙
         self.assertEqual(rules[ALERT_NAME]["labels"]["severity"], "critical")
+        # pipeline 은 annotations.container 가 없으면 RCA 를 건너뛴다 (두 규칙 모두 필요)
+        for rule in rules.values():
+            self.assertEqual(rule["annotations"]["container"], "leafy-backend")
         # annotation 에 GT/정답 힌트가 없어야 한다 (두 규칙 모두)
         for rule in rules.values():
             joined = (rule["annotations"]["summary"] + rule["annotations"]["description"]).lower()
             for banned in ("[attack]", "ground", "정답", "s2", "c-a"):
                 self.assertNotIn(banned, joined)
+
+    def test_validate_flags_missing_container(self):
+        policy = {k: v for k, v in POLICY.items() if k != "alert_container"}
+        problems = validate(render_yaml(PolicyEvaluator.from_dict(policy)))
+        self.assertEqual(sum("annotations.container" in p for p in problems), 2)
 
     def test_validate_detects_broken(self):
         self.assertTrue(validate("groups: [bad"))

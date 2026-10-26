@@ -43,6 +43,8 @@ class PolicyEvaluator:
     def __init__(self, policy: dict):
         self._sources = list(policy.get("sources") or [])
         self._allow = list(policy.get("allow") or [])
+        # 경보 annotation.container (pipeline RCA 대상). 규칙 생성기가 사용한다.
+        self.alert_container = policy.get("alert_container")
         thresholds = policy.get("thresholds") or {}
         self.min_transfer_bytes = int(thresholds.get("min_transfer_bytes", 0))
         self.window = str(thresholds.get("window", "5m"))

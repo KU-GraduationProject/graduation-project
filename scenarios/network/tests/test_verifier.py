@@ -5,10 +5,12 @@
   - 이전 실행 경보와 occurrence 혼입 방지 (t0 이후 activeAt/startsAt 만 선택)
   - 세 단계(Loki Ruler firing / Alertmanager 수신 / 전달) 독립 판정
   - MTTD = 전이시각(t2) - t0, polling 관측시각과 구분
+  - 전달(C): pipeline 이 실제 push 하는 {job="aiops-llm"} 스트림 기준, container 없음 fallback 은 미전달
 
 실행: cd scenarios/network && python -m unittest discover -s tests -v
 """
 
+import json
 import os
 import sys
 import unittest
@@ -22,6 +24,7 @@ from verifier import (  # noqa: E402
     evaluate_stages,
     is_any_firing,
     parse_am_alerts,
+    parse_delivery,
     parse_ruler_alerts,
     parse_ts,
     select_firing_occurrence,
@@ -122,6 +125,58 @@ class StageEvaluationTest(unittest.TestCase):
         res = evaluate_stages(T0, [], [], delivery_ok=False, delivery_detail="none")
         self.assertFalse(res.stages["loki_ruler_firing"].ok)
         self.assertIsNone(res.mttd_seconds)
+
+
+def loki_obj(*streams):
+    return {"data": {"result": list(streams)}}
+
+
+def stream(labels, *entries):
+    return {"stream": labels, "values": [[str(ts), json.dumps(e)] for ts, e in entries]}
+
+
+def ns(iso):
+    return int(parse_ts(iso).timestamp() * 1e9)
+
+
+class DeliveryTest(unittest.TestCase):
+    LLM = {"job": "aiops-llm", "alert": "UnauthorizedTransferEarly",
+           "target_container": "leafy-backend"}
+
+    def test_rca_after_t0_is_delivery(self):
+        llm = loki_obj(stream(self.LLM, (ns("2026-10-25T05:00:20Z"),
+                                         {"alert_name": "UnauthorizedTransferEarly",
+                                          "container": "leafy-backend", "result": {}})))
+        slack = loki_obj(stream({"job": "aiops-slack", "alert": "UnauthorizedTransferEarly"},
+                                (ns("2026-10-25T05:00:25Z"),
+                                 {"event": "slack_notification",
+                                  "alert": "UnauthorizedTransferEarly", "slack_status": "SUCCESS"})))
+        ok, detail = parse_delivery(llm, slack, DEFAULT_ALERTS, T0)
+        self.assertTrue(ok)
+        self.assertIn("leafy-backend", detail)
+        self.assertIn("slack=SUCCESS", detail)
+
+    def test_container_unknown_fallback_is_not_delivery(self):
+        # 규칙에 annotations.container 가 없으면 pipeline 은 RCA 를 건너뛰고 fallback 만 남긴다
+        labels = dict(self.LLM, target_container="unknown")
+        llm = loki_obj(stream(labels, (ns("2026-10-25T05:00:20Z"),
+                                       {"alert_name": "UnauthorizedTransferEarly",
+                                        "container": "unknown", "result": {}})))
+        ok, detail = parse_delivery(llm, None, DEFAULT_ALERTS, T0)
+        self.assertFalse(ok)
+        self.assertIn("건너뜀", detail)
+
+    def test_previous_run_and_other_alerts_ignored(self):
+        llm = loki_obj(
+            stream(self.LLM, (ns("2026-10-25T04:59:00Z"),   # t0 이전 실행
+                              {"container": "leafy-backend"})),
+            stream(dict(self.LLM, alert="HighCpuUsage"),    # 다른 경보
+                   (ns("2026-10-25T05:00:20Z"), {"container": "leafy-backend"})),
+        )
+        ok, detail = parse_delivery(llm, None, DEFAULT_ALERTS, T0)
+        self.assertFalse(ok)
+        self.assertIn("RCA 결과 없음", detail)
+        self.assertIn("slack=기록 없음", detail)
 
 
 class CooldownTest(unittest.TestCase):
