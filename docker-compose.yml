@@ -407,12 +407,14 @@ services:
       # 파일 단위 bind mount는 편집 시 inode가 바뀌어도 컨테이너가 옛 내용을 계속 본다.
       - ./aiops/network-observer/zeek:/opt/observer:ro
       - zeek_logs:/zeek-logs
-    # -C : Docker 가상 NIC는 checksum offload를 쓰므로 체크섬이 무효하다.
-    #      이 옵션이 없으면 Zeek이 패킷을 무시해 conn_state=OTH, bytes=0만 남는다.
-    # -i eth0 : backend는 multi-homed(eth0=leafy-net, eth1=mgmt-net)이므로
-    #           interface를 한정해야 management traffic이 섞이지 않는다.
-    command: >
-      sh -c "cd /zeek-logs && exec zeek -C -i eth0 /opt/observer/local.zeek"
+    # backend는 multi-homed(leafy-net + mgmt-net)이므로 interface를 한정해야
+    # management traffic이 섞이지 않는다. 다만 Docker가 붙이는 이름(eth0/eth1)의
+    # 순서는 컨테이너를 다시 만들 때마다 바뀔 수 있어 하드코딩하면 안 된다.
+    # (실제로 뒤바뀌어 eth0=mgmt-net이 되자 backend->sink 전송을 통째로 놓쳤다.)
+    # start-zeek.sh가 OBSERVE_SUBNET을 가진 interface를 찾아 -C와 함께 실행한다.
+    environment:
+      OBSERVE_SUBNET: 10.210.0.0   # leafy-net (networks.leafy-net 대역과 짝)
+    command: ["sh", "/opt/observer/start-zeek.sh"]
     depends_on:
       - backend
     restart: unless-stopped
