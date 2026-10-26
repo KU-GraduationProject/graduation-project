@@ -1122,6 +1122,352 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 60,
+      "type": "row",
+      "collapsed": false,
+      "title": "🌐 네트워크 반출 탐지 (S2 / C-a)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 69
+      },
+      "panels": []
+    },
+    {
+      "id": 61,
+      "type": "stat",
+      "title": "🚨 비인가 목적지 조기 탐지 (5m)",
+      "description": "Loki Ruler 의 UnauthorizedTransferEarly 와 같은 LogQL. 0보다 크면 경보 조건이 충족된 상태다. Alertmanager 가 Grafana 데이터소스로 등록돼 있지 않아 '경보 수신' 자체가 아니라 '경보 조건'을 같은 식으로 다시 계산해 보여준다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 0,
+        "y": 70
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({log_type=\"network\", event_type=\"connection_threshold\", src_service=\"backend\", dst_service!~\"db|minio|frontend\"} | json | __error__=\"\" | (dst_ip!=\"10.210.0.30\" or dst_port!=8080) [5m]))",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 62,
+      "type": "stat",
+      "title": "📦 비인가 목적지 누적 전송 (5m)",
+      "description": "UnauthorizedDataTransfer 와 같은 LogQL. allowlist 에 없는 목적지로 backend 가 보낸 바이트 누적. 임계 1MiB 를 넘으면 경보 조건 충족(빨강).",
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 8,
+        "y": 70
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1048576
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "editorMode": "code",
+          "expr": "sum(sum_over_time({log_type=\"network\", event_type=\"connection\", src_service=\"backend\", dst_service!~\"db|minio|frontend\"} | json | __error__=\"\" | (dst_ip!=\"10.210.0.30\" or dst_port!=8080) | bytes_sent!=\"\" | unwrap bytes_sent [5m]))",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 63,
+      "type": "stat",
+      "title": "✅ 인가 목적지 누적 전송 (5m)",
+      "description": "allowlist 에 등록된 목적지(sink-a 10.210.0.30:8080)로 간 전송량. 같은 크기를 보내도 경보하지 않는다는 것이 이 시나리오의 핵심이므로, 임계를 넘겨도 색이 바뀌지 않는다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 16,
+        "y": 70
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "editorMode": "code",
+          "expr": "sum(sum_over_time({log_type=\"network\", event_type=\"connection\", src_service=\"backend\", dst_service!~\"db|minio|frontend\"} | json | __error__=\"\" | dst_ip=\"10.210.0.30\" | dst_port=8080 | bytes_sent!=\"\" | unwrap bytes_sent [5m]))",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 64,
+      "type": "timeseries",
+      "title": "목적지별 전송량 추이 (1m 합계) — 인가 vs 비인가",
+      "description": "내부 정상 peer(db/minio/frontend)를 제외한 목적지별 backend 전송량. 같은 크기의 전송이 두 목적지로 갈 때, 경보가 목적지 정책으로 갈리는 것을 눈으로 비교하는 패널이다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 75
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "max",
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "editorMode": "code",
+          "expr": "sum by (dst_service, dst_ip) (sum_over_time({log_type=\"network\", event_type=\"connection\", src_service=\"backend\", dst_service!~\"db|minio|frontend\"} | json | __error__=\"\" | bytes_sent!=\"\" | unwrap bytes_sent [1m]))",
+          "queryType": "range",
+          "refId": "A",
+          "legendFormat": "{{dst_service}} {{dst_ip}}"
+        }
+      ]
+    },
+    {
+      "id": 65,
+      "type": "logs",
+      "title": "🌐 네트워크 이벤트 흐름 (Zeek → enricher → Loki)",
+      "description": "Canonical Network Event. 출발지 → 목적지 IP:포트, event_type (connection=연결 종료 후 최종, connection_threshold=전송 중 조기), 전송 바이트, 캡처 인터페이스를 한 줄로 보여준다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 84
+      },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "editorMode": "code",
+          "expr": "{log_type=\"network\"} | json | __error__=\"\" | line_format \"{{.src_service}} -> {{.dst_service}} {{.dst_ip}}:{{.dst_port}} [{{.event_type}}] bytes_sent={{.bytes_sent}} state={{.connection_state}} iface={{.interface}}\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "10s",
@@ -1138,5 +1484,5 @@
   "timezone": "browser",
   "title": "AIOps 모니터링 대시보드",
   "uid": "aiops-main",
-  "version": 2
+  "version": 3
 }
