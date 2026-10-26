@@ -9,7 +9,8 @@
 ##!   (observer 교체 가능성 유지 -> NETWORK_EVENT_SCHEMA.md P5 / D16).
 
 @load base/protocols/conn
-@load base/frameworks/conn-threshold
+# ConnThreshold 는 별도 framework 가 아니라 conn 프로토콜 스크립트에 있다 (zeek 9.0.0 기준 확인).
+@load base/protocols/conn/thresholds
 
 # conn.log 등 전체 로그를 JSON 으로 출력. enricher 가 라인 단위로 파싱한다.
 redef LogAscii::use_json = T;
@@ -36,6 +37,8 @@ export {
     };
 
     # originator 전송 바이트 임계값(N). redef 로 조정 가능 (Step 5/6 에서 동결).
+    # ConnThreshold 는 IP 계층 바이트(헤더 포함, conn.log 의 orig_ip_bytes 기준)로 센다. 그래서
+    # 로그의 orig_bytes(페이로드)는 임계값보다 약간 작게 찍힌다 (2MB 합성 pcap 에서 1020840 < 1048576 확인).
     # Loki 규칙의 min_transfer_bytes(allowlist.yml)와 함께 N·R·T 관계를 기록해 동결한다.
     const byte_threshold: count = 1048576 &redef;   # 1MB
 }

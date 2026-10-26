@@ -24,7 +24,9 @@
 services:
   sink-a:
     build: ./scenarios/network/sink
-    image: s2-sink:latest
+    # 같은 Dockerfile 이지만 태그를 분리한다. 같은 태그를 두 서비스가 병렬 빌드하면
+    # compose(bake) 가 'image already exists' 로 실패한다 (로컬 검증에서 확인).
+    image: s2-sink-a:latest
     container_name: s2-sink-a
     environment:
       SINK_ROLE: "A"
@@ -40,7 +42,7 @@ services:
 
   sink-b:
     build: ./scenarios/network/sink
-    image: s2-sink:latest
+    image: s2-sink-b:latest
     container_name: s2-sink-b
     environment:
       SINK_ROLE: "B"

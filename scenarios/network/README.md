@@ -61,6 +61,11 @@ backend→sink 트래픽이 eth0을 지나므로 Zeek가 본다. 목적지는 �
 docker compose -f docker-compose.yml -f docker-compose.s2.yml up -d --build sink-a sink-b
 ```
 
+> 전체 스택을 처음 올릴 때 fluentd 가 막 재생성되면, fluentd 로그 드라이버를 쓰는
+> `leafy-db`/`leafy-minio` 가 `failed to initialize logging driver: dial tcp [::1]:24224`
+> 로 첫 기동에 실패할 수 있다 (로컬 검증에서 확인, 기존 스택 동작). `up -d` 를 한 번 더
+> 실행하면 올라온다. 이후 `docker compose ps` 로 Zeek 가 재시작 반복 중이 아닌지 확인한다.
+
 ### 대체 배치 — sink-net 분리 (UNVERIFIED)
 `docker-compose.s2.sink-net.yml`. Sink를 별도 bridge(`10.211.0.0/24`)에 두고
 backend를 그 네트워크에도 연결한다. 이때 전송은 backend의 **다른 인터페이스**로
