@@ -1140,7 +1140,7 @@
       "id": 61,
       "type": "stat",
       "title": "🚨 비인가 목적지 조기 탐지 (5m)",
-      "description": "Loki Ruler 의 UnauthorizedTransferEarly 와 같은 LogQL. 0보다 크면 경보 조건이 충족된 상태다. Alertmanager 가 Grafana 데이터소스로 등록돼 있지 않아 '경보 수신' 자체가 아니라 '경보 조건'을 같은 식으로 다시 계산해 보여준다.",
+      "description": "Loki의 최근 5분 connection_threshold 이벤트 수를 재계산한다. 0보다 크면 UnauthorizedTransferEarly의 경보 조건에 해당한다. Alertmanager 수신 경보 인스턴스 수가 아니다. Grafana 12.4.2의 기본 Alertmanager 데이터소스는 패널 쿼리를 지원하지 않는다. 실제 수신 상태는 Alerting > Active notifications에서 Alertmanager를 선택해 확인한다.",
       "datasource": {
         "type": "loki",
         "uid": "P8E80F9AEF21F6940"
@@ -1208,7 +1208,7 @@
       "id": 62,
       "type": "stat",
       "title": "📦 비인가 목적지 누적 전송 (5m)",
-      "description": "UnauthorizedDataTransfer 와 같은 LogQL. allowlist 에 없는 목적지로 backend 가 보낸 바이트 누적. 임계 1MiB 를 넘으면 경보 조건 충족(빨강).",
+      "description": "Loki의 최근 5분 비인가 목적지 전송 바이트를 재계산한다. 임계 1MiB를 넘으면 UnauthorizedDataTransfer의 경보 조건에 해당한다(빨강). Alertmanager 수신 여부나 경보 인스턴스 수를 표시하지 않는다. 실제 수신 상태는 Alerting > Active notifications에서 Alertmanager를 선택해 확인한다.",
       "datasource": {
         "type": "loki",
         "uid": "P8E80F9AEF21F6940"
