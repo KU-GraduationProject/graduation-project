@@ -25,6 +25,7 @@ import time
 import docker
 import yaml
 
+from capture import DEFAULT_PATH as DEFAULT_IFACE_PATH, CaptureInterface
 from events import build_connection_event, build_threshold_event
 from identity import IdentityResolver
 
@@ -38,6 +39,8 @@ CONFIG_PATH = os.getenv("OBSERVER_CONFIG", "/app/config/observer.yml")
 CONN_LOG_PATH = os.getenv("ZEEK_CONN_LOG", "/zeek-logs/conn.log")
 # P6: Zeek ConnThreshold 중간 이벤트 로그. 없으면 해당 소스는 조용히 대기만 한다.
 THRESHOLD_LOG_PATH = os.getenv("ZEEK_CONN_THRESHOLD_LOG", "/zeek-logs/conn_threshold.log")
+# start-zeek.sh 가 서브넷으로 찾아낸 "실제" 캡처 인터페이스 이름을 적어 두는 파일.
+CAPTURE_IFACE_PATH = os.getenv("ZEEK_CAPTURE_IFACE_FILE", DEFAULT_IFACE_PATH)
 
 _running = True
 
@@ -129,7 +132,7 @@ class EventWriter:
             self.skipped += 1
 
 
-def _run_source(path, builder, resolver, capture_cfg, observer_cfg, writer):
+def _run_source(path, builder, resolver, capture_cfg, observer_cfg, writer, capture_iface):
     """한 로그 파일을 tail 하며 builder 로 canonical event 를 만들어 writer 로 내보낸다."""
     for line in tail_lines(path, lambda: _running):
         try:
@@ -140,8 +143,12 @@ def _run_source(path, builder, resolver, capture_cfg, observer_cfg, writer):
 
         resolver.refresh()  # 주기 조건 충족 시에만 실제 갱신
 
+        # interface 는 설정 고정값이 아니라 Zeek 가 실제로 잡은 인터페이스다. Zeek 가
+        # 재생성되며 이름이 바뀔 수 있으므로 이벤트마다 현재 값을 반영한다.
+        capture = dict(capture_cfg, interface=capture_iface.get())
+
         try:
-            event = builder(record, resolver, capture_cfg, observer_cfg)
+            event = builder(record, resolver, capture, observer_cfg)
         except Exception as exc:
             logger.warning("event 변환 실패(건너뜀, %s): %s", path, exc)
             writer.skip()
@@ -183,6 +190,13 @@ def main():
 
     writer = EventWriter(out_handle, to_stdout)
 
+    # 실제 캡처 인터페이스는 Zeek 가 기동할 때 서브넷으로 찾아 공유 볼륨에 적어 둔다.
+    # observer.yml 의 capture.interface 는 그 파일이 없을 때 쓰는 fallback 일 뿐이다
+    # (없으면 스키마대로 null — 추측한 이름을 적지 않는다).
+    capture_iface = CaptureInterface(CAPTURE_IFACE_PATH, capture_cfg.get("interface"))
+    logger.info("캡처 인터페이스 출처: %s (현재값 %r)",
+                CAPTURE_IFACE_PATH, capture_iface.get())
+
     sources = [
         (CONN_LOG_PATH, build_connection_event),
         (THRESHOLD_LOG_PATH, build_threshold_event),  # P6
@@ -191,7 +205,7 @@ def main():
     for path, builder in sources:
         t = threading.Thread(
             target=_run_source,
-            args=(path, builder, resolver, capture_cfg, observer_cfg, writer),
+            args=(path, builder, resolver, capture_cfg, observer_cfg, writer, capture_iface),
             name=f"tail:{os.path.basename(path)}",
             daemon=True,
         )

@@ -19,6 +19,9 @@ set -eu
 OBSERVE_SUBNET="${OBSERVE_SUBNET:-10.210.0.0}"
 LOG_DIR="${ZEEK_LOG_DIR:-/zeek-logs}"
 ZEEK_SCRIPT="${ZEEK_SCRIPT:-/opt/observer/local.zeek}"
+# 찾아낸 인터페이스 이름을 enricher 에게 넘기는 파일. enricher 의
+# ZEEK_CAPTURE_IFACE_FILE 과 같은 경로를 가리켜야 한다.
+IFACE_FILE="${ZEEK_CAPTURE_IFACE_FILE:-$LOG_DIR/capture-interface}"
 
 # /proc/net/route 의 Destination 은 리틀엔디언 16진수다. 점표기 서브넷을 같은 표기로
 # 바꿔 비교한다 (예: 10.210.0.0 -> 0000D20A).
@@ -37,8 +40,16 @@ if [ -z "$iface" ]; then
     exit 1
 fi
 
-# -C : Docker 가상 NIC 는 checksum offload 를 쓰므로 체크섬 검증을 끈다. 없으면 Zeek 이
-#      패킷을 무시해 conn_state=OTH, bytes=0 만 남는다 (ZEEK_DOCKER_DESKTOP_NOTES.md).
 echo "[start-zeek] capture interface=$iface (subnet=$OBSERVE_SUBNET)"
 cd "$LOG_DIR"
+
+# 찾아낸 이름을 공유 볼륨에 남긴다. enricher 는 netns 가 달라 인터페이스를 직접 조회할 수
+# 없고, 이름은 지금(기동 시점)에야 정해지므로 compose 의 정적 환경변수로도 전달할 수 없다.
+# enricher 가 이 파일을 읽어 Canonical Event 의 interface 필드에 "실제" 값을 적는다.
+# (enricher/capture.py — 없으면 null 로 기록한다)
+printf '%s\n' "$iface" > "$IFACE_FILE" || \
+    echo "[start-zeek] 경고: $IFACE_FILE 기록 실패 — interface 필드가 null 로 남는다" >&2
+
+# -C : Docker 가상 NIC 는 checksum offload 를 쓰므로 체크섬 검증을 끈다. 없으면 Zeek 이
+#      패킷을 무시해 conn_state=OTH, bytes=0 만 남는다 (ZEEK_DOCKER_DESKTOP_NOTES.md).
 exec zeek -C -i "$iface" "$ZEEK_SCRIPT"

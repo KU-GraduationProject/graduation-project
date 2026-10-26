@@ -425,6 +425,9 @@ services:
     environment:
       OBSERVER_CONFIG: /app/config/observer.yml
       ZEEK_CONN_LOG: /zeek-logs/conn.log
+      # start-zeek.sh가 실제 캡처 interface 이름을 적어 두는 파일(같은 zeek_logs 볼륨).
+      # enricher는 netns가 달라 interface를 직접 조회할 수 없어 이 파일로 받는다.
+      ZEEK_CAPTURE_IFACE_FILE: /zeek-logs/capture-interface
       LOG_LEVEL: INFO
     volumes:
       - ./aiops/network-observer/config:/app/config:ro
