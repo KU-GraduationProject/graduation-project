@@ -160,8 +160,8 @@ def run_experiment(plan, cfg: ExperimentConfig, out_dir: str, label: str,
 
         verify = cfg.verifier.verify(t0, timeout=cfg.verify_timeout)
         detected = verify.stages["loki_ruler_firing"].ok
-        detail = (f"crosscheck_ok={crosscheck_ok}; "
-                  f"stages={{k: v.ok for k, v in verify.stages.items()}}")
+        stage_flags = {k: v.ok for k, v in verify.stages.items()}
+        detail = f"crosscheck_ok={crosscheck_ok}; stages={stage_flags}"
         outcomes.append(evaluate_run(run, crosscheck_ok, detected,
                                      verify.mttd_seconds, detail))
         time.sleep(cfg.inter_run_sleep)
