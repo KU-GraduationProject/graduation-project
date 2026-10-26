@@ -11,7 +11,21 @@
   "id": null,
   "links": [],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "experiment_id",
+        "label": "MTTD 실험 ID (정규식)",
+        "type": "textbox",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        },
+        "options": [],
+        "hide": 0,
+        "skipUrlSync": false
+      }
+    ]
   },
   "panels": [
     {
@@ -1466,6 +1480,448 @@
           "expr": "{log_type=\"network\"} | json | __error__=\"\" | line_format \"{{.src_service}} -> {{.dst_service}} {{.dst_ip}}:{{.dst_port}} [{{.event_type}}] bytes_sent={{.bytes_sent}} state={{.connection_state}} iface={{.interface}}\"",
           "queryType": "range",
           "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 70,
+      "type": "row",
+      "title": "탐지 시간 및 수신 경보",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 96
+      },
+      "panels": []
+    },
+    {
+      "id": 71,
+      "type": "stat",
+      "title": "평균 탐지 시간 (MTTD) · 표본 수",
+      "description": "대시보드 선택 기간 내 기록된 결과 중 유효한 S2 탐지 성공 회차만 집계한다. MTTD = Loki Ruler activeAt − 전송 호출 직전 t0 (초). Alertmanager 수신 지연이 아니다. experiment_id로 실행을 선택할 수 있다. 측정값이 없으면 N/A이며 0초로 대체하지 않는다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 97
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3,
+          "noValue": "N/A"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "displayName",
+                "value": "표본 수"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "MTTD"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "editorMode": "code",
+          "expr": "sum(sum_over_time({job=\"network-experiment\", event_type=\"network_experiment_result\"} | json | __error__=\"\" | experiment_id=~\"${experiment_id}\" | valid=\"true\" | should_alert=\"true\" | detected=\"true\" | mttd_seconds!=\"\" | unwrap mttd_seconds | __error__=\"\" [$__range])) / sum(count_over_time({job=\"network-experiment\", event_type=\"network_experiment_result\"} | json | __error__=\"\" | experiment_id=~\"${experiment_id}\" | valid=\"true\" | should_alert=\"true\" | detected=\"true\" | mttd_seconds!=\"\" [$__range]))",
+          "queryType": "instant",
+          "legendFormat": "MTTD"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "editorMode": "code",
+          "expr": "(sum(count_over_time({job=\"network-experiment\", event_type=\"network_experiment_result\"} | json | __error__=\"\" | experiment_id=~\"${experiment_id}\" | valid=\"true\" | should_alert=\"true\" | detected=\"true\" | mttd_seconds!=\"\" [$__range]))) or vector(0)",
+          "queryType": "instant",
+          "legendFormat": "표본 수"
+        }
+      ]
+    },
+    {
+      "id": 73,
+      "type": "stat",
+      "title": "활성 네트워크 경보",
+      "description": "현재 Alertmanager /api/v2/alerts가 반환한 비인가 전송 경보 인스턴스 수. category=security, 두 네트워크 규칙, dst_ip/dst_port 존재, status.state=active이며 silenced/inhibited/unprocessed는 제외한다. Loki 이벤트 수 또는 규칙 평가 횟수가 아니다. 현재 상태이므로 대시보드 과거 기간 필터와 독립적이며 10초마다 갱신한다.",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "leafy-alertmanager-api"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 97
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "N/A"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "leafy-alertmanager-api"
+          },
+          "type": "json",
+          "source": "url",
+          "url": "http://alertmanager:9093/api/v2/alerts",
+          "url_options": {
+            "method": "GET",
+            "params": [
+              {
+                "key": "active",
+                "value": "true"
+              },
+              {
+                "key": "silenced",
+                "value": "false"
+              },
+              {
+                "key": "inhibited",
+                "value": "false"
+              },
+              {
+                "key": "unprocessed",
+                "value": "false"
+              },
+              {
+                "key": "filter",
+                "value": "alertname=~\"UnauthorizedDataTransfer|UnauthorizedTransferEarly\""
+              },
+              {
+                "key": "filter",
+                "value": "category=\"security\""
+              }
+            ]
+          },
+          "parser": "jq-backend",
+          "format": "table",
+          "root_selector": "[{active_alerts: ([.[] | select(.status.state == \"active\" and .labels.dst_ip != null and .labels.dst_port != null)] | length)}]",
+          "columns": [
+            {
+              "selector": "active_alerts",
+              "text": "활성 인스턴스",
+              "type": "number"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 72,
+      "type": "table",
+      "title": "회차별 탐지 지연",
+      "description": "선택 기간의 평가 결과를 모두 표시한다 (최대 5000행). not_detected/invalid도 표시하며 mttd_seconds=null은 미측정으로 남긴다. UTC ISO 시각과 원본 초 단위를 유지한다. MTTD 표본은 valid=true, should_alert=true, detected=true만 사용한다. 실험 ID 필터는 이 표와 평균 패널에만 적용된다.",
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 103
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "editorMode": "code",
+          "expr": "{job=\"network-experiment\", event_type=\"network_experiment_result\"} | json | __error__=\"\" | experiment_id=~\"${experiment_id}\"",
+          "queryType": "range",
+          "maxLines": 5000
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "미측정",
+          "custom": {
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "mttd_seconds"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "started_at",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "json",
+            "replace": true,
+            "keepTime": false
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "experiment_id",
+                "repetition",
+                "scenario",
+                "variant",
+                "detection_status",
+                "valid",
+                "mttd_seconds",
+                "started_at",
+                "detected_at",
+                "transfer_id"
+              ]
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "experiment_id": 0,
+              "repetition": 1,
+              "scenario": 2,
+              "variant": 3,
+              "detection_status": 4,
+              "valid": 5,
+              "mttd_seconds": 6,
+              "started_at": 7,
+              "detected_at": 8,
+              "transfer_id": 9
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 74,
+      "type": "table",
+      "title": "네트워크 경보 상세",
+      "description": "활성 네트워크 경보 패널과 동일한 Alertmanager API와 필터. fingerprint 단위 현재 인스턴스이며 startsAt/endsAt는 API 원본 UTC 시각이다. 실험 ID는 경보 레이블에 없으므로 임의 연결하지 않는다. 신규 실행과의 관련성은 목적지와 startsAt를 t0와 비교해 검증한다.",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "leafy-alertmanager-api"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 113
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "leafy-alertmanager-api"
+          },
+          "type": "json",
+          "source": "url",
+          "url": "http://alertmanager:9093/api/v2/alerts",
+          "url_options": {
+            "method": "GET",
+            "params": [
+              {
+                "key": "active",
+                "value": "true"
+              },
+              {
+                "key": "silenced",
+                "value": "false"
+              },
+              {
+                "key": "inhibited",
+                "value": "false"
+              },
+              {
+                "key": "unprocessed",
+                "value": "false"
+              },
+              {
+                "key": "filter",
+                "value": "alertname=~\"UnauthorizedDataTransfer|UnauthorizedTransferEarly\""
+              },
+              {
+                "key": "filter",
+                "value": "category=\"security\""
+              }
+            ]
+          },
+          "parser": "jq-backend",
+          "format": "table",
+          "root_selector": "[.[] | select(.status.state == \"active\" and .labels.dst_ip != null and .labels.dst_port != null) | {alertname: .labels.alertname, status: .status.state, destination: (.labels.dst_ip + \":\" + .labels.dst_port), startsAt, endsAt, fingerprint, labels: (.labels | tojson), annotations: (.annotations | tojson)}]",
+          "columns": [
+            {
+              "selector": "alertname",
+              "text": "경보 이름",
+              "type": "string"
+            },
+            {
+              "selector": "status",
+              "text": "상태",
+              "type": "string"
+            },
+            {
+              "selector": "destination",
+              "text": "목적지",
+              "type": "string"
+            },
+            {
+              "selector": "startsAt",
+              "text": "시작 (UTC)",
+              "type": "string"
+            },
+            {
+              "selector": "endsAt",
+              "text": "만료 예정 (UTC)",
+              "type": "string"
+            },
+            {
+              "selector": "fingerprint",
+              "text": "fingerprint",
+              "type": "string"
+            },
+            {
+              "selector": "labels",
+              "text": "labels",
+              "type": "string"
+            },
+            {
+              "selector": "annotations",
+              "text": "annotations",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "경보 이름": 0,
+              "상태": 1,
+              "목적지": 2,
+              "시작 (UTC)": 3,
+              "만료 예정 (UTC)": 4,
+              "fingerprint": 5,
+              "labels": 6,
+              "annotations": 7
+            }
+          }
         }
       ]
     }

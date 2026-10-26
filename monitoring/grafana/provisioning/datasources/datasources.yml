@@ -25,3 +25,14 @@ datasources:
     jsonData:
       implementation: prometheus
       handleGrafanaManagedAlerts: false
+
+  # Backend-only REST queries; the built-in Alertmanager source remains unchanged.
+  - name: Alertmanager API
+    uid: leafy-alertmanager-api
+    type: yesoreyeram-infinity-datasource
+    access: proxy
+    isDefault: false
+    jsonData:
+      auth_method: none
+      allowedHosts:
+        - http://alertmanager:9093

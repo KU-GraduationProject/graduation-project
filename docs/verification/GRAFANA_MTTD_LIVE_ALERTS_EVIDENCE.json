@@ -1,0 +1,243 @@
+{
+  "checked_at": "2026-10-26T13:15:50.592929+00:00",
+  "original_dashboard_items_unchanged": 29,
+  "new_panel_ids": [
+    71,
+    72,
+    73,
+    74
+  ],
+  "mttd_seconds": 25.61210966666667,
+  "sample_count": 3,
+  "results": [
+    {
+      "label": "S2-V1",
+      "scenario": "S2",
+      "variant": "V1",
+      "should_alert": true,
+      "detected": true,
+      "valid": true,
+      "outcome": "TP",
+      "mttd_seconds": 13.879088,
+      "detail": "crosscheck_ok=True; stages={'loki_ruler_firing': True, 'alertmanager_received': True, 'delivery': False}",
+      "schema_version": 1,
+      "event_type": "network_experiment_result",
+      "experiment_id": "8c678d77ea0d4dca95da51d0ea862e1b",
+      "result_id": "8c678d77ea0d4dca95da51d0ea862e1b:1",
+      "repetition": 1,
+      "transfer_id": "S2-V1-0-1793017815",
+      "started_at": "2026-10-26T12:30:15.508423+00:00",
+      "detected_at": "2026-10-26T12:30:29.387511+00:00",
+      "measurement_endpoint": "http://localhost:3100/prometheus/api/v1/alerts",
+      "measurement_basis": "loki_ruler_activeAt_minus_orchestrator_t0",
+      "recorded_at": "2026-10-26T12:30:51.455798+00:00",
+      "recorded_at_ns": "1793017851455798100",
+      "stages": {
+        "loki_ruler_firing": true,
+        "alertmanager_received": true,
+        "delivery": false
+      },
+      "detection_status": "detected"
+    },
+    {
+      "label": "S2-V1",
+      "scenario": "S2",
+      "variant": "V1",
+      "should_alert": true,
+      "detected": true,
+      "valid": true,
+      "outcome": "TP",
+      "mttd_seconds": 10.45003,
+      "detail": "crosscheck_ok=True; stages={'loki_ruler_firing': True, 'alertmanager_received': True, 'delivery': False}",
+      "schema_version": 1,
+      "event_type": "network_experiment_result",
+      "experiment_id": "1beb24b25d0145359d74d3295f4bab50",
+      "result_id": "1beb24b25d0145359d74d3295f4bab50:1",
+      "repetition": 1,
+      "transfer_id": "S2-V1-0-1793019858",
+      "started_at": "2026-10-26T13:04:18.937481+00:00",
+      "detected_at": "2026-10-26T13:04:29.387511+00:00",
+      "measurement_endpoint": "http://localhost:3100/prometheus/api/v1/alerts",
+      "measurement_basis": "loki_ruler_activeAt_minus_orchestrator_t0",
+      "recorded_at": "2026-10-26T13:04:45.017986+00:00",
+      "recorded_at_ns": "1793019885017985900",
+      "stages": {
+        "loki_ruler_firing": true,
+        "alertmanager_received": true,
+        "delivery": false
+      },
+      "detection_status": "detected"
+    },
+    {
+      "label": "S2-V1",
+      "scenario": "S2",
+      "variant": "V1",
+      "should_alert": true,
+      "detected": true,
+      "valid": true,
+      "outcome": "TP",
+      "mttd_seconds": 52.507211,
+      "detail": "crosscheck_ok=True; stages={'loki_ruler_firing': True, 'alertmanager_received': True, 'delivery': False}",
+      "schema_version": 1,
+      "event_type": "network_experiment_result",
+      "experiment_id": "de9d68c2c8e64511ab6fbfca412d6d68",
+      "result_id": "de9d68c2c8e64511ab6fbfca412d6d68:1",
+      "repetition": 1,
+      "transfer_id": "S2-V1-0-1793020476",
+      "started_at": "2026-10-26T13:14:36.880300+00:00",
+      "detected_at": "2026-10-26T13:15:29.387511+00:00",
+      "measurement_endpoint": "http://localhost:3100/prometheus/api/v1/alerts",
+      "measurement_basis": "loki_ruler_activeAt_minus_orchestrator_t0",
+      "recorded_at": "2026-10-26T13:15:48.119678+00:00",
+      "recorded_at_ns": "1793020548119678500",
+      "stages": {
+        "loki_ruler_firing": true,
+        "alertmanager_received": true,
+        "delivery": false
+      },
+      "detection_status": "detected"
+    }
+  ],
+  "summaries": [
+    {
+      "label": "S2CA-V1",
+      "created_at": "20261026_213053",
+      "confusion_matrix": {
+        "tp": 1,
+        "fp": 0,
+        "tn": 0,
+        "fn": 0,
+        "invalid": 0,
+        "total_valid": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "specificity": null,
+        "false_positive_rate": null,
+        "accuracy": 1.0,
+        "f1": 1.0,
+        "mttd": {
+          "count": 1,
+          "min": 13.879088,
+          "max": 13.879088,
+          "mean": 13.879
+        }
+      },
+      "frozen_config": null,
+      "experiment_id": "8c678d77ea0d4dca95da51d0ea862e1b",
+      "measurement_basis": "loki_ruler_activeAt_minus_orchestrator_t0"
+    },
+    {
+      "label": "S2CA-V1",
+      "created_at": "20261026_220447",
+      "confusion_matrix": {
+        "tp": 1,
+        "fp": 0,
+        "tn": 0,
+        "fn": 0,
+        "invalid": 0,
+        "total_valid": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "specificity": null,
+        "false_positive_rate": null,
+        "accuracy": 1.0,
+        "f1": 1.0,
+        "mttd": {
+          "count": 1,
+          "min": 10.45003,
+          "max": 10.45003,
+          "mean": 10.45
+        }
+      },
+      "frozen_config": null,
+      "experiment_id": "1beb24b25d0145359d74d3295f4bab50",
+      "measurement_basis": "loki_ruler_activeAt_minus_orchestrator_t0"
+    },
+    {
+      "label": "S2CA-V1",
+      "created_at": "20261026_221550",
+      "confusion_matrix": {
+        "tp": 1,
+        "fp": 0,
+        "tn": 0,
+        "fn": 0,
+        "invalid": 0,
+        "total_valid": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "specificity": null,
+        "false_positive_rate": null,
+        "accuracy": 1.0,
+        "f1": 1.0,
+        "mttd": {
+          "count": 1,
+          "min": 52.507211,
+          "max": 52.507211,
+          "mean": 52.507
+        }
+      },
+      "frozen_config": null,
+      "experiment_id": "de9d68c2c8e64511ab6fbfca412d6d68",
+      "measurement_basis": "loki_ruler_activeAt_minus_orchestrator_t0"
+    }
+  ],
+  "alerts": [
+    {
+      "labels": {
+        "alertname": "UnauthorizedDataTransfer",
+        "category": "security",
+        "detection": "cumulative",
+        "dst_ip": "10.210.0.31",
+        "dst_port": "8080",
+        "severity": "critical"
+      },
+      "annotations": {
+        "container": "leafy-backend",
+        "description": "backend 가 Allowlist 에 없는 목적지로 임계 초과 전송 (dst 10.210.0.31:8080, 누적 1.048688e+07 bytes)",
+        "summary": "비인가 목적지로의 대용량 데이터 전송 탐지"
+      },
+      "status": {
+        "inhibitedBy": [],
+        "mutedBy": [],
+        "silencedBy": [],
+        "state": "active"
+      },
+      "startsAt": "2026-10-26T13:15:29.387Z",
+      "endsAt": "2026-10-26T13:19:29.387Z",
+      "fingerprint": "8aa2943458e4c4a7"
+    },
+    {
+      "labels": {
+        "alertname": "UnauthorizedTransferEarly",
+        "category": "security",
+        "detection": "early",
+        "dst_ip": "10.210.0.31",
+        "dst_port": "8080",
+        "severity": "critical"
+      },
+      "annotations": {
+        "container": "leafy-backend",
+        "description": "backend 의 단일 연결이 Allowlist 에 없는 목적지로 바이트 임계값을 초과함 (dst 10.210.0.31:8080)",
+        "summary": "비인가 목적지로의 전송 중 조기 탐지 (연결 종료 전)"
+      },
+      "status": {
+        "inhibitedBy": [],
+        "mutedBy": [],
+        "silencedBy": [],
+        "state": "active"
+      },
+      "startsAt": "2026-10-26T13:15:29.387Z",
+      "endsAt": "2026-10-26T13:19:29.387Z",
+      "fingerprint": "c129d63aa2be952e"
+    }
+  ],
+  "checks": {
+    "regression": true,
+    "live_dashboard_matches_file": true,
+    "source_files_match_loki_rows": true,
+    "summary_and_panels_match": true,
+    "alert_api_and_panels_match": true,
+    "reexport_did_not_duplicate": true,
+    "experiment_filter": true
+  }
+}

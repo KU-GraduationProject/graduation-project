@@ -22,6 +22,8 @@ import csv
 import json
 import os
 import time
+import uuid
+import warnings
 from dataclasses import dataclass
 
 from evaluation import ConfusionMatrix, RunOutcome
@@ -82,16 +84,24 @@ def evaluate_run(run, crosscheck_ok: bool, detected: bool,
 # --------------------------------------------------------------------------- #
 
 def write_results(outcomes, matrix: ConfusionMatrix, out_dir: str,
-                  label: str, frozen=None) -> dict:
+                  label: str, frozen=None, measurements=None) -> dict:
     """실행별 결과(JSONL/CSV)와 집계(JSON)를 저장. 저장 경로 dict 반환."""
     os.makedirs(out_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     base = f"{label}_{stamp}"
+    if measurements is not None:
+        if len(measurements) != len(outcomes):
+            raise ValueError("Each result needs its own measurement metadata")
+        # Concurrent/repeated experiments must not overwrite another result file.
+        base += "_" + measurements[0]["experiment_id"] if measurements else "_" + uuid.uuid4().hex
+    from result_telemetry import enrich_result
+    rows = [enrich_result(o, measurements[i]) if measurements is not None else o.as_dict()
+            for i, o in enumerate(outcomes)]
 
     runs_json = os.path.join(out_dir, f"{base}_runs.jsonl")
     with open(runs_json, "w", encoding="utf-8") as fh:
-        for o in outcomes:
-            fh.write(json.dumps(o.as_dict(), ensure_ascii=False) + "\n")
+        for row in rows:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     runs_csv = os.path.join(out_dir, f"{base}_runs.csv")
     with open(runs_csv, "w", encoding="utf-8", newline="") as fh:
@@ -108,6 +118,9 @@ def write_results(outcomes, matrix: ConfusionMatrix, out_dir: str,
         "confusion_matrix": matrix.as_dict(),
         "frozen_config": frozen.as_dict() if frozen is not None else None,
     }
+    if measurements:
+        summary["experiment_id"] = measurements[0]["experiment_id"]
+        summary["measurement_basis"] = measurements[0]["measurement_basis"]
     summary_json = os.path.join(out_dir, f"{base}_summary.json")
     with open(summary_json, "w", encoding="utf-8") as fh:
         json.dump(summary, fh, ensure_ascii=False, indent=2)
@@ -126,6 +139,7 @@ class ExperimentConfig:
     verify_timeout: int = 120
     cooldown_timeout: int = 90
     inter_run_sleep: float = 2.0
+    results_loki_url: str | None = None
 
 
 def _sink_for(run) -> SinkEndpoint:
@@ -146,7 +160,10 @@ def run_experiment(plan, cfg: ExperimentConfig, out_dir: str, label: str,
         if drift:
             raise RuntimeError(f"동결 이후 설정이 변경됨 — V2 평가 거부: {drift}")
 
+    from result_telemetry import result_metadata, publish_result_file
+    experiment_id = uuid.uuid4().hex
     outcomes = []
+    measurements = []
     for i, run in enumerate(plan):
         sink = _sink_for(run)
         # 실행 간 격리: 이전 경보가 inactive 될 때까지 대기
@@ -164,10 +181,21 @@ def run_experiment(plan, cfg: ExperimentConfig, out_dir: str, label: str,
         detail = f"crosscheck_ok={crosscheck_ok}; stages={stage_flags}"
         outcomes.append(evaluate_run(run, crosscheck_ok, detected,
                                      verify.mttd_seconds, detail))
+        endpoint = getattr(cfg.verifier, "loki_url", "http://localhost:3100").rstrip("/")
+        measurements.append(result_metadata(experiment_id, i + 1, transfer_id, verify,
+                                            endpoint + "/prometheus/api/v1/alerts"))
         time.sleep(cfg.inter_run_sleep)
 
     matrix = ConfusionMatrix.from_outcomes(outcomes)
-    paths = write_results(outcomes, matrix, out_dir, label, frozen=frozen)
+    paths = write_results(outcomes, matrix, out_dir, label, frozen=frozen, measurements=measurements)
+    if cfg.results_loki_url:
+        try:
+            count = publish_result_file(paths["runs_jsonl"], cfg.results_loki_url)
+            print(f"Loki evaluation results published: {count}")
+        except Exception as exc:
+            # The saved experiment and its evaluation remain usable during a Loki outage.
+            warnings.warn(f"Loki result publication failed ({type(exc).__name__}); "
+                          f"retry with export-results: {paths['runs_jsonl']}")
     return {"outcomes": [o.as_dict() for o in outcomes],
             "confusion_matrix": matrix.as_dict(), "paths": paths}
 
@@ -186,6 +214,10 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="S2/C-a 실험 러너 (V1 튜닝 / V2 held-out)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    pe = sub.add_parser("export-results", help="저장된 구조화 결과를 Loki에 재전송 (중복 방지)")
+    pe.add_argument("runs_jsonl")
+    pe.add_argument("--loki-url", default=os.getenv("LOKI_URL", "http://localhost:3100"))
+
     pf = sub.add_parser("freeze", help="최종 평가 전 설정 동결 스냅샷 생성")
     pf.add_argument("--out", default=os.path.join(_default_out_dir(), "frozen.json"))
     pf.add_argument("--N", type=int, default=1048576, help="Zeek ConnThreshold 바이트 N")
@@ -199,7 +231,13 @@ def main(argv=None) -> int:
     pr.add_argument("--loki-url", default=os.getenv("LOKI_URL", "http://localhost:3100"))
     pr.add_argument("--am-url", default=os.getenv("ALERTMANAGER_URL", "http://localhost:9093"))
     pr.add_argument("--frozen", help="V2 held-out: 동결 스냅샷 경로(필수)")
+    pr.add_argument("--no-publish-results", action="store_true", help="오프라인 실행: Loki 결과 전송 생략")
     args = p.parse_args(argv)
+
+    if args.cmd == "export-results":
+        from result_telemetry import publish_result_file
+        print(f"Loki evaluation results published: {publish_result_file(args.runs_jsonl, args.loki_url)}")
+        return 0
 
     if args.cmd == "freeze":
         from freeze import freeze_config
@@ -230,7 +268,8 @@ def main(argv=None) -> int:
 
     from verifier import NetworkScenarioVerifier
     verifier = NetworkScenarioVerifier(loki_url=args.loki_url, alertmanager_url=args.am_url)
-    cfg = ExperimentConfig(db_password=db_password, verifier=verifier)
+    cfg = ExperimentConfig(db_password=db_password, verifier=verifier,
+                           results_loki_url=None if args.no_publish_results else args.loki_url)
 
     plan = build_plan(args.variant, s2_reps, ca_reps)
     label = f"S2CA-{args.variant}"
