@@ -2,7 +2,9 @@
 LLM 품질 평가용 테스트케이스 (8개)
 각 케이스는 실제 시나리오 기반 하드코딩 입력 + 정답 레이블로 구성.
 
-정답 정의 가능: action_type, action_risk, threat_level
+정답 정의 가능: action_type, threat_level
+action_risk 는 LLM 출력이 아니라 정책 엔진이 action_type 으로 정한다 (Phase 1) —
+따라서 LLM 품질 채점 항목에서 제외한다 (aiops/policy/remediation_policy.yml)
 정답 정의 불가 (별도 평가): confidence(캘리브레이션), root_cause(Claude 판별)
 """
 
@@ -20,14 +22,12 @@ SCHEMA (all fields required):
   "action_targets": ["<container name from ALERT>"],
   "action_description": "<one sentence>",
   "threat_level": "<low|medium|high|critical>",
-  "action_risk": "<low|medium|high>",
   "evidence": ["<metric observation>", ...],
   "confidence": <0.0-1.0>
 }
 
 RULES:
 - action_type: RESTART=CPU spike/memory leak (service down), ISOLATE=active network attack/data exfil, PAUSE=container compromise requiring forensic preservation, THROTTLE=transient CPU/memory pressure with service still alive, NOTIFY=ambiguous/needs human review, NONE=false positive or already recovered
-- action_risk: low=NOTIFY/NONE only, medium=THROTTLE/SCALE/config, high=RESTART/ISOLATE/PAUSE
 - action_targets: MUST match Container field in ALERT. Always an array.
 - evidence: 3-5 numeric values from metrics.
 """
@@ -62,7 +62,6 @@ host_cpu: latest=0.9200, peak=0.9500, samples=30
 Analyze the above data and respond with JSON only.""",
         "expected": {
             "action_type": "RESTART",
-            "action_risk": "high",
             "threat_level": "high",
         },
     },
@@ -93,7 +92,6 @@ host_cpu: latest=0.4800, peak=0.5200, samples=30
 Analyze the above data and respond with JSON only.""",
         "expected": {
             "action_type": "THROTTLE",
-            "action_risk": "low",
             "threat_level": "medium",
         },
     },
@@ -124,7 +122,6 @@ memory_usage: latest=420000000.0000, peak=425000000.0000, samples=30
 Analyze the above data and respond with JSON only.""",
         "expected": {
             "action_type": "PAUSE",
-            "action_risk": "high",
             "threat_level": "critical",
         },
     },
@@ -157,7 +154,6 @@ memory_usage: latest=180000000.0000, peak=185000000.0000, samples=30
 Analyze the above data and respond with JSON only.""",
         "expected": {
             "action_type": "ISOLATE",
-            "action_risk": "high",
             "threat_level": "critical",
         },
     },
@@ -188,7 +184,6 @@ host_cpu: latest=0.0300, peak=0.4800, samples=30
 Analyze the above data and respond with JSON only.""",
         "expected": {
             "action_type": "NONE",
-            "action_risk": "low",
             "threat_level": "low",
         },
     },
@@ -219,7 +214,6 @@ memory_usage: latest=380000000.0000, peak=390000000.0000, samples=30
 Analyze the above data and respond with JSON only.""",
         "expected": {
             "action_type": "NOTIFY",
-            "action_risk": "low",
             "threat_level": "medium",
         },
     },
@@ -250,7 +244,6 @@ memory_usage: latest=430000000.0000, peak=440000000.0000, samples=30
 Analyze the above data and respond with JSON only.""",
         "expected": {
             "action_type": "PAUSE",
-            "action_risk": "high",
             "threat_level": "critical",
         },
     },
@@ -282,7 +275,6 @@ memory_limit: latest=512000000.0000, peak=512000000.0000, samples=30
 Analyze the above data and respond with JSON only.""",
         "expected": {
             "action_type": "THROTTLE",
-            "action_risk": "medium",
             "threat_level": "medium",
         },
     },

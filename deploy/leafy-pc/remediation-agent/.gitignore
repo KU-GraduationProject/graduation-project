@@ -1,0 +1,3 @@
+allowlist.yml
+secrets/
+*.sqlite3*

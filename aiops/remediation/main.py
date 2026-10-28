@@ -7,7 +7,8 @@ AIOps Remediation Agent (Final Version)
        - source="llm_health_check"   → LLM 헬스체크에서 온 승인
        - source="alert_triggered"    → 기존 alert 기반 승인 (기본값)
 """
-from fastapi import FastAPI, Request
+from contextlib import asynccontextmanager
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from datetime import datetime
@@ -18,31 +19,171 @@ import os
 import time
 import urllib.parse
 import httpx
-from actions.container import ContainerActions
+import evidence as evidence_mod
+import recovery as recovery_mod
+import store as store_mod
 from actions.notify import Notifier
+from executor.base import RECOVERY_ACTION, DisabledExecutor
+from executor.local_docker import LocalDockerExecutor
+from executor.remote import RemoteExecutor
+from policy.engine import load_engine
+from policy.schema import (
+    AUTO_EXECUTE_CANDIDATE,
+    AWAITING_APPROVAL,
+    BLOCKED,
+    NO_ACTION,
+    NOTIFY,
+)
+from security.replay import ReplayGuard
+from security.service_auth import SIGNATURE_HEADER as SERVICE_SIGNATURE_HEADER
+from security.service_auth import verify_service_request
+from security.slack_signature import SIGNATURE_HEADER as SLACK_SIGNATURE_HEADER
+from security.slack_signature import verify_slack_request
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 LOKI_URL = os.getenv("LOKI_URL", "http://loki:3100")
 
+# ─── 인증 (Phase 0) ──────────────────────────────────────
+# 두 엔드포인트 모두 서명을 요구한다. 키가 없으면 요청을 거부한다 (fail closed) —
+# 설정 누락을 "인증 없이 실행"으로 처리하면 안전장치가 의미를 잃는다.
+SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
+REMEDIATION_API_KEY = os.getenv("REMEDIATION_API_KEY", "")
+
+_replay_guard = ReplayGuard()
+
 # docker   : 로컬 Docker SDK로 조치를 실행한다 (기존 all-in-one docker-compose.yml)
 # disabled : 조치를 실행하지 않는다. AIOps 단독 배포에서는 Leafy가 다른 PC에 있어 로컬 Docker 조치가 대상에 닿지 않고,
 #            같은 이름의 로컬 컨테이너(남은 leafy-* 또는 AIOps 자신)를 건드릴 위험만 있다. 원격 조치 경로가 생기기 전까지 쓴다.
 #            판단·알림·승인 기록은 그대로 남기고, 실행 결과는 SKIPPED로 기록한다.
-REMEDIATION_MODE = os.getenv("REMEDIATION_MODE", "docker")
-if REMEDIATION_MODE not in ("docker", "disabled"):
-    raise ValueError(f"REMEDIATION_MODE must be docker or disabled: {REMEDIATION_MODE!r}")
+REMEDIATION_MODE = os.getenv("REMEDIATION_MODE", "disabled")
+if REMEDIATION_MODE not in ("docker", "disabled", "remote"):
+    raise ValueError(f"REMEDIATION_MODE must be docker, remote or disabled: {REMEDIATION_MODE!r}")
 
-app = FastAPI(title="AIOps Remediation", version="0.1.0")
-
-container_actions = ContainerActions() if REMEDIATION_MODE == "docker" else None
 notifier = Notifier()
+
+# 정책 엔진 (Phase 1). 로드에 실패하면 모든 조치를 차단하는 엔진이 돌아온다.
+policy_engine = load_engine()
+
+# 실행기 (Phase 2). disabled 모드에서는 Docker 를 아예 건드리지 않는다.
+# 격리 대상/보존 네트워크는 정책 파일이 정하고, 실제 이름은 실행기가 inspect 로 읽는다.
+_net_policy = getattr(policy_engine.config, "networks", None) \
+    if hasattr(policy_engine, "config") else None
+executor = (
+    LocalDockerExecutor(
+        isolate_networks=getattr(_net_policy, "isolate", ()),
+        preserve_networks=getattr(_net_policy, "preserve", ()),
+    )
+    if REMEDIATION_MODE == "docker" else DisabledExecutor()
+)
+if REMEDIATION_MODE == "remote":
+    executor = RemoteExecutor.from_env()
+# 하위 호환: 기존 테스트·코드가 "조치 실행기가 있는지" 를 이 이름으로 본다.
+container_actions = executor if REMEDIATION_MODE == "docker" else None
+
+# 조치 레코드 저장소 (멱등성·TTL·MTTR). 파일에 영속화해 재시작을 견딘다.
+record_store = store_mod.RecordStore()
+record_store.load()
+record_store.reconcile_interrupted()
+if not record_store.check_writable():
+    logger.error("[Remediation] 상태 저장 불가 — 되돌려야 하는 조치(격리/동결/쿼터)는 "
+                 "차단된다 (REMEDIATION_STATE_DIR 확인)")
+
+# TTL 복구 스캐너 — 주기적으로 만료된 조치를 처리한다.
+#   auto             : 자동 복구 (THROTTLE -> UNTHROTTLE)
+#   require_approval : 자동 복구하지 않고 복구 승인을 요청한다 (ISOLATE/PAUSE)
+TTL_SCAN_INTERVAL_SEC = float(os.getenv("REMEDIATION_TTL_SCAN_SEC", "60"))
+ttl_scanner = None
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """
+    TTL 복구 스캐너를 기동한다. disabled 모드에서도 돌지만 실행기가 아무것도 하지
+    않으므로 조치는 일어나지 않는다 (만료 레코드가 없으면 조용히 쉰다).
+    """
+    global ttl_scanner
+    task = None
+    if TTL_SCAN_INTERVAL_SEC > 0:
+        ttl_scanner = recovery_mod.TtlScanner(
+            record_store, executor, interval_sec=TTL_SCAN_INTERVAL_SEC,
+            on_event=_on_ttl_event)
+        task = asyncio.create_task(ttl_scanner.run())
+        logger.info("[Recovery] TTL 스캐너 시작 (%.0fs 주기)", TTL_SCAN_INTERVAL_SEC)
+    else:
+        logger.info("[Recovery] TTL 스캐너 비활성 (REMEDIATION_TTL_SCAN_SEC<=0)")
+    try:
+        yield
+    finally:
+        if ttl_scanner is not None:
+            ttl_scanner.stop()
+        if task is not None:
+            task.cancel()
+
+
+app = FastAPI(title="AIOps Remediation", version="0.1.0", lifespan=lifespan)
 logger.info(f"[Remediation] REMEDIATION_MODE={REMEDIATION_MODE}")
+# 키 값은 찍지 않는다. 설정 여부만 남겨 fail closed 상태를 운영자가 바로 알 수 있게 한다.
+logger.info(
+    "[Remediation] auth: SLACK_SIGNING_SECRET=%s REMEDIATION_API_KEY=%s",
+    "set" if SLACK_SIGNING_SECRET else "MISSING (/slack/action 전부 거부)",
+    "set" if REMEDIATION_API_KEY else "MISSING (/action 전부 거부)",
+)
 
 
 class ActionRequest(BaseModel):
     alert: dict
     analysis: dict
+
+
+# ─── 인증 게이트 ─────────────────────────────────────────
+
+async def _push_auth_denied(endpoint: str, reason: str, signature: str | None) -> None:
+    """인증 거부를 감사 로그에 남긴다. 서명 원문은 남기지 않는다(앞 12자만)."""
+    logger.warning(f"[Auth] 거부: endpoint={endpoint} reason={reason}")
+    await _push_soc_event("aiops-remediation", {
+        "event":       "auth_denied",
+        "endpoint":    endpoint,
+        "reason":      reason,
+        "signature_prefix": (signature or "")[:12],
+        "status":      "DENIED",
+    })
+
+
+async def _push_policy_decision(alert: dict, decision, source: str) -> None:
+    """
+    정책 판단과 근거를 감사 로그에 남긴다. 조치 실행 기록(auto_remediation /
+    manual_approval_executed)과는 별개 이벤트다 — 판단과 실행을 구분해 기록한다.
+    """
+    body = {
+        "event":  "policy_decision",
+        "alert":  alert.get("labels", {}).get("alertname", "unknown"),
+        "source": source,
+        "status": decision.outcome,
+        **decision.as_dict(),
+    }
+    logger.info(
+        "[Policy] %s: action=%s risk=%s threat=%s(%s) outcome=%s approval=%s exec_now=%s",
+        source, decision.action_type, decision.action_risk, decision.threat_level,
+        decision.urgency, decision.outcome, decision.requires_approval,
+        decision.executable_now,
+    )
+    await _push_soc_event("aiops-remediation", body)
+
+
+async def require_service_auth(request: Request) -> None:
+    """
+    /action 서명 검증. 거부 시 401 을 올려 핸들러에 들어가지 않게 한다 —
+    조치 실행 코드는 핸들러 안에만 있으므로 여기서 막히면 Docker 호출이 없다.
+    """
+    body = await request.body()
+    signature = request.headers.get(SERVICE_SIGNATURE_HEADER)
+    ok, reason = verify_service_request(body, request.headers, REMEDIATION_API_KEY)
+    if ok and not _replay_guard.remember(signature or ""):
+        ok, reason = False, "replayed_signature"
+    if not ok:
+        await _push_auth_denied("/action", reason, signature)
+        raise HTTPException(status_code=401, detail="unauthorized")
 
 
 # ─── 기존 엔드포인트 ─────────────────────────────────────
@@ -52,15 +193,51 @@ async def health():
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
 
 
-@app.post("/action")
+class RemoteReconcileRequest(BaseModel):
+    operation: str
+    remediation_id: str
+    retry: bool = False
+
+
+@app.post("/remote/reconcile", dependencies=[Depends(require_service_auth)])
+async def reconcile_remote(request: RemoteReconcileRequest):
+    # This endpoint can only revisit an already approved durable record.
+    # The operation marker is signed in the body (Phase 0 HMAC does not bind paths).
+    if request.operation != "reconcile_remote" or not isinstance(executor, RemoteExecutor):
+        raise HTTPException(400, "remote_reconciliation_unavailable")
+    record = record_store.get(request.remediation_id)
+    if record is None or record.executor_name != "remote":
+        raise HTTPException(404, "unknown_remote_record")
+    from executor.remote_sync import reconcile
+    record = await asyncio.to_thread(reconcile, record_store, executor, record)
+    if request.retry and record.state in (store_mod.UNKNOWN, store_mod.NEEDS_REVIEW,
+                                          store_mod.RECOVERY_UNKNOWN):
+        allowed, _ = policy_engine.execution_allowed(record.action_type, record.targets)
+        recovering = record.state == store_mod.RECOVERY_UNKNOWN or bool(record.recovery_started_at)
+        approver = record.recovery_approved_by if recovering else record.approved_by
+        if not allowed or not approver:
+            raise HTTPException(403, "stored_approval_and_current_policy_required")
+        for target in record.targets:
+            await asyncio.to_thread(executor.execute_record, record, target, approver,
+                                    RECOVERY_ACTION.get(record.action_type) if recovering else None)
+        record = await asyncio.to_thread(reconcile, record_store, executor, record)
+    return record.as_dict()
+
+
+@app.post("/action", dependencies=[Depends(require_service_auth)])
 async def execute_action(request: ActionRequest):
-    """분석 결과 수신 → 신뢰도와 위험도에 따른 실행 분기"""
+    """
+    분석 결과 수신 → 정책 엔진이 집행을 결정한다 (Phase 1).
+
+    이전에는 LLM 이 보낸 action_risk 와 confidence 로 직접 분기해, LLM 이 위험도를
+    낮게 쓰면 승인 없이 조치가 실행됐다. 지금은 위험도·승인·자동 실행 가능 여부를
+    정책 엔진이 정하고 LLM 의 action_risk 는 기록만 한다.
+    """
     analysis = request.analysis
     alert    = request.alert
 
-    action_type    = analysis.get("action_type", "NONE").upper()
+    action_type    = str(analysis.get("action_type", "NONE")).upper()
     action_targets = analysis.get("action_targets", [])
-    action_risk    = analysis.get("action_risk", "medium")
     threat_level   = analysis.get("threat_level", "medium")
     confidence     = analysis.get("confidence", 0.0)
 
@@ -77,43 +254,88 @@ async def execute_action(request: ActionRequest):
         "confidence":  confidence,
     })
 
-    # 자동 실행 (저위험 + 고신뢰)
-    if action_risk == "low" and confidence >= 0.7:
-        if action_type in ["RESTART", "ISOLATE", "PAUSE", "THROTTLE"]:
-            if not action_targets:
-                slack_dispatch = await notifier.send_approval_request(alert, analysis)
-                await _push_slack_status(alert, analysis, slack_dispatch, "approval_request")
-                return {"status": "pending_approval", "message": "No targets specified."}
-            execution_results = []
-            for target in action_targets:
-                res = await _execute(action_type, target)
-                execution_results.append(res)
-                await _push_remediation_status(alert, analysis, target, action_type, res)
-            return {"status": "executed" if container_actions else "skipped", "results": execution_results}
-        else:
+    decision = policy_engine.decide_from_analysis(analysis)
+    await _push_policy_decision(alert, decision, source="action")
+
+    alertname = alert.get("labels", {}).get("alertname", "unknown")
+    # MTTR 기준점: 경보 발생 시각 (Alertmanager startsAt). 없으면 수신 시각.
+    alert_active_at = alert.get("startsAt") or store_mod.utcnow()
+    record = None
+    if decision.performs_action:
+        record = store_mod.RemediationRecord(
+            remediation_id=record_store.new_id(),
+            alertname=alertname, action_type=decision.action_type,
+            targets=list(decision.targets), action_risk=decision.action_risk,
+            threat_level=decision.threat_level,
+            requires_approval=decision.requires_approval,
+            ttl_seconds=decision.ttl_seconds, recovery_mode=decision.recovery_mode,
+            source="alert_triggered", alert_active_at=alert_active_at,
+        )
+        record_store.create(record)
+
+    # ① 정책 차단 — 미지원·미정의 조치 (fail closed)
+    if decision.outcome == BLOCKED:
+        slack_dispatch = await notifier.send_alert_only(alert, analysis)
+        await _push_slack_status(alert, analysis, slack_dispatch, "alert_only")
+        return {"status": "blocked", "reason": decision.blocked_reason,
+                "policy": decision.as_dict()}
+
+    # ② 실행할 조치가 없음 (NONE) 또는 알림만 (NOTIFY)
+    if decision.outcome in (NO_ACTION, NOTIFY):
+        slack_dispatch = await notifier.send_alert_only(alert, analysis)
+        await _push_slack_status(alert, analysis, slack_dispatch, "alert_only")
+        return {"status": "notified", "message": f"Action {action_type} performs no change.",
+                "policy": decision.as_dict()}
+
+    # ③ 승인 필요 — high risk 는 confidence·critical 과 무관하게 항상 여기로 온다
+    remote_manual_only = isinstance(executor, RemoteExecutor) and decision.outcome == AUTO_EXECUTE_CANDIDATE
+    if decision.outcome == AWAITING_APPROVAL or remote_manual_only:
+        rid = record.remediation_id if record else None
+        if record:
+            record_store.update(rid, state=store_mod.AWAITING_APPROVAL,
+                                requires_approval=True,
+                                approval_requested_at=store_mod.utcnow())
+        # 승인 버튼에 remediation_id 를 실어 보낸다 — 중복 승인이 한 건으로 합쳐진다.
+        slack_dispatch = await notifier.send_approval_request(
+            alert, analysis, remediation_id=rid)
+        await _push_slack_status(alert, analysis, slack_dispatch, "approval_request")
+        if record:
+            await _push_record(record_store.get(rid) or record, "approval_requested")
+        return {"status": "pending_approval", "reasons": list(decision.reasons) +
+                (["remote_auto_disabled_manual_approval_required"] if remote_manual_only else []),
+                "remediation_id": rid, "policy": decision.as_dict()}
+
+    # ④ 자동 실행 후보 — 정책 조건은 충족했다. 실제 실행은 execution_allowed 가 정한다.
+    if decision.outcome == AUTO_EXECUTE_CANDIDATE:
+        if not decision.executable_now:
+            # 정책상 후보이지만 지금 실행할 수는 없다 (실행기·복구 미비 등).
+            # "후보"와 "실행 가능"을 구분해 기록한다 — 성공으로 표시하지 않는다.
+            if record:
+                record_store.update(record.remediation_id, state=store_mod.BLOCKED)
             slack_dispatch = await notifier.send_alert_only(alert, analysis)
             await _push_slack_status(alert, analysis, slack_dispatch, "alert_only")
-            return {"status": "notified", "message": f"Action {action_type} is not auto-enabled."}
+            return {"status": "auto_execution_deferred",
+                    "reasons": list(decision.reasons), "policy": decision.as_dict()}
 
-    elif action_risk == "low" and confidence < 0.7:
-        slack_dispatch = await notifier.send_approval_request(alert, analysis)
-        await _push_slack_status(alert, analysis, slack_dispatch, "approval_request")
-        return {"status": "pending_approval", "message": "Low confidence analysis."}
-
-    elif action_risk == "medium":
-        if threat_level == "low":
+        # 승인 없이 실행되는 경로이지만, 증거 보존·검증·TTL 복구는 승인 경로와 같다.
+        results, state = await _perform(record, decision.targets, action_type)
+        for res in results:
+            await _push_remediation_status(alert, analysis, res.target,
+                                           action_type, res.summary())
+        # 정책이 사후 알림을 요구하면 보낸다 (THROTTLE: notify=post_action)
+        if decision.notify == "post_action":
             slack_dispatch = await notifier.send_alert_only(alert, analysis)
             await _push_slack_status(alert, analysis, slack_dispatch, "alert_only")
-            return {"status": "notified", "message": "Medium risk, low threat: notification sent."}
-        else:
-            slack_dispatch = await notifier.send_approval_request(alert, analysis)
-            await _push_slack_status(alert, analysis, slack_dispatch, "approval_request")
-            return {"status": "pending_approval", "message": "Approval required for medium risk."}
+        status = {store_mod.VERIFIED: "executed", store_mod.SKIPPED: "skipped", store_mod.UNKNOWN: "unknown",
+                  store_mod.BLOCKED: "blocked"}.get(state, "failed")
+        return {"status": status, "remediation_id": record.remediation_id if record else None,
+                "record_state": state,
+                "results": [r.as_dict() for r in results], "policy": decision.as_dict()}
 
-    else:  # High risk
-        slack_dispatch = await notifier.send_approval_request(alert, analysis)
-        await _push_slack_status(alert, analysis, slack_dispatch, "approval_request")
-        return {"status": "pending_approval", "message": "High-risk action requires manual intervention."}
+    # 도달하지 않아야 하는 분기 — 열어 두지 않고 차단한다.
+    logger.error(f"[Policy] 처리되지 않은 outcome: {decision.outcome}")
+    return {"status": "blocked", "reason": "unhandled_policy_outcome",
+            "policy": decision.as_dict()}
 
 
 # ─── Slack Interactive Components 콜백 ───────────────────
@@ -128,8 +350,17 @@ async def slack_interactive_action(request: Request):
       periodic_log_scan → 주기적 로그 스캔에서 온 승인
       llm_health_check  → LLM 헬스체크에서 온 승인
     """
-    # 1. Slack payload 파싱
+    # 0. Slack 서명 검증 — 파싱·실행보다 먼저. 거부되면 조치 코드에 닿지 않는다.
     body = await request.body()
+    slack_signature = request.headers.get(SLACK_SIGNATURE_HEADER)
+    ok, reason = verify_slack_request(body, request.headers, SLACK_SIGNING_SECRET)
+    if ok and not _replay_guard.remember(slack_signature or ""):
+        ok, reason = False, "replayed_signature"
+    if not ok:
+        await _push_auth_denied("/slack/action", reason, slack_signature)
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+
+    # 1. Slack payload 파싱
     params = urllib.parse.parse_qs(body.decode("utf-8"))
     raw_payload = params.get("payload", [None])[0]
 
@@ -162,6 +393,10 @@ async def slack_interactive_action(request: Request):
     action_targets = action_data.get("action_targets", [])
     # [NEW] source 필드로 출처 구분
     source         = action_data.get("source", "alert_triggered")
+    # [Phase 2] 멱등성 키. 과거 메시지·주기 스캔 버튼에는 없으므로, 없으면 경보·조치·
+    # 대상에서 결정적으로 유도해 같은 승인이 한 건으로 합쳐지게 한다.
+    remediation_id = action_data.get("remediation_id") or \
+        store_mod.derive_id(alertname, action_type, action_targets)
 
     logger.info(
         f"[Slack Action] id={action_id}, user={user_name}, "
@@ -179,22 +414,63 @@ async def slack_interactive_action(request: Request):
     if action_id == "approve_action":
         results = []
 
-        if action_type in ("RESTART", "ISOLATE") and action_targets:
-            for target in action_targets:
-                res = await _execute(action_type, target)
-                results.append(res)
+        # 승인되었어도 정책의 실행 게이트를 통과해야 실행한다. 자동 경로와 같은
+        # 함수를 쓰므로 "한쪽 경로에서만 실행 가능한 조치"가 생기지 않는다.
+        allowed, exec_reason = policy_engine.execution_allowed(action_type, action_targets)
+        if not allowed:
+            logger.warning(
+                f"[Policy] 승인됐지만 실행하지 않는다: {action_type} — {exec_reason}")
+
+        if allowed:
+            # 레코드가 없으면(과거 메시지·주기 스캔) 승인 시점에 만든다.
+            policy = policy_engine.config.actions.get(action_type) \
+                if hasattr(policy_engine, "config") else None
+            record, _is_new = record_store.get_or_create(store_mod.RemediationRecord(
+                remediation_id=remediation_id, alertname=alertname,
+                action_type=action_type, targets=list(action_targets),
+                requires_approval=True, source=source,
+                ttl_seconds=getattr(policy, "ttl_seconds", None),
+                recovery_mode=getattr(policy, "recovery_mode", "none"),
+                state=store_mod.AWAITING_APPROVAL,
+                approval_requested_at=store_mod.utcnow(),
+            ))
+            # 상태를 APPROVED 로 덮지 않는다 — 이미 실행된 조치가 다시 실행 권리를
+            # 얻으면 중복 실행이 된다. 전이 조건은 store 가 판단한다.
+            record = record_store.mark_approved(remediation_id, user_name) or record
+
+            exec_results, state = await _perform(record, record.targets, action_type,
+                                                 approved_by=user_name)
+            if exec_results:
+                for res in exec_results:
+                    results.append(res.summary())
+                    await _push_soc_event("aiops-timeline", {
+                        "event":       "manual_approval_executed",
+                        "alert":       alertname,
+                        "target":      res.target,
+                        "action_type": action_type,
+                        "approved_by": user_name,
+                        "source":      source,       # [NEW] 출처 기록
+                        "status":      _result_status(res.summary()),
+                        "result":      res.summary(),
+                        "remediation_id": remediation_id,
+                        "verified":    res.verified,
+                    })
+            else:
+                # 중복 승인 또는 증거 게이트 차단 — 실행하지 않았다.
+                results = [f"Not executed: {action_type} ({state})"]
                 await _push_soc_event("aiops-timeline", {
-                    "event":       "manual_approval_executed",
+                    "event":       "manual_approval_logged",
                     "alert":       alertname,
-                    "target":      target,
                     "action_type": action_type,
                     "approved_by": user_name,
-                    "source":      source,       # [NEW] 출처 기록
-                    "status":      _result_status(res),
-                    "result":      res,
+                    "source":      source,
+                    "status":      state,
+                    "remediation_id": remediation_id,
                 })
         else:
-            results = [f"action_type={action_type} — auto-handler 없음, 로그만 기록"]
+            # 실행하지 않은 이유를 사람이 읽을 수 있게 남긴다 (이전에는 "auto-handler
+            # 없음" 으로만 기록돼 왜 실행되지 않았는지 알 수 없었다).
+            results = [f"Not executed: {action_type} blocked by policy ({exec_reason})"]
             await _push_soc_event("aiops-timeline", {
                 "event":       "manual_approval_logged",
                 "alert":       alertname,
@@ -202,6 +478,8 @@ async def slack_interactive_action(request: Request):
                 "approved_by": user_name,
                 "source":      source,
                 "status":      "LOGGED",
+                "policy_block_reason": exec_reason,
+                "remediation_id": remediation_id,
             })
 
         result_text = "\n".join(f"• {r}" for r in results)
@@ -212,6 +490,49 @@ async def slack_interactive_action(request: Request):
             f"{result_text}"
         )
         return JSONResponse(status_code=200, content={"status": "approved", "results": results})
+
+    elif action_id == "approve_recovery":
+        # TTL 만료로 복구 승인을 요청한 조치를 사람이 승인했다.
+        # ISOLATE/PAUSE 는 이 경로로만 복구된다 (TTL 만으로 자동 복구하지 않는다).
+        record = record_store.get(remediation_id)
+        if record is None:
+            return JSONResponse(status_code=404,
+                                content={"error": "unknown_remediation_id"})
+        if record.action_type != action_type or sorted(record.targets) != sorted(action_targets):
+            return JSONResponse(status_code=409, content={"error": "recovery_not_eligible"})
+        if (record.executor_name == "remote" and record.state in
+                (store_mod.UNKNOWN, store_mod.NEEDS_REVIEW, store_mod.FAILED)
+                and RECOVERY_ACTION.get(record.action_type)
+                and all(evidence_mod.for_target(record.evidence, t).get("container_id") for t in record.targets)):
+            # Explicit signed human recovery approval for a partial/uncertain execution.
+            # Agent still requires its own evidence and an idle claim before mutation.
+            record_store.update(remediation_id, state=store_mod.RECOVERY_APPROVAL_REQUIRED)
+        if record.state not in (store_mod.RECOVERY_PENDING, store_mod.RECOVERY_APPROVAL_REQUIRED):
+            return JSONResponse(status_code=409, content={"error": "recovery_not_eligible"})
+        results, state = await asyncio.get_event_loop().run_in_executor(
+            None, recovery_mod.recover, record_store, executor, record, user_name, True)
+        summaries = [r.summary() for r in results] or [f"Not recovered ({state})"]
+        updated = record_store.get(remediation_id) or record
+        await _push_record(updated, "recovery_completed", updated.state)
+        await _push_soc_event("aiops-timeline", {
+            "event":       "recovery_approved",
+            "alert":       alertname,
+            "action_type": action_type,
+            "approved_by": user_name,
+            "remediation_id": remediation_id,
+            "status":      state,
+            "results":     summaries,
+            "mttr_sec":    updated.timings().get("mttr_sec"),
+        })
+        await _update_slack_message(
+            response_url,
+            f":arrows_counterclockwise: *복구 승인됨* (by `{user_name}`)\n"
+            f"조치: `{action_type}` | 상태: `{state}`\n"
+            + "\n".join(f"• {s}" for s in summaries)
+        )
+        return JSONResponse(status_code=200,
+                            content={"status": "recovery_" + state.lower(),
+                                     "results": summaries})
 
     elif action_id == "reject_action":
         await _push_soc_event("aiops-timeline", {
@@ -252,37 +573,144 @@ async def _update_slack_message(response_url: str, text: str) -> None:
 
 # ─── 헬퍼 함수 ───────────────────────────────────────────
 
-async def _execute(action_type: str, target: str) -> str:
-    if container_actions is None:
-        logger.warning(f"[Remediation] REMEDIATION_MODE=disabled — {action_type} {target} 실행하지 않음")
-        return f"Skipped: {action_type} {target} not executed (REMEDIATION_MODE=disabled, 원격 조치 미구현)"
-    if not target:
-        return "Error: No target container name"
+async def _run_executor(action: str, target: str, target_evidence: dict):
+    """
+    실행기를 블로킹하지 않게 호출한다 (Docker SDK 는 동기 호출이다).
+    반환은 ExecutionResult — 조치 뒤 상태를 재조회해 확인한 결과다.
+    """
     loop = asyncio.get_event_loop()
-    try:
-        if action_type == "RESTART":
-            await loop.run_in_executor(None, container_actions.restart, target)
-            return f"Success: {target} restarted."
-        elif action_type == "ISOLATE":
-            await loop.run_in_executor(None, container_actions.isolate, target)
-            return f"Success: {target} isolated from network."
-        elif action_type == "PAUSE":
-            await loop.run_in_executor(None, container_actions.pause, target)
-            return f"Success: {target} paused (forensic preservation)."
-        elif action_type == "THROTTLE":
-            await loop.run_in_executor(None, container_actions.throttle, target)
-            return f"Success: {target} throttled (cpu_quota=50%)."
-        else:
-            return f"Skip: No handler for {action_type}"
-    except Exception as e:
-        logger.error(f"[Execution Error] {action_type} on {target}: {e}")
-        return f"Fail: {target} ({str(e)})"
+    return await loop.run_in_executor(
+        None, executor.execute, action, target, target_evidence)
 
 
 def _result_status(result: str) -> str:
+    if result.startswith("UNKNOWN"):
+        return "UNKNOWN"
+    if result.startswith("Blocked:"):
+        return "BLOCKED"
     if result.startswith("Success"):
         return "SUCCESS"
     return "SKIPPED" if result.startswith("Skipped:") else "FAILED"
+
+
+# ─── Phase 2: 증거 → 실행 → 검증 → 기록 → 복구 일정 ─────────────────────────
+
+async def _on_ttl_event(record, results, state) -> None:
+    """TTL 스캐너가 처리한 결과를 감사 로그에 남긴다."""
+    updated = record_store.get(record.remediation_id) or record
+    await _push_record(updated, "ttl_recovery_processed", state)
+    if state == store_mod.RECOVERY_APPROVAL_REQUIRED:
+        await notifier.send_recovery_request(updated)
+        # 자동 복구 금지 조치 — 사람에게 복구 승인을 요청한다.
+        await _push_soc_event("aiops-timeline", {
+            "event": "recovery_approval_required", "status": state,
+            "alert": updated.alertname, "action_type": updated.action_type,
+            "remediation_id": updated.remediation_id,
+            "targets": list(updated.targets),
+        })
+
+
+async def _push_record(record, event: str, status: str | None = None) -> None:
+    """조치 레코드 상태와 시간 지표를 감사 로그에 남긴다 (기존 job 라벨 유지)."""
+    body = {"event": event, "status": status or record.state,
+            **recovery_mod.timings_event(record)}
+    await _push_soc_event("aiops-remediation", body)
+
+
+async def _perform(record, decision_targets, action_type: str,
+                   approved_by: str | None = None) -> tuple[list, str]:
+    """
+    한 조치를 끝까지 수행한다: 멱등성 선점 → 증거 보존 → 실행 → 검증 → 복구 일정.
+
+    반환: (ExecutionResult 목록, 최종 레코드 상태).
+    같은 remediation_id 로 두 번 들어오면 두 번째는 실행하지 않고 이전 결과를 돌려준다.
+    """
+    rid = record.remediation_id
+    approved_by = record.approved_by or approved_by
+    if record.action_type != action_type or sorted(record.targets) != sorted(decision_targets):
+        return [], store_mod.BLOCKED
+    if isinstance(executor, RemoteExecutor):
+        allowed, _ = policy_engine.execution_allowed(action_type, decision_targets)
+        if not allowed or not approved_by:
+            record_store.update(rid, state=store_mod.BLOCKED,
+                                results=[{"blocked_reason": "remote_requires_policy_and_manual_approval"}])
+            return [], store_mod.BLOCKED
+
+    # ① 멱등성 — 실행 권리를 선점한다. 이미 처리된 조치면 재실행하지 않는다.
+    claimed, why = record_store.claim_execution(rid)
+    if not claimed:
+        existing = record_store.get(rid) or record
+        logger.info("[Remediation] 중복 실행 방지: %s (%s)", rid, why)
+        await _push_soc_event("aiops-remediation", {
+            "event": "duplicate_execution_suppressed", "status": existing.state,
+            "remediation_id": rid, "alert": existing.alertname,
+            "action_type": existing.action_type, "reason": why,
+        })
+        return [], existing.state
+
+    record_store.update(rid, approved_by=approved_by, executor_name=executor.name)
+
+    # ② 증거 보존 — 되돌릴 수 없는 격리·동결을 막는 게이트
+    target_evidence, block_reason = await asyncio.get_event_loop().run_in_executor(
+        None, evidence_mod.gate, executor, record_store, rid, action_type,
+        list(decision_targets))
+    if block_reason:
+        record_store.update(rid, state=store_mod.BLOCKED, evidence=target_evidence,
+                            results=[{"blocked_reason": block_reason}])
+        logger.warning("[Remediation] 증거 보존 실패로 차단: %s — %s", action_type, block_reason)
+        await _push_soc_event("aiops-remediation", {
+            "event": "evidence_gate_blocked", "status": "BLOCKED",
+            "remediation_id": rid, "alert": record.alertname,
+            "action_type": action_type, "reason": block_reason,
+            "targets": list(decision_targets),
+        })
+        return [], store_mod.BLOCKED
+    record_store.update(rid, evidence=target_evidence)
+    if not record_store.writable:
+        return [], store_mod.BLOCKED
+
+    # ③ 실행 + ④ 검증 (실행기가 상태를 재조회해 확인한다)
+    results = []
+    for target in decision_targets:
+        if isinstance(executor, RemoteExecutor):
+            results.append(await asyncio.to_thread(executor.execute_record, record, target, approved_by))
+        else:
+            results.append(await _run_executor(
+                action_type, target, evidence_mod.for_target(target_evidence, target)))
+
+    all_ok = bool(results) and all(r.ok for r in results)
+    any_skipped = any(r.status == store_mod.SKIPPED for r in results)
+
+    if all_ok:
+        state = store_mod.VERIFIED
+        record_store.update(rid, state=state, action_verified_at=store_mod.utcnow(),
+                            results=[r.as_dict() for r in results])
+    elif any(r.status == "UNKNOWN" for r in results):
+        state = store_mod.UNKNOWN
+        record_store.update(rid, state=state, results=[r.as_dict() for r in results])
+    elif any_skipped:
+        # disabled 모드 — 실행하지 않았다. 성공으로 표시하지 않는다.
+        state = store_mod.SKIPPED
+        record_store.update(rid, state=state, results=[r.as_dict() for r in results])
+    else:
+        state = store_mod.FAILED
+        record_store.update(rid, state=state, results=[r.as_dict() for r in results])
+
+    # ⑤ 복구 일정 — 검증된 조치에만 TTL 을 건다 (실행 안 된 것은 되돌릴 것도 없다)
+    current = record_store.get(rid) or record
+    if state == store_mod.VERIFIED and RECOVERY_ACTION.get(action_type):
+        recovery_mod.schedule(record_store, current, record.ttl_seconds,
+                              record.recovery_mode)
+        current = record_store.get(rid) or current
+
+    if isinstance(executor, RemoteExecutor):
+        from executor.remote_sync import reconcile
+        current = await asyncio.to_thread(reconcile, record_store, executor, current)
+
+    await _push_record(current, "remediation_executed", current.state)
+    # 반환하는 state 는 '이번 실행의 결과' 다. 레코드 상태는 복구 일정이 걸리면
+    # RECOVERY_PENDING 으로 바뀌므로 둘을 섞지 않는다.
+    return results, state
 
 
 async def _push_soc_event(job: str, event: dict) -> None:

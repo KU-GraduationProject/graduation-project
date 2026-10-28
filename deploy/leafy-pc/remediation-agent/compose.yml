@@ -1,0 +1,48 @@
+# PC 2 only. Disabled rehearsal: no Docker socket is mounted in this base file.
+name: leafy-remediation-agent
+services:
+  remediation-agent:
+    build:
+      context: ../../../aiops/remediation
+      dockerfile: Dockerfile.agent
+    container_name: remediation-agent
+    environment:
+      AGENT_MODE: disabled
+      AGENT_ALLOWLIST_PATH: /app/config/allowlist.yml
+      AGENT_HMAC_KEY_FILE: /run/secrets/agent_hmac_key
+      AGENT_STATE_PATH: /app/state/agent.sqlite3
+    ports:
+      - "127.0.0.1:8002:8002"
+    volumes:
+      - ./allowlist.yml:/app/config/allowlist.yml:ro
+      - agent_state:/app/state
+    secrets:
+      - agent_hmac_key
+    labels:
+      io.leafy.remediation: management
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    restart: unless-stopped
+    stop_grace_period: 45s
+    networks:
+      - agent-control
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/healthz',timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+secrets:
+  agent_hmac_key:
+    file: ./secrets/agent_hmac_key.txt
+volumes:
+  agent_state:
+networks:
+  agent-control:
+    internal: true

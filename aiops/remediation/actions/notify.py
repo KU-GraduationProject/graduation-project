@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 LOKI_URL = os.getenv("LOKI_URL", "http://loki:3100")
 # main.py와 같은 값. disabled면 승인해도 실행되지 않는다는 것을 메시지에 밝힌다.
-REMEDIATION_DISABLED = os.getenv("REMEDIATION_MODE", "docker") == "disabled"
+REMEDIATION_DISABLED = os.getenv("REMEDIATION_MODE", "disabled") == "disabled"
 DISABLED_NOTE = "\n_자동 조치 비활성화(REMEDIATION_MODE=disabled): 승인해도 실행되지 않고 기록만 남습니다._"
 
 
@@ -62,6 +62,17 @@ def _push_loki_slack_event(
 
 
 class Notifier:
+    async def send_recovery_request(self, record):
+        value = json.dumps({"remediation_id": record.remediation_id,
+                            "alertname": record.alertname, "action_type": record.action_type,
+                            "action_targets": record.targets})
+        return await self._send_slack(record.alertname, {"blocks": [
+            {"type": "section", "text": {"type": "mrkdwn", "text":
+                f"복구 승인 필요: `{record.action_type}` / `{record.remediation_id}`"}},
+            {"type": "actions", "elements": [{"type": "button",
+                "text": {"type": "plain_text", "text": "복구 승인"},
+                "action_id": "approve_recovery", "value": value}]}]})
+
     def _extract_analysis(self, alert: dict, analysis: dict) -> dict:
         return {
             "alertname":      alert.get("labels", {}).get("alertname", "unknown"),
@@ -75,8 +86,14 @@ class Notifier:
             "timestamp":      datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
         }
 
-    async def send_approval_request(self, alert: dict, analysis: dict) -> dict:
-        """Log a medium/high-risk action request that requires manual approval."""
+    async def send_approval_request(self, alert: dict, analysis: dict,
+                                    remediation_id: str | None = None) -> dict:
+        """
+        Log a medium/high-risk action request that requires manual approval.
+
+        remediation_id 를 버튼 value 에 실어 보낸다 — 같은 조치에 대한 승인이 여러 번
+        도착해도 수신측이 한 건으로 합쳐 한 번만 실행한다 (멱등성, Phase 2).
+        """
         data = self._extract_analysis(alert, analysis)
 
         logger.warning(
@@ -94,6 +111,7 @@ class Notifier:
             "alertname":      data["alertname"],
             "action_type":    data["action_type"],
             "action_targets": data["action_targets"],
+            "remediation_id": remediation_id,
         }, ensure_ascii=False)
 
         return await self._send_slack(data["alertname"], {

@@ -1,7 +1,11 @@
 """
 Network Observer - Enricher (#5)
 
-Zeek conn.log (JSON Lines)를 tail 하여 Canonical Network Event v1.0으로 변환한다.
+Zeek 로그(JSON Lines)를 tail 하여 Canonical Network Event v1.0으로 변환한다.
+
+두 로그를 동시에 tail 한다:
+  conn.log           -> event_type=connection          (최종 연결 집계)
+  conn_threshold.log -> event_type=connection_threshold (전송 중 조기 이벤트, P6)
 
 책임 범위 (#5):
     Network traffic -> Zeek -> Canonical Network Event 생성
@@ -15,22 +19,15 @@ import logging
 import os
 import signal
 import sys
+import threading
 import time
 
 import docker
 import yaml
 
+from capture import DEFAULT_PATH as DEFAULT_IFACE_PATH, CaptureInterface
+from events import build_connection_event, build_threshold_event
 from identity import IdentityResolver
-from zeek_map import (
-    EVENT_TYPE_CONNECTION,
-    SCHEMA_VERSION,
-    build_observer_meta,
-    guess_app_protocol,
-    map_connection_state,
-    map_protocol,
-    seconds_to_ms,
-    to_utc_rfc3339_ms,
-)
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -40,6 +37,10 @@ logger = logging.getLogger("network-observer")
 
 CONFIG_PATH = os.getenv("OBSERVER_CONFIG", "/app/config/observer.yml")
 CONN_LOG_PATH = os.getenv("ZEEK_CONN_LOG", "/zeek-logs/conn.log")
+# P6: Zeek ConnThreshold 중간 이벤트 로그. 없으면 해당 소스는 조용히 대기만 한다.
+THRESHOLD_LOG_PATH = os.getenv("ZEEK_CONN_THRESHOLD_LOG", "/zeek-logs/conn_threshold.log")
+# start-zeek.sh 가 서브넷으로 찾아낸 "실제" 캡처 인터페이스 이름을 적어 두는 파일.
+CAPTURE_IFACE_PATH = os.getenv("ZEEK_CAPTURE_IFACE_FILE", DEFAULT_IFACE_PATH)
 
 _running = True
 
@@ -55,79 +56,10 @@ def load_config(path):
         return yaml.safe_load(fh) or {}
 
 
-def build_event(record, resolver, capture_cfg, observer_cfg):
-    """Zeek conn.log 레코드 1건 -> Canonical Network Event v1.0 dict."""
-
-    src_ip = record.get("id.orig_h")
-    dst_ip = record.get("id.resp_h")
-    src_port = record.get("id.orig_p")
-    dst_port = record.get("id.resp_p")
-
-    # 필수 observed fact가 없으면 canonical event를 만들 수 없다.
-    if not src_ip or not dst_ip or src_port is None or dst_port is None:
-        return None
-
-    src = resolver.resolve(src_ip, src_port)
-    dst = resolver.resolve(dst_ip, dst_port)
-
-    # `network` 결정:
-    #   host runtime endpoint가 관여하면 그쪽 network(host-bound)를 따른다.
-    #   그 외에는 캡처 지점의 논리 network를 사용한다.
-    #   -> NETWORK_EVENT_SCHEMA.md §8.3
-    network = capture_cfg.get("logical_network", "unknown")
-    if dst.runtime == "host" and dst.network:
-        network = dst.network
-    elif src.runtime == "host" and src.network:
-        network = src.network
-
-    return {
-        # --- 공통 ---
-        "schema_version": SCHEMA_VERSION,
-        "timestamp": to_utc_rfc3339_ms(record["ts"]),
-        "event_type": EVENT_TYPE_CONNECTION,
-        "observer": observer_cfg.get("name", "network-observer"),
-
-        # --- source endpoint ---
-        "src_service": src.service,
-        "src_container": src.container,
-        "src_runtime": src.runtime,
-        "src_ip": src_ip,
-        "src_port": int(src_port),
-
-        # --- destination endpoint ---
-        "dst_service": dst.service,
-        "dst_container": dst.container,
-        "dst_runtime": dst.runtime,
-        "dst_ip": dst_ip,
-        "dst_port": int(dst_port),
-
-        # --- network ---
-        "protocol": map_protocol(record.get("proto")),
-        "network": network,
-        "interface": capture_cfg.get("interface"),
-        "app_protocol": guess_app_protocol(record.get("service")),
-
-        # --- connection ---
-        "connection_state": map_connection_state(record.get("conn_state")),
-        "duration_ms": seconds_to_ms(record.get("duration")),
-        "bytes_sent": record.get("orig_bytes"),       # src -> dst
-        "bytes_received": record.get("resp_bytes"),   # dst -> src
-
-        # --- optional / extension ---
-        "direction": None,        # L4 conn.log에서는 관측 지점 기준 방향을 단정하지 않는다
-        "connection_id": record.get("uid"),
-        "request_id": None,       # L4에는 존재하지 않는다 (§11.3)
-        "observer_instance": observer_cfg.get("instance"),
-        "observer_meta": build_observer_meta(record),
-    }
-
-
 def tail_lines(path, stop_check):
     """
-    conn.log를 tail 한다.
-
-    Zeek 기동 전에는 파일이 없을 수 있으므로 생길 때까지 기다린다.
-    파일이 교체(재생성)되면 inode 변화를 감지해 다시 연다.
+    로그를 tail 한다. Zeek 기동 전에는 파일이 없을 수 있으므로 생길 때까지 기다리고,
+    파일이 교체(inode 변화)·절단되면 다시 연다.
     """
     handle = None
     inode = None
@@ -141,13 +73,11 @@ def tail_lines(path, stop_check):
                 handle = open(path, "r", encoding="utf-8", errors="replace")
                 inode = os.fstat(handle.fileno()).st_ino
                 if first_open:
-                    # 최초 기동 시에만 기존 내용을 건너뛴다.
                     handle.seek(0, os.SEEK_END)
                     first_open = False
-                    logger.info("conn.log tail 시작: %s", path)
+                    logger.info("tail 시작: %s", path)
                 else:
-                    # 교체/절단된 파일은 처음부터 읽어야 그 사이 기록이 유실되지 않는다.
-                    logger.info("conn.log 재오픈 — 처음부터 읽는다: %s", path)
+                    logger.info("재오픈 — 처음부터 읽는다: %s", path)
 
             line = handle.readline()
             if line:
@@ -156,18 +86,15 @@ def tail_lines(path, stop_check):
                     yield stripped
                 continue
 
-            # EOF: 파일 교체(inode 변경) 또는 절단(size < offset) 확인 후 대기
             try:
                 stat = os.stat(path)
                 if stat.st_ino != inode:
-                    logger.info("conn.log 교체 감지. 다시 연다.")
+                    logger.info("%s 교체 감지. 다시 연다.", path)
                     handle.close()
                     handle = None
                     continue
                 if stat.st_size < handle.tell():
-                    # Zeek이 같은 inode를 유지한 채 파일을 비운 경우.
-                    # offset이 EOF를 넘어서 영구히 멈추므로 처음부터 다시 읽는다.
-                    logger.info("conn.log 절단 감지. 처음부터 다시 읽는다.")
+                    logger.info("%s 절단 감지. 처음부터 다시 읽는다.", path)
                     handle.seek(0)
                     continue
             except FileNotFoundError:
@@ -178,6 +105,59 @@ def tail_lines(path, stop_check):
     finally:
         if handle is not None:
             handle.close()
+
+
+class EventWriter:
+    """여러 tail 스레드가 하나의 JSONL/stdout 으로 안전하게 쓰도록 직렬화한다."""
+
+    def __init__(self, out_handle, to_stdout):
+        self._lock = threading.Lock()
+        self._out = out_handle
+        self._stdout = to_stdout
+        self.emitted = 0
+        self.skipped = 0
+
+    def emit(self, event):
+        payload = json.dumps(event, ensure_ascii=False)
+        with self._lock:
+            if self._out is not None:
+                self._out.write(payload + "\n")
+                self._out.flush()
+            if self._stdout:
+                print(payload, flush=True)
+            self.emitted += 1
+
+    def skip(self):
+        with self._lock:
+            self.skipped += 1
+
+
+def _run_source(path, builder, resolver, capture_cfg, observer_cfg, writer, capture_iface):
+    """한 로그 파일을 tail 하며 builder 로 canonical event 를 만들어 writer 로 내보낸다."""
+    for line in tail_lines(path, lambda: _running):
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            writer.skip()
+            continue
+
+        resolver.refresh()  # 주기 조건 충족 시에만 실제 갱신
+
+        # interface 는 설정 고정값이 아니라 Zeek 가 실제로 잡은 인터페이스다. Zeek 가
+        # 재생성되며 이름이 바뀔 수 있으므로 이벤트마다 현재 값을 반영한다.
+        capture = dict(capture_cfg, interface=capture_iface.get())
+
+        try:
+            event = builder(record, resolver, capture, observer_cfg)
+        except Exception as exc:
+            logger.warning("event 변환 실패(건너뜀, %s): %s", path, exc)
+            writer.skip()
+            continue
+
+        if event is None:
+            writer.skip()
+            continue
+        writer.emit(event)
 
 
 def main():
@@ -194,8 +174,6 @@ def main():
         docker_client.ping()
         logger.info("Docker API 연결 성공")
     except Exception as exc:
-        # Docker에 접근하지 못해도 observer는 동작해야 한다.
-        # 모든 endpoint가 unknown이 될 뿐, raw fact는 보존된다. (§7.3 / P6)
         logger.warning("Docker API 연결 실패 — 모든 endpoint가 unknown 처리됨: %s", exc)
         docker_client = None
 
@@ -210,43 +188,39 @@ def main():
         out_handle = open(out_path, "a", encoding="utf-8")
         logger.info("Canonical Event 출력: %s", out_path)
 
-    emitted = 0
-    skipped = 0
+    writer = EventWriter(out_handle, to_stdout)
+
+    # 실제 캡처 인터페이스는 Zeek 가 기동할 때 서브넷으로 찾아 공유 볼륨에 적어 둔다.
+    # observer.yml 의 capture.interface 는 그 파일이 없을 때 쓰는 fallback 일 뿐이다
+    # (없으면 스키마대로 null — 추측한 이름을 적지 않는다).
+    capture_iface = CaptureInterface(CAPTURE_IFACE_PATH, capture_cfg.get("interface"))
+    logger.info("캡처 인터페이스 출처: %s (현재값 %r)",
+                CAPTURE_IFACE_PATH, capture_iface.get())
+
+    sources = [
+        (CONN_LOG_PATH, build_connection_event),
+        (THRESHOLD_LOG_PATH, build_threshold_event),  # P6
+    ]
+    threads = []
+    for path, builder in sources:
+        t = threading.Thread(
+            target=_run_source,
+            args=(path, builder, resolver, capture_cfg, observer_cfg, writer, capture_iface),
+            name=f"tail:{os.path.basename(path)}",
+            daemon=True,
+        )
+        t.start()
+        threads.append(t)
+
     try:
-        for line in tail_lines(CONN_LOG_PATH, lambda: _running):
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                skipped += 1
-                continue
-
-            resolver.refresh()  # 주기 조건 충족 시에만 실제 갱신
-
-            try:
-                event = build_event(record, resolver, capture_cfg, observer_cfg)
-            except Exception as exc:
-                logger.warning("event 변환 실패(건너뜀): %s", exc)
-                skipped += 1
-                continue
-
-            if event is None:
-                skipped += 1
-                continue
-
-            payload = json.dumps(event, ensure_ascii=False)
-            if out_handle is not None:
-                out_handle.write(payload + "\n")
-                out_handle.flush()
-            if to_stdout:
-                print(payload, flush=True)
-
-            emitted += 1
-            if emitted % 100 == 0:
-                logger.info("Canonical Event %d건 생성 (skip %d)", emitted, skipped)
+        while _running and any(t.is_alive() for t in threads):
+            time.sleep(0.5)
     finally:
+        for t in threads:
+            t.join(timeout=2)
         if out_handle is not None:
             out_handle.close()
-        logger.info("종료. 총 %d건 생성, %d건 skip", emitted, skipped)
+        logger.info("종료. 총 %d건 생성, %d건 skip", writer.emitted, writer.skipped)
 
 
 if __name__ == "__main__":

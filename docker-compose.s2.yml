@@ -1,0 +1,56 @@
+# S2/C-a 네트워크 탐지 시나리오 — 실험용 Sink 오버레이 (Step 1 / P2)
+#
+# 사용법 (기존 스택 위에 덧씌운다. 기존 서비스 정의는 건드리지 않는다):
+#   docker compose -f docker-compose.yml -f docker-compose.s2.yml up -d sink-a sink-b
+#
+# 배치 결정 (사용자 계획의 관측 보장 조건):
+#   Zeek는 backend의 eth0 = leafy-net 을 관측한다. 따라서 데이터 전송이 eth0을
+#   통과해야 Zeek가 본다. 두 Sink를 leafy-net에 두면 backend -> sink 트래픽이 eth0을
+#   지나므로 관측이 "구성상 보장"된다. 이것을 기본 배치로 삼는다.
+#
+#   1순위로 검토했던 sink-net 분리 배치는, 별도 bridge로 가는 트래픽이 eth0이 아닌
+#   다른 인터페이스로 나가 Zeek(eth0 고정)가 놓칠 수 있다. 그 배치는 Zeek 캡처
+#   인터페이스 변경이 필요하므로 검증 전 기본값으로 쓰지 않는다.
+#   대체 배치/실측 명령/합격 기준/전환 방법은 scenarios/network/README.md 참고.
+#
+# 고정 IP: allowlist가 목적지를 dst_ip:dst_port 로 구분한다.
+#   sink-a 10.210.0.30:8080  = 인가 목적지(C-a, 정상 대조군)
+#   sink-b 10.210.0.31:8080  = 비인가 목적지(S2)
+#   (frontend 가 10.210.0.10 을 쓰므로 겹치지 않는 대역에서 고른다)
+#
+# 수신 집계 조회(검증기용)는 127.0.0.1 로만 노출한다. 공격 트래픽 경로가 아니라
+# 실험 결과를 읽기 위한 사이드 채널이다.
+
+services:
+  sink-a:
+    build: ./scenarios/network/sink
+    # 같은 Dockerfile 이지만 태그를 분리한다. 같은 태그를 두 서비스가 병렬 빌드하면
+    # compose(bake) 가 'image already exists' 로 실패한다 (로컬 검증에서 확인).
+    image: s2-sink-a:latest
+    container_name: s2-sink-a
+    environment:
+      SINK_ROLE: "A"
+      SINK_NAME: "sink-a"
+      TZ: Asia/Seoul
+    # 수신 집계 readout (GET/DELETE /stats). 전송 경로(leafy-net:8080)와 별개.
+    ports:
+      - "127.0.0.1:8091:8080"
+    networks:
+      leafy-net:
+        ipv4_address: 10.210.0.30
+    restart: unless-stopped
+
+  sink-b:
+    build: ./scenarios/network/sink
+    image: s2-sink-b:latest
+    container_name: s2-sink-b
+    environment:
+      SINK_ROLE: "B"
+      SINK_NAME: "sink-b"
+      TZ: Asia/Seoul
+    ports:
+      - "127.0.0.1:8092:8080"
+    networks:
+      leafy-net:
+        ipv4_address: 10.210.0.31
+    restart: unless-stopped

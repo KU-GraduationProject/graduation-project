@@ -1,5 +1,13 @@
 """
 Container remediation actions using docker-py SDK.
+
+DEPRECATED (Phase 2): main.py 는 더 이상 이 모듈을 쓰지 않는다.
+조치는 executor/local_docker.py 의 LocalDockerExecutor 가 수행한다 — 조치 후 상태를
+재조회해 확인하고, 복구 조치(UNPAUSE/RECONNECT/UNTHROTTLE)와 짝을 이루며, 네트워크
+이름을 하드코딩하지 않는다. 이 파일의 isolate() 는 네트워크를 찾지 못해도 예외를
+던지지 않아 호출자가 성공으로 기록하던 문제가 있었다.
+
+Phase 3(원격 Agent) 작업 때 함께 제거한다. 새 코드는 실행기 인터페이스를 쓴다.
 """
 
 import logging

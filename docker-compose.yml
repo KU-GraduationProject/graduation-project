@@ -28,6 +28,7 @@ volumes:
   grafana_data:
   ollama_data:
   minio_data:          # 업로드 사진 + 도감 이미지 217장. 지우면 첫 기동에 73MB를 다시 받는다
+  remediation_state:    # 조치 레코드(멱등성·TTL 복구 근거). 지우면 격리를 되돌릴 증거를 잃는다
   zeek_logs:            # Zeek conn.log (observer 내부 전달용)
   network_events:       # Canonical Network Event (JSONL) — #8 ingestion이 소비
 
@@ -309,6 +310,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+      GF_PLUGINS_PREINSTALL_SYNC: yesoreyeram-infinity-datasource@4.1.3
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
@@ -352,11 +354,17 @@ services:
       ALERTMANAGER_URL: http://alertmanager:9093
       REMEDIATION_URL: http://remediation:8001
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      # Remediation /action 서명 공유키 (remediation 과 같은 값). 미설정이면 전달 생략.
+      REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
+      # P3: Loki 규칙과 같은 Allowlist 정책을 LLM Network Context 가 읽어 일관성 유지
+      ALLOWLIST_PATH: /app/config/allowlist.yml
     ports:
       - "8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./aiops/pipeline/results:/app/results
+      # P3: 단일 정책 소스(읽기 전용). rulegen 이 같은 파일로 Loki 규칙을 만든다.
+      - ./aiops/policy/allowlist.yml:/app/config/allowlist.yml:ro
     networks:
       - mgmt-net
     depends_on:
@@ -369,13 +377,35 @@ services:
     build: ./aiops/remediation
     container_name: aiops-remediation
     environment:
+      REMEDIATION_MODE: ${REMEDIATION_MODE:-disabled}
       PIPELINE_URL: http://pipeline:8000
       LOKI_URL: http://loki:3100
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      # Phase 0 인증. 두 값이 없으면 해당 엔드포인트는 모든 요청을 거부한다.
+      #   SLACK_SIGNING_SECRET : Slack app 설정의 Signing Secret
+      #   REMEDIATION_API_KEY  : Pipeline 과 공유하는 HMAC 키 (openssl rand -hex 32)
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
+      # Phase 1: 조치 위험도·실행 정책의 단일 소스 (아래 volumes 로 마운트)
+      REMEDIATION_POLICY_PATH: /app/config/remediation_policy.yml
+      # Phase 2: 조치 레코드(멱등성·TTL 복구 근거)를 영속화할 경로.
+      # 이 디렉터리를 잃으면 격리를 되돌릴 증거와 중복 실행 방지 기록이 사라진다.
+      REMEDIATION_STATE_DIR: /app/state
+      # TTL 복구 스캔 주기(초). 0 이면 스캐너를 끈다.
+      REMEDIATION_TTL_SCAN_SEC: "60"
     ports:
-      - "8001:8001"
+      # 조치 실행 경로이므로 호스트 루프백에만 공개한다. Pipeline 은 mgmt-net 으로
+      # http://remediation:8001 로 접근하므로 publish 가 필요하지 않다.
+      # Slack Interactivity 를 쓰려면 리버스 프록시나 터널을 앞에 두고,
+      # 0.0.0.0 publish 로 되돌리지 않는다 (Windows/Docker Desktop 에서는
+      # Docker Desktop Backend 방화벽 규칙 때문에 LAN 에 노출된다 — docs/remote 실측).
+      - "127.0.0.1:8001:8001"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # 정책은 읽기 전용으로만 들어간다. 컨테이너가 자기 정책을 고칠 수 없어야 한다.
+      - ./aiops/policy/remediation_policy.yml:/app/config/remediation_policy.yml:ro
+      # 조치 레코드는 재시작·재생성을 넘어 살아야 한다 (멱등성·복구 근거)
+      - remediation_state:/app/state
     networks:
       - mgmt-net
     depends_on:
@@ -403,12 +433,14 @@ services:
       # 파일 단위 bind mount는 편집 시 inode가 바뀌어도 컨테이너가 옛 내용을 계속 본다.
       - ./aiops/network-observer/zeek:/opt/observer:ro
       - zeek_logs:/zeek-logs
-    # -C : Docker 가상 NIC는 checksum offload를 쓰므로 체크섬이 무효하다.
-    #      이 옵션이 없으면 Zeek이 패킷을 무시해 conn_state=OTH, bytes=0만 남는다.
-    # -i eth0 : backend는 multi-homed(eth0=leafy-net, eth1=mgmt-net)이므로
-    #           interface를 한정해야 management traffic이 섞이지 않는다.
-    command: >
-      sh -c "cd /zeek-logs && exec zeek -C -i eth0 /opt/observer/local.zeek"
+    # backend는 multi-homed(leafy-net + mgmt-net)이므로 interface를 한정해야
+    # management traffic이 섞이지 않는다. 다만 Docker가 붙이는 이름(eth0/eth1)의
+    # 순서는 컨테이너를 다시 만들 때마다 바뀔 수 있어 하드코딩하면 안 된다.
+    # (실제로 뒤바뀌어 eth0=mgmt-net이 되자 backend->sink 전송을 통째로 놓쳤다.)
+    # start-zeek.sh가 OBSERVE_SUBNET을 가진 interface를 찾아 -C와 함께 실행한다.
+    environment:
+      OBSERVE_SUBNET: 10.210.0.0   # leafy-net (networks.leafy-net 대역과 짝)
+    command: ["sh", "/opt/observer/start-zeek.sh"]
     depends_on:
       - backend
     restart: unless-stopped
@@ -419,6 +451,9 @@ services:
     environment:
       OBSERVER_CONFIG: /app/config/observer.yml
       ZEEK_CONN_LOG: /zeek-logs/conn.log
+      # start-zeek.sh가 실제 캡처 interface 이름을 적어 두는 파일(같은 zeek_logs 볼륨).
+      # enricher는 netns가 달라 interface를 직접 조회할 수 없어 이 파일로 받는다.
+      ZEEK_CAPTURE_IFACE_FILE: /zeek-logs/capture-interface
       LOG_LEVEL: INFO
     volumes:
       - ./aiops/network-observer/config:/app/config:ro

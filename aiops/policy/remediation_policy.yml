@@ -1,0 +1,141 @@
+# 조치 위험도·실행 정책의 단일 소스 (Phase 1)
+#
+# 왜 이 파일이 있는가
+#   이전에는 LLM 이 action_risk 를 직접 출력하고 Remediation 이 그 값으로 자동 실행을
+#   결정했다. LLM 이 ISOLATE 에 "low" 를 내면 승인 없이 컨테이너가 격리됐다.
+#   위험도는 조치 종류에 따라 정해지는 값이므로 코드/정책이 정하고, LLM 은 관측과
+#   추천만 한다. allowlist.yml 과 같은 방식으로 사람이 읽고 고치는 단일 소스다.
+#
+# 위협 심각도(threat_level)와 조치 위험도(action_risk)는 다른 축이다.
+#   threat_level : 얼마나 급한가      -> 대응 긴급도(urgency), 알림 방식
+#   action_risk  : 틀렸을 때 얼마나 아픈가 -> 승인 게이트
+#   critical 은 긴급도를 올리는 값이며 승인을 생략하는 값이 아니다.
+#
+# Phase 2 범위
+#   실행기·증거 보존·사후 검증·TTL 복구가 구현되면서 executor_ready 를 켠다.
+#   조치마다 검증된 복구 경로가 있어야 ready 로 둔다.
+#     RESTART  : 비가역 — 사후 상태 확인만 (복구 대상 아님)
+#     PAUSE    : UNPAUSE 로 복구. 포렌식 동결이라 TTL 만료 시 재승인을 요구한다
+#     ISOLATE  : RECONNECT 로 복구(IP·alias 복원). TTL 만료 자동 재연결 금지
+#     THROTTLE : UNTHROTTLE 로 원래 쿼터 복구. TTL 만료 시 자동 복구
+#   실행 자체는 REMEDIATION_MODE 가 docker 일 때만 일어난다 (현재 운영값: disabled).
+
+version: 1
+
+# ── 네트워크 분류 (ISOLATE 대상) ──────────────────────────────────────────────
+# 실제 네트워크 이름은 Docker inspect 로 읽는다. compose 프로젝트 이름이 앞에 붙고
+# (`graduation-project_leafy-net`) PC 별로 달라지므로 접미사로 맞춘다.
+#   isolate  : 끊어도 되는 업무 네트워크
+#   preserve : 절대 끊지 않는 관리 네트워크 — 통째로 막으면 복구 지시도 닿지 않는다
+# 둘 다 아닌 네트워크만 붙어 있거나 양쪽에 걸리면 '불명확' 으로 보고 실행하지 않는다.
+networks:
+  isolate:
+    - leafy-net
+  preserve:
+    - mgmt-net
+    - aiops-net
+
+# ── 위협 심각도 -> 대응 긴급도 ────────────────────────────────────────────────
+threat_levels:
+  low:
+    urgency: routine
+    mention: false
+  medium:
+    urgency: elevated
+    mention: false
+  high:
+    urgency: urgent
+    mention: false
+  critical:
+    urgency: immediate
+    # 긴급도만 올린다. high-risk 조치의 승인 요구는 그대로다.
+    mention: true
+
+# ── 조치별 정책 ───────────────────────────────────────────────────────────────
+# performs_action : 실제로 시스템을 바꾸는 조치인가 (false 면 알림까지만)
+# requires_approval : Slack 승인 없이는 실행 불가
+# auto_execute    : 자동 실행 후보가 될 수 있는가 (조건은 아래 필드들)
+# executor_ready  : 지금 실제로 실행할 수 있는가 (false 면 사유를 기록하고 실행 안 함)
+# evidence_required : 실행 전에 보존해야 하는 상태 (Phase 2 가 소비하는 선행 조건)
+# ttl_seconds / recovery_required : 조치 후 원복 요구사항
+actions:
+  NONE:
+    action_risk: low
+    performs_action: false
+    requires_approval: false
+    auto_execute: false
+    executor_ready: false
+    notify: alert_only
+    description: 오탐 또는 이미 복구됨 — 실행할 조치가 없다
+
+  NOTIFY:
+    action_risk: low
+    performs_action: false
+    requires_approval: false
+    auto_execute: false
+    executor_ready: false
+    notify: alert_only
+    description: 사람 판단이 필요 — 알림만 보낸다
+
+  THROTTLE:
+    action_risk: medium
+    performs_action: true
+    requires_approval: false
+    auto_execute: true
+    min_confidence: 0.8
+    auto_threat_levels: [medium, high]
+    requires_targets: true
+    ttl_seconds: 1800
+    recovery_required: true
+    evidence_required: [metrics_snapshot]
+    executor_ready: true
+    recovery_mode: auto            # TTL 만료 -> UNTHROTTLE 로 원래 쿼터 복구
+    notify: post_action
+    description: 서비스가 살아 있는 일시적 부하 — CPU 쿼터 제한 후 TTL 만료 시 원복
+
+  RESTART:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    requires_targets: true
+    evidence_required: [logs_snapshot, metrics_snapshot]
+    executor_ready: true
+    recovery_mode: none            # 되돌릴 수 없다 — 사후 상태 확인만 한다
+    notify: approval_request
+    description: 비가역(세션·인메모리 상태 손실) — 승인 필수
+
+  PAUSE:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    requires_targets: true
+    ttl_seconds: 3600
+    recovery_required: true
+    evidence_required: [process_list, connection_table]
+    executor_ready: true
+    recovery_mode: require_approval  # 포렌식 동결 — TTL 만으로 자동 해제하지 않는다
+    notify: approval_request
+    description: 포렌식 보존용 프로세스 동결 — 승인 필수
+
+  ISOLATE:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    requires_targets: true
+    ttl_seconds: 1800
+    recovery_required: true
+    evidence_required: [network_connections]
+    executor_ready: true
+    recovery_mode: require_approval  # TTL 만료 자동 재연결 금지 — 공격 재개 위험
+    notify: approval_request
+    description: 네트워크 분리 — 연결 정보(IP·alias) 보존이 실행 전제조건
+
+# ── 정책이 알고 있으나 지원하지 않는 조치 ─────────────────────────────────────
+# 여기에 있으면 "모르는 조치"가 아니라 "지원하지 않는 조치"로 사유가 기록된다.
+unsupported:
+  SCALE: no_executor_implemented
+
+# 위 두 목록에 없는 action_type 은 fail closed 로 차단한다 (engine 기본 동작).

@@ -1,0 +1,15 @@
+# Merge from repository root with docker-compose.aiops.yml; Phase 4 only.
+# All relative source paths resolve relative to the FIRST compose file.
+services:
+  remediation:
+    environment:
+      REMEDIATION_MODE: remote
+      REMEDIATION_AGENT_URL: ${REMEDIATION_AGENT_URL:?HTTPS Tailscale Serve origin required}
+      AGENT_CONTROLLER_ID: pc1
+      AGENT_HMAC_KEY_FILE: /run/secrets/agent_hmac_key
+    secrets:
+      - agent_hmac_key
+
+secrets:
+  agent_hmac_key:
+    file: ${AGENT_HMAC_KEY_LOCAL_PATH:?Absolute local key file path required}

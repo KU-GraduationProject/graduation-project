@@ -17,11 +17,18 @@ capture:
   #   docker-compose.yml: network_mode: "service:backend"
   namespace_of_service: backend
 
-  # 캡처 interface. Canonical Event의 `interface` 필드로 사용된다.
-  # backend는 multi-homed(eth0=leafy-net, eth1=mgmt-net)이므로
-  # 반드시 interface를 한정해야 management traffic이 섞이지 않는다.
-  #   -> NETWORK_EVENT_SCHEMA.md §8 (F2)
-  interface: eth0
+  # 캡처 interface는 여기에 고정하지 않는다.
+  #
+  # backend는 multi-homed이고 Docker가 붙이는 eth0/eth1 순서는 컨테이너를 다시 만들 때마다
+  # 바뀐다. 고정값을 두면 실제로는 eth1을 관측하면서 이벤트에는 eth0이라고 적는 거짓 표시가
+  # 생긴다. 그래서 start-zeek.sh가 OBSERVE_SUBNET으로 찾아낸 "실제" 이름을 공유 볼륨
+  # (zeek_logs/capture-interface)에 적고, enricher가 그것을 읽어 Canonical Event의
+  # `interface` 필드에 넣는다 (enricher/capture.py).
+  #
+  # 아래 interface 키를 주면 그 파일을 못 읽을 때의 fallback으로만 쓰인다. 비워 두면
+  # 스키마 규정대로 null이 기록된다 — 추측한 이름을 적지 않는다.
+  #   -> NETWORK_EVENT_SCHEMA.md §8 (F2), §8.2/§10.3 (label 아님, 식별 불가 시 null)
+  # interface: eth0
 
   # 위 interface가 속한 논리 network 이름.
   # Canonical Event의 `network` 필드 기본값으로 사용된다.

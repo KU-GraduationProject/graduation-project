@@ -27,6 +27,7 @@ from correlation import CorrelationContext, MONITORED_SERVICES, parse_target_map
 from prompt.builder import PromptBuilder
 from prompt.log_line import render_log_line
 from schemas.llm_output import LLMAnalysisResult
+from security.service_auth import build_headers as build_service_auth_headers
 from config import settings
 
 
@@ -306,7 +307,6 @@ async def analyze_alerts(alerts: list[Alert]):
                     action_targets=[],
                     action_description="manual investigation required",
                     threat_level="medium",
-                    action_risk="high",
                     evidence=[],
                     confidence=0.0,
                 )
@@ -405,7 +405,6 @@ SCHEMA:
   "action_type": "<RESTART|ISOLATE|SCALE|NOTIFY|NONE>",
   "action_targets": ["<container name>", ...],
   "threat_level": "<low|medium|high|critical>",
-  "action_risk": "<low|medium|high>",
   "confidence": <0.0-1.0>
 }
 
@@ -626,7 +625,6 @@ async def periodic_llm_health() -> None:
                     "action_type":    "NOTIFY",
                     "action_targets": ["aiops-pipeline"],
                     "threat_level":   raw_result.get("severity", "medium"),
-                    "action_risk":    "medium",
                     "confidence":     0.8,
                     "recommendation": raw_result.get("recommendation", ""),
                 },
@@ -821,7 +819,6 @@ async def push_to_loki(entry: dict) -> None:
                 "target_container": entry.get("container", "unknown"),
                 "alert": entry.get("alert_name", "unknown"),
                 "threat_level": result.get("threat_level", "unknown"),
-                "action_risk": result.get("action_risk", "unknown"),
             },
             "values": [[ts_ns, json.dumps(entry, ensure_ascii=False)]]
         }]
@@ -930,19 +927,34 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
         action_targets=[],
         action_description="manual investigation required",
         threat_level="medium",
-        action_risk="high",
         evidence=[],
         confidence=0.0,
     )
 
 
 async def forward_to_remediation(alert: Alert, result: LLMAnalysisResult):
-    """Remediation Agent에 분석 결과 전달 → 여기서 Slack 전송 결정됨"""
+    """
+    Remediation Agent에 분석 결과 전달 → 여기서 Slack 전송 결정됨.
+
+    /action 은 HMAC 서명을 요구한다. 서명 범위가 본문 전체이므로 직렬화한 바이트를
+    그대로 전송한다(httpx 가 다시 직렬화하면 바이트가 달라져 검증이 깨진다).
+    """
+    if not settings.remediation_api_key:
+        logger.error(
+            "[Pipeline] REMEDIATION_API_KEY 미설정 — /action 전달 생략 "
+            "(서명 없는 요청은 Remediation 이 거부한다)"
+        )
+        return
+
+    body = json.dumps(
+        {"alert": alert.model_dump(), "analysis": result.model_dump()},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    headers = build_service_auth_headers(settings.remediation_api_key, body)
+
     async with httpx.AsyncClient(timeout=30) as client:
         await client.post(
             f"{settings.remediation_url}/action",
-            json={
-                "alert": alert.model_dump(),
-                "analysis": result.model_dump(),
-            },
+            content=body,
+            headers=headers,
         )
