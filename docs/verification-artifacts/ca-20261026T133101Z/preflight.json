@@ -1,0 +1,30 @@
+{
+  "checked_at": "2026-10-26T13:34:20.950661+00:00",
+  "branch": "feature/s2_scenario",
+  "commit": "8c64545a5399703cf16fd7e137ccf7540732fb17",
+  "containers": {
+    "grafana": "running",
+    "loki": "running",
+    "alertmanager": "running",
+    "network-observer-zeek": "running",
+    "network-observer-enricher": "running",
+    "fluentd": "running",
+    "leafy-backend": "running",
+    "leafy-db": "running",
+    "s2-sink-a": "running",
+    "aiops-pipeline": "exited",
+    "aiops-remediation": "exited"
+  },
+  "ruler_config": {
+    "evaluation_interval": "1m0s",
+    "notification_timeout": "10s",
+    "resend_delay": "1m0s",
+    "alertmanager_url": "http://alertmanager:9093"
+  },
+  "rule_interval_seconds": 60,
+  "post_ingestion_observation_seconds": 135,
+  "backend_ip": "10.210.0.7",
+  "sink_ip": "10.210.0.30",
+  "sink_port": 8080,
+  "window_start_ms": 1792935260531
+}

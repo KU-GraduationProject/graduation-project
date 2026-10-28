@@ -1,0 +1,184 @@
+Skip to main content
+Grafana
+
+Home
+
+Bookmarks
+
+Starred
+
+Dashboards
+
+Explore
+
+Drilldown
+
+Alerting
+
+Connections
+
+Administration
+
+Dashboards
+AIOps 모니터링 대시보드
+Search...
+ctrl+k
+Edit
+Export 
+Share
+2026-10-25 22:34:20 to 2026-10-26 22:36:42
+KST
+Refresh
+10s
+MTTD 실험 ID (정규식)
+시스템 현황
+🚨 발화 중인 Alert
+없음
+🖥️ 호스트 CPU 사용률
+3.80%
+💾 호스트 메모리 사용률
+19%
+🐘 PostgreSQL 총 연결 수
+10
+🤖 LLM 분석 이력 건수
+No data
+컨테이너 현황
+🐳 전체 컨테이너 수
+전체
+21
+🖥️ 실행 중인 컨테이너 목록
+No data
+📦 서비스별 컨테이너 수 (scale up/down 반영)
+backend
+1
+db
+1
+frontend
+1
+컨테이너 메트릭
+🔥 컨테이너 CPU 사용률
+aiops-pipeline
+aiops-pipeline
+aiops-pipeline
+aiops-remediation
+aiops-remediation
+aiops-remediation
+leafy-backend
+leafy-db
+leafy-frontend
+leafy-minio
+ollama
+💾 컨테이너 메모리 사용량
+aiops-pipeline
+aiops-pipeline
+aiops-pipeline
+aiops-remediation
+aiops-remediation
+aiops-remediation
+leafy-backend
+leafy-db
+leafy-frontend
+leafy-minio
+ollama
+🐘 PostgreSQL 총 연결 수 (Alert 임계값: 50)
+총 연결 수
+임계값(50)
+🖥️ 호스트 CPU / 메모리 추이
+Host CPU %
+Host Memory %
+활성 Alert
+🚨 현재 발화 중인 Alert 목록
+No data
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+🌐 네트워크 이벤트 흐름 (Zeek → enricher → Loki)
+2026-10-26 22:34:22.251 backend -> sink-a 10.210.0.30:8080 [connection_threshold] bytes_sent=1048717 state=established iface=eth0 
+2026-10-26 22:34:22.250 backend -> sink-a 10.210.0.30:8080 [connection] bytes_sent=1310861 state=closed iface=eth0 
+2026-10-26 22:34:22.248 backend -> sink-a 10.210.0.30:8080 [connection_threshold] bytes_sent=1048717 state=established iface=eth0 
+2026-10-26 22:34:22.246 backend -> sink-a 10.210.0.30:8080 [connection] bytes_sent=1310861 state=closed iface=eth0 
+2026-10-26 22:34:22.244 backend -> sink-a 10.210.0.30:8080 [connection_threshold] bytes_sent=1048717 state=established iface=eth0 
+2026-10-26 22:34:22.242 backend -> sink-a 10.210.0.30:8080 [connection] bytes_sent=1310861 state=closed iface=eth0 
+2026-10-26 22:34:22.240 backend -> sink-a 10.210.0.30:8080 [connection_threshold] bytes_sent=1048717 state=established iface=eth0 
+2026-10-26 22:34:22.238 backend -> sink-a 10.210.0.30:8080 [connection] bytes_sent=1310861 state=closed iface=eth0 
+2026-10-26 22:34:22.236 backend -> sink-a 10.210.0.30:8080 [connection_threshold] bytes_sent=1048717 state=established iface=eth0 
+2026-10-26 22:34:22.232 backend -> sink-a 10.210.0.30:8080 [connection] bytes_sent=1310861 state=closed iface=eth0 
+2026-10-26 22:34:22.230 backend -> sink-a 10.210.0.30:8080 [connection_threshold] bytes_sent=1048717 state=established iface=eth0 
+2026-10-26 22:34:22.227 backend -> sink-a 10.210.0.30:8080 [connection] bytes_sent=1310861 state=closed iface=eth0 
+2026-10-26 22:34:22.224 backend -> sink-a 10.210.0.30:8080 [connection_threshold] bytes_sent=1048717 state=established iface=eth0 
+2026-10-26 22:34:22.220 backend -> sink-a 10.210.0.30:8080 [connection] bytes_sent=1310861 state=closed iface=eth0 
+2026-10-26 22:34:22.217 backend -> sink-a 10.210.0.30:8080 [connection_threshold] bytes_sent=1048605 state=established iface=eth0 
+2026-10-26 22:34:22.207 backend -> sink-a 10.210.0.30:8080 [connection] bytes_sent=1310861 state=closed iface=eth0 
+2026-10-26 22:34:22.173 backend -> db 10.210.0.6:5432 [connection] bytes_sent=302 state=closed iface=eth0 
+2026-10-26 22:34:21.580 unknown -> sink-a 10.210.0.30:8080 [connection] bytes_sent= state=timeout iface=eth0 
+2026-10-26 22:15:39.717 backend -> db 10.210.0.6:5432 [connection] bytes_sent=399 state=closed iface=eth0 
+탐지 시간 및 수신 경보
+평균 탐지 시간 (MTTD) · 표본 수
+MTTD
+25.612 s
+표본 수
+3
+활성 네트워크 경보
+활성 인스턴스
+0
+회차별 탐지 지연
+experiment_id
+repetition
+scenario
+variant
+detection_status
+valid
+mttd_seconds
+started_at
+detected_at
+transfer_id
+e7f373bf2ff24c199d05c899da9aba8c
+1
+C-a
+V1
+not_detected
+true
+미측정
+2026-10-26T13:34:21.501770+00:00
+미측정
+C-a-V1-0-1793021661
+de9d68c2c8e64511ab6fbfca412d6d68
+1
+S2
+V1
+detected
+true
+52.507 s
+2026-10-26T13:14:36.880300+00:00
+2026-10-26T13:15:29.387511+00:00
+S2-V1-0-1793020476
+1beb24b25d0145359d74d3295f4bab50
+1
+S2
+V1
+detected
+true
+10.450 s
+2026-10-26T13:04:18.937481+00:00
+2026-10-26T13:04:29.387511+00:00
+S2-V1-0-1793019858
+8c678d77ea0d4dca95da51d0ea862e1b
+1
+S2
+V1
+detected
+true
+13.879 s
+2026-10-26T12:30:15.508423+00:00
+2026-10-26T12:30:29.387511+00:00
+S2-V1-0-1793017815
+네트워크 경보 상세
+No data

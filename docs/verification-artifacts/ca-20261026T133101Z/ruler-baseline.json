@@ -1,0 +1,253 @@
+{
+  "status": "success",
+  "data": {
+    "groups": [
+      {
+        "name": "network-allowlist-alerts",
+        "file": "network-allowlist.yml",
+        "rules": [
+          {
+            "state": "inactive",
+            "name": "UnauthorizedDataTransfer",
+            "query": "(sum by (dst_ip,dst_port)(sum_over_time({log_type=\"network\", event_type=\"connection\", src_service=\"backend\", dst_service!~\"db|minio|frontend\"} | json | __error__=\"\" | ( dst_ip!=\"10.210.0.30\" or dst_port!=8080 ) | bytes_sent!=\"\" | unwrap bytes_sent[5m])) > 1.048576e+06)",
+            "duration": 0,
+            "labels": {
+              "category": "security",
+              "detection": "cumulative",
+              "severity": "critical"
+            },
+            "annotations": {
+              "container": "leafy-backend",
+              "description": "backend 가 Allowlist 에 없는 목적지로 임계 초과 전송 (dst {{ $labels.dst_ip }}:{{ $labels.dst_port }}, 누적 {{ $value }} bytes)",
+              "summary": "비인가 목적지로의 대용량 데이터 전송 탐지"
+            },
+            "alerts": [],
+            "health": "ok",
+            "lastError": "",
+            "type": "alerting",
+            "lastEvaluation": "2026-10-26T13:33:40.368131263Z",
+            "evaluationTime": 0.002742502
+          },
+          {
+            "state": "inactive",
+            "name": "UnauthorizedTransferEarly",
+            "query": "(sum by (dst_ip,dst_port)(count_over_time({log_type=\"network\", event_type=\"connection_threshold\", src_service=\"backend\", dst_service!~\"db|minio|frontend\"} | json | __error__=\"\" | ( dst_ip!=\"10.210.0.30\" or dst_port!=8080 )[5m])) > 0)",
+            "duration": 0,
+            "labels": {
+              "category": "security",
+              "detection": "early",
+              "severity": "critical"
+            },
+            "annotations": {
+              "container": "leafy-backend",
+              "description": "backend 의 단일 연결이 Allowlist 에 없는 목적지로 바이트 임계값을 초과함 (dst {{ $labels.dst_ip }}:{{ $labels.dst_port }})",
+              "summary": "비인가 목적지로의 전송 중 조기 탐지 (연결 종료 전)"
+            },
+            "alerts": [],
+            "health": "ok",
+            "lastError": "",
+            "type": "alerting",
+            "lastEvaluation": "2026-10-26T13:33:40.370879859Z",
+            "evaluationTime": 0.000960053
+          }
+        ],
+        "interval": 60,
+        "limit": 0,
+        "lastEvaluation": "2026-10-26T13:33:40.368110261Z",
+        "evaluationTime": 0.003731862
+      },
+      {
+        "name": "security-log-alerts",
+        "file": "security-rules.yml",
+        "rules": [
+          {
+            "state": "inactive",
+            "name": "UnauthorizedDBAccess",
+            "query": "(sum(count_over_time({service=\"db\"} |= \"authentication failed\"[2m])) > 3)",
+            "duration": 0,
+            "labels": {
+              "category": "security",
+              "severity": "critical"
+            },
+            "annotations": {
+              "container": "leafy-db",
+              "summary": "비인가 DB 직접 접속 시도 탐지"
+            },
+            "alerts": [],
+            "health": "ok",
+            "lastError": "",
+            "type": "alerting",
+            "lastEvaluation": "2026-10-26T13:34:20.414978811Z",
+            "evaluationTime": 0.001316113
+          },
+          {
+            "state": "inactive",
+            "name": "SecretDumpAttempt",
+            "query": "(sum(count_over_time({service=\"backend\"} |= \"printenv\" |= \"[ATTACK]\"[2m])) > 0)",
+            "duration": 0,
+            "labels": {
+              "category": "security",
+              "severity": "critical"
+            },
+            "annotations": {
+              "container": "leafy-backend",
+              "summary": "컨테이너 내부 환경변수 덤프 시도 탐지"
+            },
+            "alerts": [],
+            "health": "ok",
+            "lastError": "",
+            "type": "alerting",
+            "lastEvaluation": "2026-10-26T13:34:20.416301749Z",
+            "evaluationTime": 0.000693363
+          },
+          {
+            "state": "inactive",
+            "name": "SQLInjectionAttempt",
+            "query": "(sum(count_over_time({service=\"frontend\"} |~ \"(?i)(union.{0,3}select|or.{0,3}1=1|drop.{0,3}table|sleep\\\\(|extractvalue|information_schema|admin'--|and.{0,3}1=1)\"[2m])) > 5)",
+            "duration": 0,
+            "labels": {
+              "category": "security",
+              "severity": "warning"
+            },
+            "annotations": {
+              "container": "leafy-frontend",
+              "summary": "SQL Injection 시도 패턴 탐지"
+            },
+            "alerts": [],
+            "health": "ok",
+            "lastError": "",
+            "type": "alerting",
+            "lastEvaluation": "2026-10-26T13:34:20.416999444Z",
+            "evaluationTime": 0.000907902
+          },
+          {
+            "state": "inactive",
+            "name": "HighNginxErrorRate",
+            "query": "(sum(count_over_time({service=\"frontend\", log_format=\"json\"} | json | status>=500[1m])) > 10)",
+            "duration": 0,
+            "labels": {
+              "category": "infra",
+              "severity": "warning"
+            },
+            "annotations": {
+              "container": "leafy-frontend",
+              "summary": "Nginx 5xx 에러 급증 (서비스 장애 신호)"
+            },
+            "alerts": [],
+            "health": "ok",
+            "lastError": "",
+            "type": "alerting",
+            "lastEvaluation": "2026-10-26T13:34:20.417912281Z",
+            "evaluationTime": 0.001056121
+          },
+          {
+            "state": "inactive",
+            "name": "SuspiciousProcessExecution",
+            "query": "(sum(count_over_time({service=~\"backend|frontend\"} |~ \"(?i)(wget http|wget -|curl http[^s]|curl -o |nc -|netcat|/bin/bash -i|/bin/sh -i)\"[2m])) > 0)",
+            "duration": 0,
+            "labels": {
+              "category": "security",
+              "severity": "critical"
+            },
+            "annotations": {
+              "container": "leafy-backend",
+              "summary": "컨테이너 내 비정상 프로세스 실행 탐지 (침해 후 공격자 행위)"
+            },
+            "alerts": [],
+            "health": "ok",
+            "lastError": "",
+            "type": "alerting",
+            "lastEvaluation": "2026-10-26T13:34:20.418971879Z",
+            "evaluationTime": 0.002227482
+          },
+          {
+            "state": "inactive",
+            "name": "SuspiciousProcessExec",
+            "query": "(sum(count_over_time({service=\"backend\"} |~ \"suspicious_outbound\"[2m])) > 0)",
+            "duration": 0,
+            "labels": {
+              "category": "security",
+              "severity": "critical"
+            },
+            "annotations": {
+              "container": "leafy-backend",
+              "summary": "컨테이너 내부 의심 프로세스 실행 탐지 (C2 연결 시도)"
+            },
+            "alerts": [],
+            "health": "ok",
+            "lastError": "",
+            "type": "alerting",
+            "lastEvaluation": "2026-10-26T13:34:20.421203542Z",
+            "evaluationTime": 0.001056312
+          },
+          {
+            "state": "inactive",
+            "name": "VulnerabilityScanningDetected",
+            "query": "(sum(count_over_time({service=\"frontend\", log_format=\"json\"} | json | ( status>=400 , status<500 )[1m])) > 50)",
+            "duration": 0,
+            "labels": {
+              "category": "security",
+              "severity": "warning"
+            },
+            "annotations": {
+              "container": "leafy-frontend",
+              "summary": "웹 서버 4xx 에러 급증 (자동화된 취약점 스캐닝/디렉토리 탐색 의심)"
+            },
+            "alerts": [],
+            "health": "ok",
+            "lastError": "",
+            "type": "alerting",
+            "lastEvaluation": "2026-10-26T13:34:20.422263663Z",
+            "evaluationTime": 0.00221327
+          },
+          {
+            "state": "inactive",
+            "name": "PathTraversalAttempt",
+            "query": "(sum(count_over_time({service=\"frontend\"} |~ \"(?i)(\\\\.\\\\.\\\\/|\\\\.\\\\.\\\\\\\\|/etc/passwd|\\\\.env|/\\\\.git/)\"[2m])) > 0)",
+            "duration": 0,
+            "labels": {
+              "category": "security",
+              "severity": "critical"
+            },
+            "annotations": {
+              "container": "leafy-frontend",
+              "summary": "경로 탐색(Path Traversal) 및 민감 파일 접근 시도 탐지"
+            },
+            "alerts": [],
+            "health": "ok",
+            "lastError": "",
+            "type": "alerting",
+            "lastEvaluation": "2026-10-26T13:34:20.424481204Z",
+            "evaluationTime": 0.001077746
+          },
+          {
+            "state": "inactive",
+            "name": "ContainerEscapeAttempt",
+            "query": "(sum(count_over_time({service=\"backend\"} |~ \"container_escape_attempt\"[2m])) > 0)",
+            "duration": 0,
+            "labels": {
+              "category": "security",
+              "severity": "critical"
+            },
+            "annotations": {
+              "container": "leafy-backend",
+              "summary": "컨테이너 탈출 시도 탐지 (host_fs/docker.sock 접근)"
+            },
+            "alerts": [],
+            "health": "ok",
+            "lastError": "",
+            "type": "alerting",
+            "lastEvaluation": "2026-10-26T13:34:20.425563243Z",
+            "evaluationTime": 0.000993506
+          }
+        ],
+        "interval": 60,
+        "limit": 0,
+        "lastEvaluation": "2026-10-26T13:34:20.414959191Z",
+        "evaluationTime": 0.011599849
+      }
+    ]
+  },
+  "errorType": "",
+  "error": ""
+}

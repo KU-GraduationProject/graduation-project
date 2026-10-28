@@ -1,0 +1,236 @@
+{
+  "invoked_at": "2026-10-26T13:34:21.501969+00:00",
+  "completed_observed_at": "2026-10-26T13:34:22.431504+00:00",
+  "result": {
+    "run_label": "C-a-V1",
+    "scenario": "C-a",
+    "variant": "V1",
+    "sender_meta": {
+      "run_label": "C-a-V1",
+      "transfer_id": "C-a-V1-0-1793021661",
+      "sent_start_t0": "2026-10-26T13:34:22.198936+00:00",
+      "dst_host": "sink-a",
+      "dst_port": 8080,
+      "mode": "split",
+      "chunks": 8,
+      "rate_bps": null,
+      "payload": {
+        "total_bytes": 10485760,
+        "original_bytes": 1388,
+        "synthetic_bytes": 10484372,
+        "synthetic_ratio": 0.9999,
+        "sha256": "7d17050aa1d6e1a5e094f9df957cbc0218829f57d4edd0de59f551587a2590e7"
+      },
+      "connections": [
+        {
+          "transfer_id": "C-a-V1-0-1793021661-0",
+          "status": 200,
+          "bytes_sent": 1310720,
+          "sha256": "810fa091603ed56d6d8161a80d228f4a4265f951261ff594b8d9b30a90f4da98",
+          "sink_bytes_received": 1310720,
+          "sink_sha256": "810fa091603ed56d6d8161a80d228f4a4265f951261ff594b8d9b30a90f4da98",
+          "started_at": "2026-10-26T13:34:22.200077+00:00",
+          "duration_sec": 0.0196
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-1",
+          "status": 200,
+          "bytes_sent": 1310720,
+          "sha256": "a4ca0bd2506fac86968389b6487ac25017bb3e18530c334eb875b1ad448ae2c1",
+          "sink_bytes_received": 1310720,
+          "sink_sha256": "a4ca0bd2506fac86968389b6487ac25017bb3e18530c334eb875b1ad448ae2c1",
+          "started_at": "2026-10-26T13:34:22.220419+00:00",
+          "duration_sec": 0.006
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-2",
+          "status": 200,
+          "bytes_sent": 1310720,
+          "sha256": "e10e2cebcd442bde352ff1617ec538a32f192c388ae9b192aa819430420f99d4",
+          "sink_bytes_received": 1310720,
+          "sink_sha256": "e10e2cebcd442bde352ff1617ec538a32f192c388ae9b192aa819430420f99d4",
+          "started_at": "2026-10-26T13:34:22.226569+00:00",
+          "duration_sec": 0.0054
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-3",
+          "status": 200,
+          "bytes_sent": 1310720,
+          "sha256": "e4c113a9b2a48ca9ffe6d9be623810fc975a686fe79ac8eca2d163d4aa9fd0c1",
+          "sink_bytes_received": 1310720,
+          "sink_sha256": "e4c113a9b2a48ca9ffe6d9be623810fc975a686fe79ac8eca2d163d4aa9fd0c1",
+          "started_at": "2026-10-26T13:34:22.232087+00:00",
+          "duration_sec": 0.0054
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-4",
+          "status": 200,
+          "bytes_sent": 1310720,
+          "sha256": "c1371341a5f541111c7549dfe25e3ddd25bde4935f3d964c0eddc3b2604264ce",
+          "sink_bytes_received": 1310720,
+          "sink_sha256": "c1371341a5f541111c7549dfe25e3ddd25bde4935f3d964c0eddc3b2604264ce",
+          "started_at": "2026-10-26T13:34:22.237625+00:00",
+          "duration_sec": 0.0043
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-5",
+          "status": 200,
+          "bytes_sent": 1310720,
+          "sha256": "535f7edd5066b6b8270361492a81b1b1b1d5509bdc62fa036ea6ffcdde25c4ea",
+          "sink_bytes_received": 1310720,
+          "sink_sha256": "535f7edd5066b6b8270361492a81b1b1b1d5509bdc62fa036ea6ffcdde25c4ea",
+          "started_at": "2026-10-26T13:34:22.242043+00:00",
+          "duration_sec": 0.004
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-6",
+          "status": 200,
+          "bytes_sent": 1310720,
+          "sha256": "255d4563371fa790f17868e6db5d326ab12f9e805931d35641406d35c21a76db",
+          "sink_bytes_received": 1310720,
+          "sink_sha256": "255d4563371fa790f17868e6db5d326ab12f9e805931d35641406d35c21a76db",
+          "started_at": "2026-10-26T13:34:22.246129+00:00",
+          "duration_sec": 0.0037
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-7",
+          "status": 200,
+          "bytes_sent": 1310720,
+          "sha256": "693612489a892594452efc73d9402833a4dac5c51d6b00f1dfa638ca6cfb1d64",
+          "sink_bytes_received": 1310720,
+          "sink_sha256": "693612489a892594452efc73d9402833a4dac5c51d6b00f1dfa638ca6cfb1d64",
+          "started_at": "2026-10-26T13:34:22.249961+00:00",
+          "duration_sec": 0.0032
+        }
+      ],
+      "total_bytes_sent": 10485760
+    },
+    "sink_stats": {
+      "role": "A",
+      "name": "sink-a",
+      "transfers": 8,
+      "total_bytes": 10485760,
+      "receipts": [
+        {
+          "seq": 1,
+          "received_at": "2026-10-26T13:34:22.218217+00:00",
+          "bytes_received": 1310720,
+          "sha256": "810fa091603ed56d6d8161a80d228f4a4265f951261ff594b8d9b30a90f4da98",
+          "transfer_id": "C-a-V1-0-1793021661-0"
+        },
+        {
+          "seq": 2,
+          "received_at": "2026-10-26T13:34:22.226007+00:00",
+          "bytes_received": 1310720,
+          "sha256": "a4ca0bd2506fac86968389b6487ac25017bb3e18530c334eb875b1ad448ae2c1",
+          "transfer_id": "C-a-V1-0-1793021661-1"
+        },
+        {
+          "seq": 3,
+          "received_at": "2026-10-26T13:34:22.231741+00:00",
+          "bytes_received": 1310720,
+          "sha256": "e10e2cebcd442bde352ff1617ec538a32f192c388ae9b192aa819430420f99d4",
+          "transfer_id": "C-a-V1-0-1793021661-2"
+        },
+        {
+          "seq": 4,
+          "received_at": "2026-10-26T13:34:22.237043+00:00",
+          "bytes_received": 1310720,
+          "sha256": "e4c113a9b2a48ca9ffe6d9be623810fc975a686fe79ac8eca2d163d4aa9fd0c1",
+          "transfer_id": "C-a-V1-0-1793021661-3"
+        },
+        {
+          "seq": 5,
+          "received_at": "2026-10-26T13:34:22.241431+00:00",
+          "bytes_received": 1310720,
+          "sha256": "c1371341a5f541111c7549dfe25e3ddd25bde4935f3d964c0eddc3b2604264ce",
+          "transfer_id": "C-a-V1-0-1793021661-4"
+        },
+        {
+          "seq": 6,
+          "received_at": "2026-10-26T13:34:22.245632+00:00",
+          "bytes_received": 1310720,
+          "sha256": "535f7edd5066b6b8270361492a81b1b1b1d5509bdc62fa036ea6ffcdde25c4ea",
+          "transfer_id": "C-a-V1-0-1793021661-5"
+        },
+        {
+          "seq": 7,
+          "received_at": "2026-10-26T13:34:22.249562+00:00",
+          "bytes_received": 1310720,
+          "sha256": "255d4563371fa790f17868e6db5d326ab12f9e805931d35641406d35c21a76db",
+          "transfer_id": "C-a-V1-0-1793021661-6"
+        },
+        {
+          "seq": 8,
+          "received_at": "2026-10-26T13:34:22.252873+00:00",
+          "bytes_received": 1310720,
+          "sha256": "693612489a892594452efc73d9402833a4dac5c51d6b00f1dfa638ca6cfb1d64",
+          "transfer_id": "C-a-V1-0-1793021661-7"
+        }
+      ]
+    },
+    "crosscheck": {
+      "ok": true,
+      "total_bytes_sent": 10485760,
+      "total_bytes_received": 10485760,
+      "connections": [
+        {
+          "transfer_id": "C-a-V1-0-1793021661-0",
+          "match": true,
+          "bytes_sent": 1310720,
+          "bytes_received": 1310720,
+          "sha_match": true
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-1",
+          "match": true,
+          "bytes_sent": 1310720,
+          "bytes_received": 1310720,
+          "sha_match": true
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-2",
+          "match": true,
+          "bytes_sent": 1310720,
+          "bytes_received": 1310720,
+          "sha_match": true
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-3",
+          "match": true,
+          "bytes_sent": 1310720,
+          "bytes_received": 1310720,
+          "sha_match": true
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-4",
+          "match": true,
+          "bytes_sent": 1310720,
+          "bytes_received": 1310720,
+          "sha_match": true
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-5",
+          "match": true,
+          "bytes_sent": 1310720,
+          "bytes_received": 1310720,
+          "sha_match": true
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-6",
+          "match": true,
+          "bytes_sent": 1310720,
+          "bytes_received": 1310720,
+          "sha_match": true
+        },
+        {
+          "transfer_id": "C-a-V1-0-1793021661-7",
+          "match": true,
+          "bytes_sent": 1310720,
+          "bytes_received": 1310720,
+          "sha_match": true
+        }
+      ]
+    }
+  }
+}
