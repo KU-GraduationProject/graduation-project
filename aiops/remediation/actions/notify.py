@@ -75,8 +75,14 @@ class Notifier:
             "timestamp":      datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
         }
 
-    async def send_approval_request(self, alert: dict, analysis: dict) -> dict:
-        """Log a medium/high-risk action request that requires manual approval."""
+    async def send_approval_request(self, alert: dict, analysis: dict,
+                                    remediation_id: str | None = None) -> dict:
+        """
+        Log a medium/high-risk action request that requires manual approval.
+
+        remediation_id 를 버튼 value 에 실어 보낸다 — 같은 조치에 대한 승인이 여러 번
+        도착해도 수신측이 한 건으로 합쳐 한 번만 실행한다 (멱등성, Phase 2).
+        """
         data = self._extract_analysis(alert, analysis)
 
         logger.warning(
@@ -94,6 +100,7 @@ class Notifier:
             "alertname":      data["alertname"],
             "action_type":    data["action_type"],
             "action_targets": data["action_targets"],
+            "remediation_id": remediation_id,
         }, ensure_ascii=False)
 
         return await self._send_slack(data["alertname"], {

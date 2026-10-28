@@ -63,7 +63,16 @@ class PolicyEndpointBase(unittest.TestCase):
         self.events.append((job, event))
 
     def docker_calls(self) -> int:
-        return self.from_env.return_value.containers.get.call_count
+        """
+        실제로 컨테이너·네트워크를 '바꾼' Docker 호출 횟수.
+        [Phase 2 변경] containers.get 은 상태 수집·재조회에도 쓰이므로 세지 않는다.
+        """
+        client = self.from_env.return_value
+        container = client.containers.get.return_value
+        network = client.networks.get.return_value
+        return (container.restart.call_count + container.pause.call_count
+                + container.unpause.call_count + container.update.call_count
+                + network.disconnect.call_count + network.connect.call_count)
 
     def post_action(self, body):
         ts = str(int(time.time()))
@@ -104,15 +113,20 @@ class ActionOutcomeTest(PolicyEndpointBase):
         self.assertTrue(policy["requires_approval"])
         self.assertEqual(self.docker_calls(), 0)
 
-    def test_throttle_candidate_is_deferred_not_executed(self):
+    def test_throttle_candidate_is_executed_with_ttl(self):
+        """
+        [Phase 2 기대값 변경] Phase 1 에서는 TTL 자동 복구가 없어 후보 상태로만 남고
+        'auto_execution_deferred' 였다. Phase 2 는 UNTHROTTLE 복구를 구현했으므로
+        정책대로 실행된다 (executable_now=true). 복구 TTL 은 그대로 1800초다.
+        """
         resp = self.post_action(analysis_body("THROTTLE", threat_level="medium",
                                               confidence=0.85))
         body = resp.json()
-        self.assertEqual(body["status"], "auto_execution_deferred")
         self.assertEqual(body["policy"]["outcome"], "AUTO_EXECUTE_CANDIDATE")
-        self.assertFalse(body["policy"]["executable_now"])
+        self.assertTrue(body["policy"]["executable_now"])
         self.assertEqual(body["policy"]["ttl_seconds"], 1800)
-        self.assertEqual(self.docker_calls(), 0)
+        self.assertEqual(body["policy"]["recovery_mode"], "auto")
+        self.assertEqual(self.docker_calls(), 1)
 
     def test_throttle_below_threshold_goes_to_approval(self):
         resp = self.post_action(analysis_body("THROTTLE", threat_level="medium",
@@ -175,30 +189,41 @@ class ApprovalPathConsistencyTest(PolicyEndpointBase):
         self.assertEqual(resp.json()["status"], "approved")
         self.assertEqual(self.docker_calls(), 1)
 
-    def test_approved_isolate_executes(self):
+    def test_approved_isolate_passes_the_policy_gate(self):
+        """
+        [Phase 2 기대값 변경] Docker 변경 호출 수 단정을 뺐다. ISOLATE 는 Phase 2 부터
+        증거 보존(네트워크 IP·alias)을 실행 전제조건으로 요구하는데, 이 테스트의
+        Mock 클라이언트에서는 증거를 모을 수 없어 게이트에서 막히는 것이 옳은 동작이다.
+        실제 격리·검증·복구는 test_phase2_integration 이 현실적인 Fake Docker 로 검증한다.
+        여기서는 정책 게이트가 ISOLATE 를 허용하는지만 본다.
+        """
+        allowed, reason = self.main.policy_engine.execution_allowed(
+            "ISOLATE", ["leafy-backend"])
+        self.assertTrue(allowed, reason)
         resp = self.post_slack(slack_approve_form("ISOLATE"))
         self.assertEqual(resp.json()["status"], "approved")
-        self.assertEqual(self.docker_calls(), 1)
+        self.assertNotIn("blocked by policy", resp.json()["results"][0])
 
-    def test_approved_pause_is_blocked_with_reason(self):
+    def test_approved_pause_passes_the_policy_gate(self):
         """
-        PAUSE 는 Phase 0 승인 경로에서도 실행되지 않았다. 이전에는 "auto-handler 없음"
-        으로만 기록돼 이유를 알 수 없었고, 지금은 정책 사유가 남는다.
+        [Phase 2 기대값 변경] Phase 1 에서는 PAUSE 실행기가 승인 경로에 연결되지 않아
+        정책이 차단했다. Phase 2 는 PAUSE/UNPAUSE 와 복구(재승인 필요)를 구현해 게이트가
+        열렸다. 실제 동결·해제는 test_executor / test_recovery_store 가 검증한다.
         """
+        allowed, reason = self.main.policy_engine.execution_allowed(
+            "PAUSE", ["leafy-backend"])
+        self.assertTrue(allowed, reason)
+        self.assertEqual(self.main.policy_engine.config.actions["PAUSE"].recovery_mode,
+                         "require_approval")
         resp = self.post_slack(slack_approve_form("PAUSE"))
-        body = resp.json()
-        self.assertEqual(body["status"], "approved")
-        self.assertIn("blocked by policy", body["results"][0])
-        self.assertIn("executor_not_wired_in_approval_path", body["results"][0])
-        self.assertEqual(self.docker_calls(), 0)
-        logged = [e for _, e in self.events if e.get("event") == "manual_approval_logged"]
-        self.assertEqual(logged[0]["policy_block_reason"],
-                         "executor_not_wired_in_approval_path")
+        self.assertEqual(resp.json()["status"], "approved")
+        self.assertNotIn("blocked by policy", resp.json()["results"][0])
 
-    def test_approved_throttle_is_blocked_until_ttl_recovery_exists(self):
+    def test_approved_throttle_executes_now_that_recovery_exists(self):
+        """[Phase 2 기대값 변경] TTL 복구 구현으로 THROTTLE 실행이 열렸다."""
         resp = self.post_slack(slack_approve_form("THROTTLE"))
-        self.assertIn("ttl_recovery_not_implemented", resp.json()["results"][0])
-        self.assertEqual(self.docker_calls(), 0)
+        self.assertEqual(resp.json()["status"], "approved")
+        self.assertEqual(self.docker_calls(), 1)
 
     def test_approved_unsupported_action_is_blocked(self):
         resp = self.post_slack(slack_approve_form("SCALE"))

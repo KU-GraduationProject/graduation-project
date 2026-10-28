@@ -183,6 +183,7 @@ class PolicyEngine:
             urgency=threat.urgency, performs_action=policy.performs_action,
             confidence=conf, targets=targets, prerequisites=policy.evidence_required,
             ttl_seconds=policy.ttl_seconds, recovery_required=policy.recovery_required,
+            recovery_mode=policy.recovery_mode,
             mention=threat.mention, llm_action_risk=llm_risk,
         )
 
@@ -281,7 +282,7 @@ class BlockAllPolicyEngine:
             targets=PolicyEngine._normalize_targets(action_targets),
             reasons=(f"policy_unavailable:{self.reason}",),
             blocked_reason=f"policy_unavailable:{self.reason}",
-            notify="alert_only",
+            notify="alert_only", recovery_mode="none",
             llm_action_risk=str(llm_action_risk).lower() if llm_action_risk else None,
         )
 

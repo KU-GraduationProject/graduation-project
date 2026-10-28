@@ -22,6 +22,12 @@ OUTCOMES = (NO_ACTION, NOTIFY, AWAITING_APPROVAL, AUTO_EXECUTE_CANDIDATE, BLOCKE
 RISKS = ("low", "medium", "high")
 THREAT_LEVELS = ("low", "medium", "high", "critical")
 
+# 복구 방식 (Phase 2)
+RECOVERY_AUTO = "auto"                        # TTL 만료 시 자동 복구
+RECOVERY_REQUIRE_APPROVAL = "require_approval"  # TTL 만료 시 재승인 요청
+RECOVERY_NONE = "none"                        # 되돌릴 수 없음 / 대상 아님
+RECOVERY_MODES = (RECOVERY_AUTO, RECOVERY_REQUIRE_APPROVAL, RECOVERY_NONE)
+
 
 class PolicyError(ValueError):
     """정책 파일이 없거나 형식이 잘못됐다. 조치를 열어 주지 않고 실패한다."""
@@ -31,6 +37,13 @@ class PolicyError(ValueError):
 class ThreatPolicy:
     urgency: str
     mention: bool = False
+
+
+@dataclass(frozen=True)
+class NetworkPolicy:
+    """ISOLATE 대상 분류. 이름은 Docker inspect 로 읽고 접미사로 맞춘다."""
+    isolate: tuple = ()
+    preserve: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -50,6 +63,7 @@ class ActionPolicy:
     recovery_required: bool = False
     evidence_required: tuple = ()
     executor_blocked_reason: str | None = None
+    recovery_mode: str = RECOVERY_NONE
 
 
 @dataclass(frozen=True)
@@ -75,8 +89,10 @@ class PolicyDecision:
     prerequisites: tuple = ()
     ttl_seconds: int | None = None
     recovery_required: bool = False
+    recovery_mode: str = RECOVERY_NONE
     notify: str = "none"
     mention: bool = False
+    # ↑ PolicyDecision 필드. recovery_mode 는 Phase 2 복구기가 소비한다.
     llm_action_risk: str | None = None   # LLM 이 보낸 값 — 기록만 하고 판단에 쓰지 않는다
 
     def as_dict(self) -> dict:
@@ -96,6 +112,7 @@ class PolicyDecision:
             "prerequisites": list(self.prerequisites),
             "ttl_seconds": self.ttl_seconds,
             "recovery_required": self.recovery_required,
+            "recovery_mode": self.recovery_mode,
             "notify": self.notify,
             "mention": self.mention,
             "llm_action_risk": self.llm_action_risk,
@@ -109,6 +126,7 @@ class PolicyConfig:
     actions: dict = field(default_factory=dict)        # action_type -> ActionPolicy
     unsupported: dict = field(default_factory=dict)    # action_type -> 사유
     threat_levels: dict = field(default_factory=dict)  # level -> ThreatPolicy
+    networks: NetworkPolicy = field(default_factory=NetworkPolicy)
 
 
 # ── 검증 로더 ─────────────────────────────────────────────────────────────────
@@ -180,6 +198,17 @@ def parse_action_policy(action_type: str, raw) -> ActionPolicy:
     if recovery_required and ttl is None:
         raise PolicyError(f"actions.{action_type}: recovery_required 면 ttl_seconds 가 필요하다")
 
+    recovery_mode = str(raw.get("recovery_mode", RECOVERY_NONE)).lower()
+    if recovery_mode not in RECOVERY_MODES:
+        raise PolicyError(f"actions.{action_type}.recovery_mode: {RECOVERY_MODES} 중 "
+                          f"하나여야 한다 (받은 값: {raw.get('recovery_mode')!r})")
+    if recovery_required and recovery_mode == RECOVERY_NONE:
+        raise PolicyError(f"actions.{action_type}: recovery_required 인데 recovery_mode 가 "
+                          f"none 이다 — 복구 경로 없이 되돌려야 하는 조치를 둘 수 없다")
+    if recovery_mode != RECOVERY_NONE and ttl is None:
+        raise PolicyError(f"actions.{action_type}: recovery_mode 가 {recovery_mode} 면 "
+                          f"ttl_seconds 가 필요하다")
+
     return ActionPolicy(
         action_type=action_type,
         action_risk=risk,
@@ -201,6 +230,7 @@ def parse_action_policy(action_type: str, raw) -> ActionPolicy:
                                     f"actions.{action_type}.evidence_required"),
         executor_blocked_reason=(str(raw["executor_blocked_reason"])
                                  if raw.get("executor_blocked_reason") else None),
+        recovery_mode=recovery_mode,
     )
 
 
@@ -254,5 +284,20 @@ def parse_policy(raw) -> PolicyConfig:
     if overlap:
         raise PolicyError(f"actions 와 unsupported 에 같은 조치가 있다: {overlap}")
 
+    raw_networks = raw.get("networks") or {}
+    if not isinstance(raw_networks, dict):
+        raise PolicyError("networks 는 매핑이어야 한다")
+    isolate = _as_tuple(raw_networks.get("isolate"), "networks.isolate")
+    preserve = _as_tuple(raw_networks.get("preserve"), "networks.preserve")
+    both = sorted(set(isolate) & set(preserve))
+    if both:
+        raise PolicyError(f"networks: 같은 이름이 isolate 와 preserve 에 있다: {both}")
+    # ISOLATE 를 실행 가능으로 둔 채 격리 대상 네트워크를 지정하지 않으면, 실행
+    # 시점에 "끊을 대상이 없다" 로 전부 막힌다. 정책 작성 실수를 로드에서 잡는다.
+    isolate_policy = actions.get("ISOLATE")
+    if isolate_policy is not None and isolate_policy.executor_ready and not isolate:
+        raise PolicyError("networks.isolate 가 비어 있는데 ISOLATE 가 executor_ready 다")
+
     return PolicyConfig(version=version, actions=actions,
-                        unsupported=unsupported, threat_levels=threat_levels)
+                        unsupported=unsupported, threat_levels=threat_levels,
+                        networks=NetworkPolicy(isolate=isolate, preserve=preserve))

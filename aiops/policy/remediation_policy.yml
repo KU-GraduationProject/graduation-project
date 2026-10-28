@@ -11,15 +11,29 @@
 #   action_risk  : 틀렸을 때 얼마나 아픈가 -> 승인 게이트
 #   critical 은 긴급도를 올리는 값이며 승인을 생략하는 값이 아니다.
 #
-# Phase 1 범위
-#   정책 판단과 실행 계획만 계산한다. executor_ready: false 인 조치는 승인·조건을
-#   충족해도 실행하지 않고 사유를 기록한다. Phase 1 은 "누가 결정하는가"를 바꾸고
-#   "무엇을 실행할 수 있는가"는 Phase 0 상태를 그대로 유지한다.
-#     RESTART / ISOLATE : Phase 0 에서 승인 후 실행되던 조치 -> ready
-#     PAUSE             : Phase 0 승인 경로에 실행기가 연결돼 있지 않았다 -> not ready
-#     THROTTLE          : TTL 자동 복구가 없으면 되돌릴 수 없다 -> not ready
+# Phase 2 범위
+#   실행기·증거 보존·사후 검증·TTL 복구가 구현되면서 executor_ready 를 켠다.
+#   조치마다 검증된 복구 경로가 있어야 ready 로 둔다.
+#     RESTART  : 비가역 — 사후 상태 확인만 (복구 대상 아님)
+#     PAUSE    : UNPAUSE 로 복구. 포렌식 동결이라 TTL 만료 시 재승인을 요구한다
+#     ISOLATE  : RECONNECT 로 복구(IP·alias 복원). TTL 만료 자동 재연결 금지
+#     THROTTLE : UNTHROTTLE 로 원래 쿼터 복구. TTL 만료 시 자동 복구
+#   실행 자체는 REMEDIATION_MODE 가 docker 일 때만 일어난다 (현재 운영값: disabled).
 
 version: 1
+
+# ── 네트워크 분류 (ISOLATE 대상) ──────────────────────────────────────────────
+# 실제 네트워크 이름은 Docker inspect 로 읽는다. compose 프로젝트 이름이 앞에 붙고
+# (`graduation-project_leafy-net`) PC 별로 달라지므로 접미사로 맞춘다.
+#   isolate  : 끊어도 되는 업무 네트워크
+#   preserve : 절대 끊지 않는 관리 네트워크 — 통째로 막으면 복구 지시도 닿지 않는다
+# 둘 다 아닌 네트워크만 붙어 있거나 양쪽에 걸리면 '불명확' 으로 보고 실행하지 않는다.
+networks:
+  isolate:
+    - leafy-net
+  preserve:
+    - mgmt-net
+    - aiops-net
 
 # ── 위협 심각도 -> 대응 긴급도 ────────────────────────────────────────────────
 threat_levels:
@@ -74,8 +88,8 @@ actions:
     ttl_seconds: 1800
     recovery_required: true
     evidence_required: [metrics_snapshot]
-    executor_ready: false
-    executor_blocked_reason: ttl_recovery_not_implemented
+    executor_ready: true
+    recovery_mode: auto            # TTL 만료 -> UNTHROTTLE 로 원래 쿼터 복구
     notify: post_action
     description: 서비스가 살아 있는 일시적 부하 — CPU 쿼터 제한 후 TTL 만료 시 원복
 
@@ -87,6 +101,7 @@ actions:
     requires_targets: true
     evidence_required: [logs_snapshot, metrics_snapshot]
     executor_ready: true
+    recovery_mode: none            # 되돌릴 수 없다 — 사후 상태 확인만 한다
     notify: approval_request
     description: 비가역(세션·인메모리 상태 손실) — 승인 필수
 
@@ -99,8 +114,8 @@ actions:
     ttl_seconds: 3600
     recovery_required: true
     evidence_required: [process_list, connection_table]
-    executor_ready: false
-    executor_blocked_reason: executor_not_wired_in_approval_path
+    executor_ready: true
+    recovery_mode: require_approval  # 포렌식 동결 — TTL 만으로 자동 해제하지 않는다
     notify: approval_request
     description: 포렌식 보존용 프로세스 동결 — 승인 필수
 
@@ -114,8 +129,9 @@ actions:
     recovery_required: true
     evidence_required: [network_connections]
     executor_ready: true
+    recovery_mode: require_approval  # TTL 만료 자동 재연결 금지 — 공격 재개 위험
     notify: approval_request
-    description: 네트워크 분리 — 연결 정보 보존 없이는 되돌릴 수 없다(Phase 2)
+    description: 네트워크 분리 — 연결 정보(IP·alias) 보존이 실행 전제조건
 
 # ── 정책이 알고 있으나 지원하지 않는 조치 ─────────────────────────────────────
 # 여기에 있으면 "모르는 조치"가 아니라 "지원하지 않는 조치"로 사유가 기록된다.

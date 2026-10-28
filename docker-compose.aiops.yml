@@ -23,6 +23,7 @@ volumes:
   grafana_data:
   ollama_data:
   fluentd_buffer:     # Loki 출력 file buffer + tail pos. Loki가 잠시 내려가도 수신한 로그를 잃지 않기 위해
+  remediation_state:  # 조치 레코드(멱등성·TTL 복구 근거). 지우면 격리를 되돌릴 증거를 잃는다
 
 services:
 
@@ -185,6 +186,9 @@ services:
       REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
       # Phase 1: 조치 위험도·실행 정책의 단일 소스 (아래 volumes 로 마운트)
       REMEDIATION_POLICY_PATH: /app/config/remediation_policy.yml
+      # Phase 2: 조치 레코드(멱등성·TTL 복구 근거) 영속 경로
+      REMEDIATION_STATE_DIR: /app/state
+      REMEDIATION_TTL_SCAN_SEC: "60"
       # 원격 Leafy에 대한 조치 경로가 없다. Docker socket도 마운트하지 않는다.
       REMEDIATION_MODE: disabled
     ports:
@@ -192,6 +196,7 @@ services:
     volumes:
       # 정책만 읽기 전용으로 마운트한다 (Docker socket 은 여전히 마운트하지 않는다).
       - ./aiops/policy/remediation_policy.yml:/app/config/remediation_policy.yml:ro
+      - remediation_state:/app/state
     networks:
       - aiops-net
     depends_on:

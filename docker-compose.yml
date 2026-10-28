@@ -28,6 +28,7 @@ volumes:
   grafana_data:
   ollama_data:
   minio_data:          # 업로드 사진 + 도감 이미지 217장. 지우면 첫 기동에 73MB를 다시 받는다
+  remediation_state:    # 조치 레코드(멱등성·TTL 복구 근거). 지우면 격리를 되돌릴 증거를 잃는다
   zeek_logs:            # Zeek conn.log (observer 내부 전달용)
   network_events:       # Canonical Network Event (JSONL) — #8 ingestion이 소비
 
@@ -386,6 +387,11 @@ services:
       REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
       # Phase 1: 조치 위험도·실행 정책의 단일 소스 (아래 volumes 로 마운트)
       REMEDIATION_POLICY_PATH: /app/config/remediation_policy.yml
+      # Phase 2: 조치 레코드(멱등성·TTL 복구 근거)를 영속화할 경로.
+      # 이 디렉터리를 잃으면 격리를 되돌릴 증거와 중복 실행 방지 기록이 사라진다.
+      REMEDIATION_STATE_DIR: /app/state
+      # TTL 복구 스캔 주기(초). 0 이면 스캐너를 끈다.
+      REMEDIATION_TTL_SCAN_SEC: "60"
     ports:
       # 조치 실행 경로이므로 호스트 루프백에만 공개한다. Pipeline 은 mgmt-net 으로
       # http://remediation:8001 로 접근하므로 publish 가 필요하지 않다.
@@ -397,6 +403,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # 정책은 읽기 전용으로만 들어간다. 컨테이너가 자기 정책을 고칠 수 없어야 한다.
       - ./aiops/policy/remediation_policy.yml:/app/config/remediation_policy.yml:ro
+      # 조치 레코드는 재시작·재생성을 넘어 살아야 한다 (멱등성·복구 근거)
+      - remediation_state:/app/state
     networks:
       - mgmt-net
     depends_on:

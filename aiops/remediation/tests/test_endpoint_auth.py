@@ -15,6 +15,7 @@ import importlib
 import json
 import os
 import sys
+import tempfile
 import time
 import unittest
 import urllib.parse
@@ -44,19 +45,36 @@ SLACK_APPROVE_FORM = "payload=" + urllib.parse.quote(json.dumps({
 }))
 
 
-def load_main(mode="docker", slack_secret=SLACK_SECRET, api_key=API_KEY):
-    """환경변수는 import 시점에 읽으므로 모듈을 새로 import 한다."""
+def load_main(mode="docker", slack_secret=SLACK_SECRET, api_key=API_KEY,
+              state_dir=None):
+    """
+    환경변수는 import 시점에 읽으므로 모듈을 새로 import 한다.
+
+    Phase 2 부터 조치 레코드가 파일에 영속화되므로 테스트마다 격리된 상태
+    디렉터리를 준다 — 공용 경로를 쓰면 테스트끼리 멱등성 기록을 공유해 간섭한다.
+    TTL 스캐너는 끄고(REMEDIATION_TTL_SCAN_SEC=0) 필요한 테스트가 직접 호출한다.
+    """
     env = {
         "SLACK_WEBHOOK_URL": "",
         "REMEDIATION_MODE": mode,
         "SLACK_SIGNING_SECRET": slack_secret,
         "REMEDIATION_API_KEY": api_key,
+        "REMEDIATION_STATE_DIR": state_dir or tempfile.mkdtemp(prefix="remstate_"),
+        "REMEDIATION_TTL_SCAN_SEC": "0",
     }
-    for name in ("main", "actions.notify", "actions.container"):
+    for name in ("main", "actions.notify", "actions.container", "store",
+                 "recovery", "evidence"):
         sys.modules.pop(name, None)
     with mock.patch.dict(os.environ, env, clear=False):
         with mock.patch("docker.from_env") as from_env:
             module = importlib.import_module("main")
+    # 안전장치: 실행기가 patch 된 클라이언트를 들고 있어야 한다. 지연 생성으로
+    # 되돌아가면 patch 가 풀린 뒤 실제 Docker 데몬에 붙어 테스트가 실제 컨테이너를
+    # 조작한다 (개발 중 실제로 발생). 여기서 크게 실패시킨다.
+    if mode == "docker":
+        client = getattr(module.executor, "_client", None)
+        assert client is from_env.return_value, (
+            "실행기가 Mock Docker 클라이언트를 쓰지 않는다 — 실제 데몬 접근 위험")
     return module, from_env
 
 
@@ -78,8 +96,19 @@ class AuthTestBase(unittest.TestCase):
 
     # ── 헬퍼 ──────────────────────────────────────────────
     def docker_calls(self) -> int:
-        """ContainerActions 가 Docker 클라이언트를 건드린 횟수."""
-        return self.from_env.return_value.containers.get.call_count
+        """
+        실제로 컨테이너·네트워크를 '바꾼' Docker 호출 횟수.
+
+        [Phase 2 변경] 이전에는 containers.get 호출 수를 셌다. Phase 2 실행기는
+        조치 전 상태 수집과 조치 후 재조회를 위해 containers.get 을 여러 번 쓰므로
+        그 수는 더 이상 '조치를 했는가' 를 뜻하지 않는다. 변경 호출만 센다.
+        """
+        client = self.from_env.return_value
+        container = client.containers.get.return_value
+        network = client.networks.get.return_value
+        return (container.restart.call_count + container.pause.call_count
+                + container.unpause.call_count + container.update.call_count
+                + network.disconnect.call_count + network.connect.call_count)
 
     def post_action(self, body=AUTO_EXEC_BODY, headers=None, key=None, ts=None):
         if headers is None:
@@ -123,16 +152,21 @@ class ActionEndpointAuthTest(AuthTestBase):
         self.assertEqual(resp.json()["status"], "pending_approval")
         self.assertEqual(self.docker_calls(), 0)
 
-    def test_no_action_request_can_auto_execute_in_phase1(self):
+    def test_high_risk_requests_never_auto_execute(self):
         """
-        Phase 1 에서는 /action 으로 들어온 어떤 요청도 Docker 조치를 일으키지 않는다.
-        LLM 이 위험도를 조작해도, confidence 가 1.0 이어도 마찬가지다.
+        /action 으로 들어온 요청은 high-risk 조치를 절대 자동 실행하지 않는다.
+        LLM 이 위험도를 조작해도, confidence 가 1.0 이어도, threat 가 critical 이어도
+        승인 대기로 간다.
+
+        [Phase 2 기대값 변경] 테스트 이름과 범위를 좁혔다. Phase 1 에서는 THROTTLE 도
+        실행기 미비로 실행되지 않아 "어떤 요청도 실행되지 않는다" 가 성립했지만,
+        Phase 2 는 TTL 자동 복구를 구현했으므로 medium-risk THROTTLE 은 정책대로
+        자동 실행된다 (아래 별도 테스트).
         """
         for action_type, risk, threat, conf in [
             ("RESTART", "low", "high", 1.0),
             ("ISOLATE", "low", "critical", 1.0),
             ("PAUSE", "low", "critical", 1.0),
-            ("THROTTLE", "low", "medium", 1.0),
             ("SCALE", "low", "high", 1.0),
             ("NONE", "low", "low", 1.0),
         ]:
@@ -145,6 +179,21 @@ class ActionEndpointAuthTest(AuthTestBase):
             self.assertEqual(resp.status_code, 200, action_type)
             self.assertNotEqual(resp.json()["status"], "executed", action_type)
         self.assertEqual(self.docker_calls(), 0)
+
+    def test_throttle_auto_executes_in_phase2(self):
+        """
+        medium-risk THROTTLE 은 정책 조건(confidence>=0.8, threat medium/high)을
+        충족하면 승인 없이 실행된다 — TTL 자동 복구가 있어 되돌릴 수 있기 때문이다.
+        """
+        body = json.dumps({
+            "alert": {"labels": {"alertname": "HighCpuUsage"}},
+            "analysis": {"action_type": "THROTTLE", "action_targets": ["leafy-backend"],
+                         "threat_level": "medium", "confidence": 0.9},
+        }, ensure_ascii=False).encode("utf-8")
+        resp = self.post_action(body=body)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["policy"]["outcome"], "AUTO_EXECUTE_CANDIDATE")
+        self.assertTrue(resp.json()["policy"]["executable_now"])
 
     def test_no_signature_is_denied_and_docker_untouched(self):
         resp = self.post_action(headers={})
@@ -210,6 +259,7 @@ class SlackEndpointAuthTest(AuthTestBase):
         resp = self.post_slack()
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["status"], "approved")
+        # 승인 경로는 여전히 조치를 실행한다 (RESTART 1회).
         self.assertEqual(self.docker_calls(), 1)
 
     def test_no_signature_is_denied_and_docker_untouched(self):
@@ -252,19 +302,16 @@ class SlackEndpointAuthTest(AuthTestBase):
         self.assertEqual(second.status_code, 401)
         self.assertEqual(self.docker_calls(), 1)
 
-    def test_repeat_click_still_executes_known_gap(self):
+    def test_repeat_click_executes_once(self):
         """
-        같은 사람이 승인 버튼을 두 번 누르면 Slack 은 타임스탬프가 다른 별개 요청을
-        보내므로 둘 다 유효한 서명이다 → 두 번 실행된다.
-
-        Phase 0 은 '위조·리플레이'를 막는 범위이고, 이 중복은 조치 레코드
-        (remediation_id) 단위 멱등성이 필요해 Phase 2 범위다. 현재 동작을 여기에
-        고정해 두고, 멱등성 구현 시 이 테스트를 뒤집는다.
+        [Phase 2 기대값 변경] Phase 0 에서는 승인 버튼을 두 번 누르면 두 번 실행됐다
+        (서명이 서로 다른 유효한 요청이므로 리플레이 차단으로는 막지 못한다). 그 간극을
+        Phase 2 가 remediation_id 단위 멱등성으로 닫았으므로, 이제 한 번만 실행된다.
         """
         now = int(time.time())
         self.assertEqual(self.post_slack(ts=now).status_code, 200)
         self.assertEqual(self.post_slack(ts=now - 1).status_code, 200)
-        self.assertEqual(self.docker_calls(), 2)
+        self.assertEqual(self.docker_calls(), 1)
 
 
 class MissingSecretFailsClosedTest(unittest.TestCase):

@@ -167,14 +167,20 @@ class ApprovalGateTest(unittest.TestCase):
         self.assertFalse(allowed)
         self.assertEqual(reason, "no_action_targets")
 
-    def test_pause_execution_blocked_with_reason(self):
-        """PAUSE 는 Phase 0 승인 경로에서도 실행되지 않았다 — 사유를 남긴다."""
+    def test_pause_is_executable_after_phase2(self):
+        """
+        [Phase 2 기대값 변경] Phase 1 에서는 PAUSE 실행기가 승인 경로에 연결되지 않아
+        차단됐다. Phase 2 가 PAUSE/UNPAUSE 와 복구(재승인 필요)를 구현해 열렸다.
+        승인 필수라는 성질은 그대로다.
+        """
         allowed, reason = self.e.execution_allowed("PAUSE", TARGETS)
-        self.assertFalse(allowed)
-        self.assertEqual(reason, "executor_not_wired_in_approval_path")
+        self.assertTrue(allowed, reason)
+        self.assertTrue(self.e.config.actions["PAUSE"].requires_approval)
+        self.assertEqual(self.e.config.actions["PAUSE"].recovery_mode,
+                         "require_approval")
 
     def test_restart_isolate_remain_executable_on_approval(self):
-        """Phase 1 은 실행 가능 범위를 넓히지도 줄이지도 않는다."""
+        """RESTART·ISOLATE 는 Phase 0 부터 승인 후 실행되던 조치다."""
         for action in ("RESTART", "ISOLATE"):
             allowed, reason = self.e.execution_allowed(action, TARGETS)
             self.assertTrue(allowed, (action, reason))
@@ -190,15 +196,19 @@ class ThrottleAutoExecuteTest(unittest.TestCase):
         self.assertTrue(any(r.startswith("confidence_below_threshold") for r in d.reasons))
         self.assertFalse(d.executable_now)
 
-    def test_confidence_at_threshold_meets_policy_but_not_executable(self):
+    def test_confidence_at_threshold_is_executable_with_ttl(self):
+        """
+        [Phase 2 기대값 변경] Phase 1 에서는 TTL 자동 복구가 없어 executable_now=false
+        였다. Phase 2 가 UNTHROTTLE 복구를 구현해 실행 가능해졌다. 자동 실행 조건
+        (confidence>=0.8, threat medium/high)과 TTL 1800초는 그대로다.
+        """
         d = self.e.decide("THROTTLE", "medium", 0.80, TARGETS)
         self.assertEqual(d.outcome, AUTO_EXECUTE_CANDIDATE)
         self.assertFalse(d.requires_approval)
-        # Phase 1: TTL 자동 복구가 없어 실제 실행은 하지 않는다
-        self.assertFalse(d.executable_now)
-        self.assertIn("execution_deferred:ttl_recovery_not_implemented", d.reasons)
+        self.assertTrue(d.executable_now)
         self.assertEqual(d.ttl_seconds, 1800)
         self.assertTrue(d.recovery_required)
+        self.assertEqual(d.recovery_mode, "auto")
 
     def test_threat_level_not_eligible(self):
         for threat in ("low", "critical"):
@@ -210,10 +220,10 @@ class ThrottleAutoExecuteTest(unittest.TestCase):
         d = self.e.decide("THROTTLE", "medium", 0.95, [])
         self.assertEqual(d.outcome, AWAITING_APPROVAL)
 
-    def test_throttle_is_never_executable_in_phase1(self):
+    def test_throttle_is_executable_after_phase2(self):
+        """[Phase 2 기대값 변경] TTL 자동 복구 구현으로 실행이 열렸다."""
         allowed, reason = self.e.execution_allowed("THROTTLE", TARGETS)
-        self.assertFalse(allowed)
-        self.assertEqual(reason, "ttl_recovery_not_implemented")
+        self.assertTrue(allowed, reason)
 
 
 class NoActionAndNotifyTest(unittest.TestCase):

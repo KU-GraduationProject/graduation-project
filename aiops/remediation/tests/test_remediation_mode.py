@@ -13,6 +13,7 @@ import importlib
 import json
 import os
 import sys
+import tempfile
 import time
 import unittest
 import urllib.parse
@@ -57,13 +58,20 @@ def signed_slack(form: str) -> tuple[bytes, dict]:
 
 
 def load_main(mode):
-    """REMEDIATION_MODE는 import 시점에 읽으므로 환경변수를 바꿔 새로 import 한다."""
+    """
+    REMEDIATION_MODE는 import 시점에 읽으므로 환경변수를 바꿔 새로 import 한다.
+    Phase 2 조치 레코드는 테스트마다 격리된 임시 디렉터리에 둔다 (공용 경로를 쓰면
+    멱등성 기록이 테스트끼리 공유돼 간섭한다). TTL 스캐너는 끈다.
+    """
     env = {"SLACK_WEBHOOK_URL": "",
            "SLACK_SIGNING_SECRET": SLACK_SECRET,
-           "REMEDIATION_API_KEY": API_KEY}
+           "REMEDIATION_API_KEY": API_KEY,
+           "REMEDIATION_STATE_DIR": tempfile.mkdtemp(prefix="remstate_"),
+           "REMEDIATION_TTL_SCAN_SEC": "0"}
     if mode is not None:
         env["REMEDIATION_MODE"] = mode
-    for name in ("main", "actions.notify", "actions.container"):
+    for name in ("main", "actions.notify", "actions.container", "store",
+                 "recovery", "evidence"):
         sys.modules.pop(name, None)
     with mock.patch.dict(os.environ, env, clear=False):
         if mode is None:
