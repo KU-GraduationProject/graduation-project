@@ -94,13 +94,11 @@ def evaluate_case(
 
     expected = case["expected"]
     actual_action   = result.get("action_type", "PARSE_ERROR") if result else "CALL_ERROR"
-    actual_risk     = result.get("action_risk", "")            if result else ""
     actual_threat   = result.get("threat_level", "")           if result else ""
     actual_conf     = result.get("confidence", 0.0)            if result else 0.0
     actual_rc       = result.get("root_cause", "")             if result else ""
 
     action_correct  = actual_action == expected["action_type"]
-    risk_correct    = actual_risk   == expected["action_risk"]
     threat_correct  = actual_threat == expected["threat_level"]
     parse_ok        = result is not None
 
@@ -115,14 +113,12 @@ def evaluate_case(
         "expected":        expected,
         "actual": {
             "action_type":   actual_action,
-            "action_risk":   actual_risk,
             "threat_level":  actual_threat,
             "confidence":    actual_conf,
             "root_cause":    actual_rc,
             "raw":           result,
         },
         "action_correct":  action_correct,
-        "risk_correct":    risk_correct,
         "threat_correct":  threat_correct,
         "parse_ok":        parse_ok,
         "inference_time_sec": round(elapsed, 2),
@@ -151,7 +147,7 @@ def print_phase1_summary(entries: list[dict]):
     print("\n" + "="*60)
     print("  1단계 결과 — 모델별 정확도 (대표 케이스 4개)")
     print("="*60)
-    print(f"{'모델':<12} {'action_acc':>10} {'risk_acc':>8} {'parse_ok':>8} {'avg_time':>10}")
+    print(f"{'모델':<12} {'action_acc':>10} {'parse_ok':>8} {'avg_time':>10}")
     print("-"*60)
 
     for model_key in MODELS:
@@ -159,10 +155,9 @@ def print_phase1_summary(entries: list[dict]):
         if not rows:
             continue
         action_acc = sum(1 for r in rows if r["action_correct"]) / len(rows)
-        risk_acc   = sum(1 for r in rows if r["risk_correct"])   / len(rows)
         parse_rate = sum(1 for r in rows if r["parse_ok"])       / len(rows)
         avg_time   = sum(r["inference_time_sec"] for r in rows)  / len(rows)
-        print(f"{model_key:<12} {action_acc:>9.0%} {risk_acc:>8.0%} {parse_rate:>8.0%} {avg_time:>9.1f}s")
+        print(f"{model_key:<12} {action_acc:>9.0%} {parse_rate:>8.0%} {avg_time:>9.1f}s")
     print("="*60)
 
 
@@ -170,7 +165,7 @@ def print_phase2_summary(entries: list[dict]):
     print("\n" + "="*70)
     print("  2단계 결과 — baseline vs few-shot 비교 (8케이스 × 5회)")
     print("="*70)
-    print(f"{'프롬프트':<12} {'action_acc':>10} {'risk_acc':>8} {'consistency':>12} {'conf_mean':>10} {'avg_time':>10}")
+    print(f"{'프롬프트':<12} {'action_acc':>10} {'consistency':>12} {'conf_mean':>10} {'avg_time':>10}")
     print("-"*70)
 
     for variant in ["baseline", "few-shot"]:
@@ -179,7 +174,6 @@ def print_phase2_summary(entries: list[dict]):
             continue
 
         action_acc   = sum(1 for r in rows if r["action_correct"]) / len(rows)
-        risk_acc     = sum(1 for r in rows if r["risk_correct"])   / len(rows)
         conf_mean    = sum(r["actual"]["confidence"] for r in rows) / len(rows)
         avg_time     = sum(r["inference_time_sec"] for r in rows)  / len(rows)
 
@@ -194,7 +188,7 @@ def print_phase2_summary(entries: list[dict]):
             consistency_scores.append(actions.count(most_common) / len(actions))
         consistency = sum(consistency_scores) / len(consistency_scores) if consistency_scores else 0.0
 
-        print(f"{variant:<12} {action_acc:>9.0%} {risk_acc:>8.0%} {consistency:>12.0%} {conf_mean:>10.2f} {avg_time:>9.1f}s")
+        print(f"{variant:<12} {action_acc:>9.0%} {consistency:>12.0%} {conf_mean:>10.2f} {avg_time:>9.1f}s")
 
     print("-"*70)
 

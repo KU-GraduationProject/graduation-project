@@ -12,7 +12,17 @@ def _extract_container_from_text(text: str) -> list[str]:
 class LLMAnalysisResult(BaseModel):
     """
     LLM(Llama-3.1)이 출력해야 할 JSON 구조.
-    Remediation Agent가 이 스키마를 기반으로 분기 처리.
+
+    LLM 은 관측과 추천만 한다 — root_cause / action_type / action_targets /
+    threat_level / evidence / confidence.
+
+    action_risk 는 이 스키마에 없다 (Phase 1). 조치 위험도는 action_type 에 따라
+    정해지는 값이고, LLM 이 그 값을 내면 "LLM 이 자기 조치의 승인 게이트를 여는"
+    구조가 된다. 위험도·승인·자동 실행 여부는 aiops/policy/remediation_policy.yml
+    과 Remediation 정책 엔진이 결정한다.
+
+    과거 응답·저장 데이터에 action_risk 가 들어 있어도 pydantic 이 무시한다
+    (extra 필드). Remediation 은 그 값이 와도 기록만 하고 판단에 쓰지 않는다.
     """
     root_cause: str = Field(
         default="분석 실패 — 수동 확인 필요",
@@ -34,7 +44,6 @@ class LLMAnalysisResult(BaseModel):
     )
     
     threat_level: Literal["low", "medium", "high", "critical"] = Field(default="medium")
-    action_risk: Literal["low", "medium", "high"] = Field(default="medium")
     evidence: list[str] = Field(default=[])
     confidence: float = Field(default=0.0)
 
@@ -133,11 +142,3 @@ class LLMAnalysisResult(BaseModel):
             return "medium"
         s = str(v).lower().strip()
         return s if s in ("low", "medium", "high", "critical") else "medium"
-
-    @field_validator("action_risk", mode="before")
-    @classmethod
-    def normalize_action_risk(cls, v: Any) -> str:
-        if v is None:
-            return "medium"
-        s = str(v).lower().strip()
-        return s if s in ("low", "medium", "high") else "medium"

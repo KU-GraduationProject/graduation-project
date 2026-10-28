@@ -384,6 +384,8 @@ services:
       #   REMEDIATION_API_KEY  : Pipeline 과 공유하는 HMAC 키 (openssl rand -hex 32)
       SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
       REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
+      # Phase 1: 조치 위험도·실행 정책의 단일 소스 (아래 volumes 로 마운트)
+      REMEDIATION_POLICY_PATH: /app/config/remediation_policy.yml
     ports:
       # 조치 실행 경로이므로 호스트 루프백에만 공개한다. Pipeline 은 mgmt-net 으로
       # http://remediation:8001 로 접근하므로 publish 가 필요하지 않다.
@@ -393,6 +395,8 @@ services:
       - "127.0.0.1:8001:8001"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # 정책은 읽기 전용으로만 들어간다. 컨테이너가 자기 정책을 고칠 수 없어야 한다.
+      - ./aiops/policy/remediation_policy.yml:/app/config/remediation_policy.yml:ro
     networks:
       - mgmt-net
     depends_on:

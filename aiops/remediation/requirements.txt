@@ -3,3 +3,6 @@ uvicorn[standard]>=0.22.0
 httpx>=0.24.0
 pydantic>=2.0.0
 docker>=6.0.0
+# 조치 정책 파일(remediation_policy.yml) 로드. uvicorn[standard] 가 전이로 끌어오지만
+# 정책 로드는 조치 게이트라 명시적으로 선언한다.
+pyyaml>=6.0

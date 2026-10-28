@@ -89,14 +89,25 @@ class DisabledModeTest(unittest.TestCase):
         self.from_env.assert_not_called()
         self.assertIsNone(self.main.container_actions)
 
-    def test_auto_path_reports_skipped_not_executed(self):
+    def test_action_endpoint_judges_without_attempting_execution(self):
+        """
+        [Phase 1 기대값 변경] 이전 기대값은 status="skipped" + auto_remediation 이벤트가
+        SKIPPED 로 남는 것이었다. 그 경로는 LLM 이 보낸 action_risk="low" 로 RESTART 자동
+        실행을 시도한 뒤 disabled 때문에 건너뛴 흐름이다. Phase 1 은 정책이 RESTART 를
+        high 로 정해 승인 대기로 보내므로 실행 시도가 발생하지 않고, 따라서 auto_remediation
+        이벤트도 남지 않는다 (판단과 실행을 구분해 기록한다).
+        """
         content, headers = signed_action(LOW_RISK_RESTART)
         body = self.client.post("/action", content=content, headers=headers).json()
-        self.assertEqual(body["status"], "skipped")
-        self.assertTrue(body["results"][0].startswith("Skipped:"))
-        statuses = {(job, e["event"]): e["status"] for job, e in self.events if "status" in e}
-        self.assertEqual(statuses[("aiops-remediation", "auto_remediation")], "SKIPPED")
-        self.assertEqual(statuses[("aiops-timeline", "auto_remediation_completed")], "SKIPPED")
+        self.assertEqual(body["status"], "pending_approval")
+        self.assertEqual(body["policy"]["action_risk"], "high")
+        self.assertFalse(body["policy"]["executable_now"])
+
+        events = {(job, e["event"]) for job, e in self.events}
+        self.assertIn(("aiops-remediation", "policy_decision"), events)
+        # 실행을 시도하지 않았으므로 조치 결과 이벤트는 없다
+        self.assertNotIn(("aiops-remediation", "auto_remediation"), events)
+        self.assertNotIn(("aiops-timeline", "auto_remediation_completed"), events)
 
     def test_slack_approval_is_logged_as_skipped(self):
         value = json.dumps({"alertname": "HighCpuUsage", "action_type": "RESTART",

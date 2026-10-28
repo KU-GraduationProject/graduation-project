@@ -108,11 +108,43 @@ class AuthTestBase(unittest.TestCase):
 
 
 class ActionEndpointAuthTest(AuthTestBase):
-    def test_valid_signature_passes_and_executes(self):
+    def test_valid_signature_reaches_the_handler(self):
+        """
+        [Phase 1 기대값 변경] 이전에는 이 요청이 'executed' 를 돌려줬다. AUTO_EXEC_BODY 가
+        action_risk="low" 를 담고 있어 LLM 이 보낸 위험도만으로 RESTART 가 자동 실행됐기
+        때문이다 — 그것이 Phase 1 이 없앤 취약점이다. 지금은 정책이 RESTART 를 high 로
+        정해 승인 대기로 간다.
+
+        이 테스트가 지키는 성질은 "유효한 서명은 401 이 아니라 핸들러까지 도달한다" 이고
+        그것은 그대로다. 조치 실행 여부는 정책 테스트가 검증한다.
+        """
         resp = self.post_action()
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["status"], "executed")
-        self.assertEqual(self.docker_calls(), 1)
+        self.assertEqual(resp.json()["status"], "pending_approval")
+        self.assertEqual(self.docker_calls(), 0)
+
+    def test_no_action_request_can_auto_execute_in_phase1(self):
+        """
+        Phase 1 에서는 /action 으로 들어온 어떤 요청도 Docker 조치를 일으키지 않는다.
+        LLM 이 위험도를 조작해도, confidence 가 1.0 이어도 마찬가지다.
+        """
+        for action_type, risk, threat, conf in [
+            ("RESTART", "low", "high", 1.0),
+            ("ISOLATE", "low", "critical", 1.0),
+            ("PAUSE", "low", "critical", 1.0),
+            ("THROTTLE", "low", "medium", 1.0),
+            ("SCALE", "low", "high", 1.0),
+            ("NONE", "low", "low", 1.0),
+        ]:
+            body = json.dumps({
+                "alert": {"labels": {"alertname": "HighCpuUsage"}},
+                "analysis": {"action_type": action_type, "action_targets": ["leafy-backend"],
+                             "action_risk": risk, "threat_level": threat, "confidence": conf},
+            }, ensure_ascii=False).encode("utf-8")
+            resp = self.post_action(body=body)
+            self.assertEqual(resp.status_code, 200, action_type)
+            self.assertNotEqual(resp.json()["status"], "executed", action_type)
+        self.assertEqual(self.docker_calls(), 0)
 
     def test_no_signature_is_denied_and_docker_untouched(self):
         resp = self.post_action(headers={})
@@ -154,7 +186,12 @@ class ActionEndpointAuthTest(AuthTestBase):
         self.assertEqual(resp.status_code, 401)
         self.assertEqual(self.docker_calls(), 0)
 
-    def test_replayed_request_executes_only_once(self):
+    def test_replayed_request_is_accepted_only_once(self):
+        """
+        [Phase 1 기대값 변경] Docker 호출 수 단정을 1 -> 0 으로 바꿨다. /action 은 더 이상
+        조치를 실행하지 않기 때문이다(위 테스트 참고). 리플레이 차단 성질(두 번째 요청이
+        401)은 그대로다. '승인 후 1회만 실행' 은 Slack 경로 테스트가 검증한다.
+        """
         ts = str(int(time.time()))
         headers = {
             service_auth.TIMESTAMP_HEADER: ts,
@@ -164,7 +201,7 @@ class ActionEndpointAuthTest(AuthTestBase):
         second = self.post_action(headers=headers)
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 401)
-        self.assertEqual(self.docker_calls(), 1)
+        self.assertEqual(self.docker_calls(), 0)
         self.assertIn("replayed_signature", self.denied_reasons())
 
 
@@ -282,11 +319,19 @@ class DisabledModeAuthTest(AuthTestBase):
         self.assertEqual(self.post_action(headers={}).status_code, 401)
         self.assertEqual(self.post_slack(headers={}).status_code, 401)
 
-    def test_authenticated_still_skips_execution(self):
+    def test_authenticated_request_is_judged_not_executed(self):
+        """
+        [Phase 1 기대값 변경] 이전에는 "skipped" + "Skipped:" 결과를 기대했다. 그 경로는
+        LLM 위험도로 자동 실행을 시도한 뒤 disabled 때문에 건너뛴 결과였다. 지금은 정책이
+        먼저 승인 대기로 판단하므로 실행 시도 자체가 없다.
+
+        disabled 모드에서 "조치를 성공으로 표시하지 않는다" 는 성질은
+        test_remediation_mode.DisabledModeTest 가 승인 경로로 검증한다.
+        """
         body = self.post_action().json()
-        self.assertEqual(body["status"], "skipped")
-        self.assertTrue(body["results"][0].startswith("Skipped:"))
+        self.assertEqual(body["status"], "pending_approval")
         self.assertIsNone(self.main.container_actions)
+        self.assertEqual(self.docker_calls(), 0)
 
 
 class PipelineCompatibilityTest(AuthTestBase):
@@ -301,11 +346,15 @@ class PipelineCompatibilityTest(AuthTestBase):
         self.sender = load_pipeline_sender()
 
     def test_pipeline_signed_request_is_accepted(self):
+        """
+        [Phase 1 기대값 변경] status 를 "executed" -> "pending_approval" 로 바꿨다.
+        확인하려는 것은 송신측 서명이 수신측 검증을 통과하는지이고, 그 성질은 그대로다.
+        """
         headers = self.sender.build_headers(API_KEY, AUTO_EXEC_BODY)
         resp = self.client.post("/action", content=AUTO_EXEC_BODY, headers=headers)
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["status"], "executed")
-        self.assertEqual(self.docker_calls(), 1)
+        self.assertEqual(resp.json()["status"], "pending_approval")
+        self.assertEqual(self.docker_calls(), 0)
 
     def test_pipeline_headers_include_content_type(self):
         headers = self.sender.build_headers(API_KEY, AUTO_EXEC_BODY)

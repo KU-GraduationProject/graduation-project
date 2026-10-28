@@ -20,6 +20,14 @@ import urllib.parse
 import httpx
 from actions.container import ContainerActions
 from actions.notify import Notifier
+from policy.engine import load_engine
+from policy.schema import (
+    AUTO_EXECUTE_CANDIDATE,
+    AWAITING_APPROVAL,
+    BLOCKED,
+    NO_ACTION,
+    NOTIFY,
+)
 from security.replay import ReplayGuard
 from security.service_auth import SIGNATURE_HEADER as SERVICE_SIGNATURE_HEADER
 from security.service_auth import verify_service_request
@@ -50,6 +58,9 @@ app = FastAPI(title="AIOps Remediation", version="0.1.0")
 
 container_actions = ContainerActions() if REMEDIATION_MODE == "docker" else None
 notifier = Notifier()
+
+# 정책 엔진 (Phase 1). 로드에 실패하면 모든 조치를 차단하는 엔진이 돌아온다.
+policy_engine = load_engine()
 logger.info(f"[Remediation] REMEDIATION_MODE={REMEDIATION_MODE}")
 # 키 값은 찍지 않는다. 설정 여부만 남겨 fail closed 상태를 운영자가 바로 알 수 있게 한다.
 logger.info(
@@ -78,6 +89,27 @@ async def _push_auth_denied(endpoint: str, reason: str, signature: str | None) -
     })
 
 
+async def _push_policy_decision(alert: dict, decision, source: str) -> None:
+    """
+    정책 판단과 근거를 감사 로그에 남긴다. 조치 실행 기록(auto_remediation /
+    manual_approval_executed)과는 별개 이벤트다 — 판단과 실행을 구분해 기록한다.
+    """
+    body = {
+        "event":  "policy_decision",
+        "alert":  alert.get("labels", {}).get("alertname", "unknown"),
+        "source": source,
+        "status": decision.outcome,
+        **decision.as_dict(),
+    }
+    logger.info(
+        "[Policy] %s: action=%s risk=%s threat=%s(%s) outcome=%s approval=%s exec_now=%s",
+        source, decision.action_type, decision.action_risk, decision.threat_level,
+        decision.urgency, decision.outcome, decision.requires_approval,
+        decision.executable_now,
+    )
+    await _push_soc_event("aiops-remediation", body)
+
+
 async def require_service_auth(request: Request) -> None:
     """
     /action 서명 검증. 거부 시 401 을 올려 핸들러에 들어가지 않게 한다 —
@@ -102,13 +134,18 @@ async def health():
 
 @app.post("/action", dependencies=[Depends(require_service_auth)])
 async def execute_action(request: ActionRequest):
-    """분석 결과 수신 → 신뢰도와 위험도에 따른 실행 분기"""
+    """
+    분석 결과 수신 → 정책 엔진이 집행을 결정한다 (Phase 1).
+
+    이전에는 LLM 이 보낸 action_risk 와 confidence 로 직접 분기해, LLM 이 위험도를
+    낮게 쓰면 승인 없이 조치가 실행됐다. 지금은 위험도·승인·자동 실행 가능 여부를
+    정책 엔진이 정하고 LLM 의 action_risk 는 기록만 한다.
+    """
     analysis = request.analysis
     alert    = request.alert
 
-    action_type    = analysis.get("action_type", "NONE").upper()
+    action_type    = str(analysis.get("action_type", "NONE")).upper()
     action_targets = analysis.get("action_targets", [])
-    action_risk    = analysis.get("action_risk", "medium")
     threat_level   = analysis.get("threat_level", "medium")
     confidence     = analysis.get("confidence", 0.0)
 
@@ -125,43 +162,52 @@ async def execute_action(request: ActionRequest):
         "confidence":  confidence,
     })
 
-    # 자동 실행 (저위험 + 고신뢰)
-    if action_risk == "low" and confidence >= 0.7:
-        if action_type in ["RESTART", "ISOLATE", "PAUSE", "THROTTLE"]:
-            if not action_targets:
-                slack_dispatch = await notifier.send_approval_request(alert, analysis)
-                await _push_slack_status(alert, analysis, slack_dispatch, "approval_request")
-                return {"status": "pending_approval", "message": "No targets specified."}
-            execution_results = []
-            for target in action_targets:
-                res = await _execute(action_type, target)
-                execution_results.append(res)
-                await _push_remediation_status(alert, analysis, target, action_type, res)
-            return {"status": "executed" if container_actions else "skipped", "results": execution_results}
-        else:
-            slack_dispatch = await notifier.send_alert_only(alert, analysis)
-            await _push_slack_status(alert, analysis, slack_dispatch, "alert_only")
-            return {"status": "notified", "message": f"Action {action_type} is not auto-enabled."}
+    decision = policy_engine.decide_from_analysis(analysis)
+    await _push_policy_decision(alert, decision, source="action")
 
-    elif action_risk == "low" and confidence < 0.7:
+    # ① 정책 차단 — 미지원·미정의 조치 (fail closed)
+    if decision.outcome == BLOCKED:
+        slack_dispatch = await notifier.send_alert_only(alert, analysis)
+        await _push_slack_status(alert, analysis, slack_dispatch, "alert_only")
+        return {"status": "blocked", "reason": decision.blocked_reason,
+                "policy": decision.as_dict()}
+
+    # ② 실행할 조치가 없음 (NONE) 또는 알림만 (NOTIFY)
+    if decision.outcome in (NO_ACTION, NOTIFY):
+        slack_dispatch = await notifier.send_alert_only(alert, analysis)
+        await _push_slack_status(alert, analysis, slack_dispatch, "alert_only")
+        return {"status": "notified", "message": f"Action {action_type} performs no change.",
+                "policy": decision.as_dict()}
+
+    # ③ 승인 필요 — high risk 는 confidence·critical 과 무관하게 항상 여기로 온다
+    if decision.outcome == AWAITING_APPROVAL:
         slack_dispatch = await notifier.send_approval_request(alert, analysis)
         await _push_slack_status(alert, analysis, slack_dispatch, "approval_request")
-        return {"status": "pending_approval", "message": "Low confidence analysis."}
+        return {"status": "pending_approval", "reasons": list(decision.reasons),
+                "policy": decision.as_dict()}
 
-    elif action_risk == "medium":
-        if threat_level == "low":
+    # ④ 자동 실행 후보 — 정책 조건은 충족했다. 실제 실행은 execution_allowed 가 정한다.
+    if decision.outcome == AUTO_EXECUTE_CANDIDATE:
+        if not decision.executable_now:
+            # Phase 1: TTL 자동 복구가 없어 되돌릴 수 없으므로 실행하지 않는다.
+            # "정책상 후보"와 "실행 가능"을 구분해 기록한다 — 성공으로 표시하지 않는다.
             slack_dispatch = await notifier.send_alert_only(alert, analysis)
             await _push_slack_status(alert, analysis, slack_dispatch, "alert_only")
-            return {"status": "notified", "message": "Medium risk, low threat: notification sent."}
-        else:
-            slack_dispatch = await notifier.send_approval_request(alert, analysis)
-            await _push_slack_status(alert, analysis, slack_dispatch, "approval_request")
-            return {"status": "pending_approval", "message": "Approval required for medium risk."}
+            return {"status": "auto_execution_deferred",
+                    "reasons": list(decision.reasons), "policy": decision.as_dict()}
 
-    else:  # High risk
-        slack_dispatch = await notifier.send_approval_request(alert, analysis)
-        await _push_slack_status(alert, analysis, slack_dispatch, "approval_request")
-        return {"status": "pending_approval", "message": "High-risk action requires manual intervention."}
+        execution_results = []
+        for target in decision.targets:
+            res = await _execute(action_type, target)
+            execution_results.append(res)
+            await _push_remediation_status(alert, analysis, target, action_type, res)
+        return {"status": "executed" if container_actions else "skipped",
+                "results": execution_results, "policy": decision.as_dict()}
+
+    # 도달하지 않아야 하는 분기 — 열어 두지 않고 차단한다.
+    logger.error(f"[Policy] 처리되지 않은 outcome: {decision.outcome}")
+    return {"status": "blocked", "reason": "unhandled_policy_outcome",
+            "policy": decision.as_dict()}
 
 
 # ─── Slack Interactive Components 콜백 ───────────────────
@@ -236,7 +282,14 @@ async def slack_interactive_action(request: Request):
     if action_id == "approve_action":
         results = []
 
-        if action_type in ("RESTART", "ISOLATE") and action_targets:
+        # 승인되었어도 정책의 실행 게이트를 통과해야 실행한다. 자동 경로와 같은
+        # 함수를 쓰므로 "한쪽 경로에서만 실행 가능한 조치"가 생기지 않는다.
+        allowed, exec_reason = policy_engine.execution_allowed(action_type, action_targets)
+        if not allowed:
+            logger.warning(
+                f"[Policy] 승인됐지만 실행하지 않는다: {action_type} — {exec_reason}")
+
+        if allowed:
             for target in action_targets:
                 res = await _execute(action_type, target)
                 results.append(res)
@@ -251,7 +304,9 @@ async def slack_interactive_action(request: Request):
                     "result":      res,
                 })
         else:
-            results = [f"action_type={action_type} — auto-handler 없음, 로그만 기록"]
+            # 실행하지 않은 이유를 사람이 읽을 수 있게 남긴다 (이전에는 "auto-handler
+            # 없음" 으로만 기록돼 왜 실행되지 않았는지 알 수 없었다).
+            results = [f"Not executed: {action_type} blocked by policy ({exec_reason})"]
             await _push_soc_event("aiops-timeline", {
                 "event":       "manual_approval_logged",
                 "alert":       alertname,
@@ -259,6 +314,7 @@ async def slack_interactive_action(request: Request):
                 "approved_by": user_name,
                 "source":      source,
                 "status":      "LOGGED",
+                "policy_block_reason": exec_reason,
             })
 
         result_text = "\n".join(f"• {r}" for r in results)

@@ -307,7 +307,6 @@ async def analyze_alerts(alerts: list[Alert]):
                     action_targets=[],
                     action_description="manual investigation required",
                     threat_level="medium",
-                    action_risk="high",
                     evidence=[],
                     confidence=0.0,
                 )
@@ -406,7 +405,6 @@ SCHEMA:
   "action_type": "<RESTART|ISOLATE|SCALE|NOTIFY|NONE>",
   "action_targets": ["<container name>", ...],
   "threat_level": "<low|medium|high|critical>",
-  "action_risk": "<low|medium|high>",
   "confidence": <0.0-1.0>
 }
 
@@ -627,7 +625,6 @@ async def periodic_llm_health() -> None:
                     "action_type":    "NOTIFY",
                     "action_targets": ["aiops-pipeline"],
                     "threat_level":   raw_result.get("severity", "medium"),
-                    "action_risk":    "medium",
                     "confidence":     0.8,
                     "recommendation": raw_result.get("recommendation", ""),
                 },
@@ -822,7 +819,6 @@ async def push_to_loki(entry: dict) -> None:
                 "target_container": entry.get("container", "unknown"),
                 "alert": entry.get("alert_name", "unknown"),
                 "threat_level": result.get("threat_level", "unknown"),
-                "action_risk": result.get("action_risk", "unknown"),
             },
             "values": [[ts_ns, json.dumps(entry, ensure_ascii=False)]]
         }]
@@ -931,7 +927,6 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
         action_targets=[],
         action_description="manual investigation required",
         threat_level="medium",
-        action_risk="high",
         evidence=[],
         confidence=0.0,
     )
