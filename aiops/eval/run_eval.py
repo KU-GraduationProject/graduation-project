@@ -20,12 +20,16 @@ import urllib.error
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+# 파이프라인은 aiops/pipeline 을 루트로 두고 `prompt.*` 처럼 최상위 import 한다 (Dockerfile WORKDIR=/app).
+_PIPELINE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "pipeline"))
+if _PIPELINE_DIR not in sys.path:
+    sys.path.insert(0, _PIPELINE_DIR)
 from eval.test_cases import (
     TEST_CASES,
     REPRESENTATIVE_CASE_IDS,
     SYSTEM_PROMPT_BASELINE,
 )
-from pipeline.prompt.builder import SYSTEM_PROMPT as SYSTEM_PROMPT_FEWSHOT
+from prompt.builder import SYSTEM_PROMPT as SYSTEM_PROMPT_FEWSHOT
 
 # ── 설정 ──────────────────────────────────────────────────────────────────────
 OLLAMA_URL   = os.getenv("OLLAMA_URL", "http://localhost:11434")
