@@ -151,6 +151,8 @@ def verify_reconnected(networks_after: dict, expected: dict) -> tuple[bool, str]
         if not got:
             problems.append(f"{name}:not_attached")
             continue
+        if want.get("network_id") and got.get("network_id") != want["network_id"]:
+            problems.append(f"{name}:network_identity_changed")
         want_ip = want.get("ipam_ipv4") or want.get("ip_address")
         if want_ip and got.get("ip_address") != want_ip:
             problems.append(f"{name}:ip {got.get('ip_address')}!={want_ip}")
@@ -319,8 +321,15 @@ class LocalDockerExecutor(Executor):
             return blocked(ISOLATE, target, reason, before={"networks": networks})
 
         disconnected = []
+        # Validate every network before changing any of them.
+        resolved = {}
         for name in targets:
             net = self.client.networks.get(name)
+            if getattr(net, "id", None) != networks[name].get("network_id"):
+                return blocked(ISOLATE, target, f"network_identity_changed:{name}")
+            resolved[name] = net
+        for name in targets:
+            net = resolved[name]
             net.disconnect(target)
             disconnected.append(name)
 
@@ -341,11 +350,17 @@ class LocalDockerExecutor(Executor):
 
         current = parse_networks(self._inspect(target))
         todo = {n: cfg for n, cfg in expected.items() if n not in current}
+        resolved = {}
+        for name, cfg in todo.items():
+            net = self.client.networks.get(name)
+            if not cfg.get("network_id") or getattr(net, "id", None) != cfg["network_id"]:
+                return blocked(RECONNECT, target, f"network_identity_changed:{name}")
+            resolved[name] = net
         for name, cfg in todo.items():
             ip = cfg.get("ipam_ipv4") or cfg.get("ip_address")
             if not ip:
                 return blocked(RECONNECT, target, f"evidence_missing_ip:{name}")
-            net = self.client.networks.get(name)
+            net = resolved[name]
             net.connect(target, ipv4_address=ip, aliases=list(cfg.get("aliases") or ()))
 
         after = parse_networks(self._reload_inspect(target))
@@ -360,7 +375,7 @@ class LocalDockerExecutor(Executor):
         before = evidence.get("resources") or parse_resources(self._inspect(target))
         self._container(target).update(cpu_quota=self.cpu_quota, cpu_period=self.cpu_period)
         after = parse_resources(self._reload_inspect(target))
-        if after.get("cpu_quota") != self.cpu_quota:
+        if after.get("cpu_quota") != self.cpu_quota or after.get("cpu_period") != self.cpu_period:
             return failed(THROTTLE, target,
                           f"cpu_quota_not_applied:{after.get('cpu_quota')}!={self.cpu_quota}",
                           before=before, after=after)
@@ -374,11 +389,16 @@ class LocalDockerExecutor(Executor):
         if "cpu_quota" not in want:
             return blocked(UNTHROTTLE, target, "evidence_missing_resources")
         original_quota = want.get("cpu_quota") or 0      # 0 = 제한 없음
-        original_period = want.get("cpu_period") or DEFAULT_CPU_PERIOD
+        if want.get("nano_cpus"):
+            return blocked(UNTHROTTLE, target, "nanocpu_restore_unsupported")
+        original_period = want.get("cpu_period")
+        if original_period is None:
+            return blocked(UNTHROTTLE, target, "evidence_missing_cpu_period")
         before = parse_resources(self._inspect(target))
         self._container(target).update(cpu_quota=original_quota, cpu_period=original_period)
         after = parse_resources(self._reload_inspect(target))
-        if after.get("cpu_quota") != original_quota:
+        if (after.get("cpu_quota") != original_quota
+                or after.get("cpu_period") != original_period):
             return failed(UNTHROTTLE, target,
                           f"cpu_quota_not_restored:{after.get('cpu_quota')}!={original_quota}",
                           before=before, after=after)

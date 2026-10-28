@@ -8,7 +8,7 @@
 #     Zeek은 팀원 PC의 backend network namespace를 봐야 하므로 deploy/leafy-pc/network-observer 로 옮겼다.
 #   - Fluentd 24224(Docker 로그 + network event)/24225(PostgreSQL)만 Tailscale IP에 publish 한다.
 #     나머지 포트는 127.0.0.1에만 publish 한다.
-#   - Remediation은 REMEDIATION_MODE=disabled (원격 조치 미구현, 로컬 Docker를 건드리지 않음).
+#   - Remediation 기본은 disabled. 원격 설정 예시는 deploy/aiops-pc에 있으며 Phase 4에서 활성화한다.
 #   - container_name이 all-in-one과 같다. 두 구성은 같은 PC에서 동시에 띄우지 않는다.
 name: leafy-aiops
 
@@ -189,7 +189,7 @@ services:
       # Phase 2: 조치 레코드(멱등성·TTL 복구 근거) 영속 경로
       REMEDIATION_STATE_DIR: /app/state
       REMEDIATION_TTL_SCAN_SEC: "60"
-      # 원격 Leafy에 대한 조치 경로가 없다. Docker socket도 마운트하지 않는다.
+      # Phase 3 구현 후에도 기본 disabled. PC 1에는 Docker socket을 마운트하지 않는다.
       REMEDIATION_MODE: disabled
     ports:
       - "127.0.0.1:8001:8001"

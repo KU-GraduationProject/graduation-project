@@ -1,0 +1,7 @@
+# Phase 4 ONLY. Explicit override granting the Agent Docker daemon privileges.
+services:
+  remediation-agent:
+    environment:
+      AGENT_MODE: live
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

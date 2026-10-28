@@ -73,6 +73,15 @@ def recover(store, executor, record, approved_by: str | None = None,
 
     if not getattr(executor, "changes_system", True):
         return [], record.state
+    if record.executor_name == "remote" and executor.name != "remote":
+        return [], record.state  # Never recover a PC 2 action using PC 1 Docker.
+    if executor.name == "remote" and record.executor_name != "remote":
+        return [], record.state
+    if executor.name == "remote" and not force:
+        # Agent owns THROTTLE TTL. PC 1 only polls it; isolation still needs approval.
+        if mode == REQUIRE_APPROVAL and record.state == store_mod.RECOVERY_PENDING:
+            store.update(record.remediation_id, state=store_mod.RECOVERY_APPROVAL_REQUIRED)
+        return [], record.state
     if record.state not in (store_mod.RECOVERY_PENDING, store_mod.RECOVERY_APPROVAL_REQUIRED):
         return [], record.state
 
@@ -88,17 +97,31 @@ def recover(store, executor, record, approved_by: str | None = None,
         return [], record.state
     store.update(record.remediation_id, state=store_mod.RECOVERING,
                  recovery_started_at=store_mod.utcnow(),
-                 approved_by=approved_by or record.approved_by)
+                 recovery_approved_by=approved_by,
+                 approved_by=record.approved_by or approved_by)
 
     results = []
     for target in record.targets:
         target_evidence = evidence_mod.for_target(record.evidence, target)
-        results.append(executor.execute(recovery_action, target, target_evidence))
+        if executor.name == "remote":
+            results.append(executor.execute_record(record, target, approved_by, recovery_action))
+        else:
+            results.append(executor.execute(recovery_action, target, target_evidence))
+
+    if any(r.status == "UNKNOWN" for r in results):
+        store.update(record.remediation_id, state=store_mod.RECOVERY_UNKNOWN,
+                     recovery_results=[r.as_dict() for r in results])
+        return results, store_mod.RECOVERY_UNKNOWN
 
     all_ok = bool(results) and all(r.status == SUCCESS and r.verified for r in results)
     if all_ok:
+        verified_at = store_mod.utcnow()
+        if executor.name == "remote":
+            timestamps = [r.after.get("remote", {}).get("recovery_verified_at") for r in results]
+            if all(timestamps):
+                verified_at = executor.iso(max(timestamps))
         store.update(record.remediation_id, state=store_mod.RECOVERED,
-                     recovery_verified_at=store_mod.utcnow(),
+                     recovery_verified_at=verified_at,
                      recovery_results=[r.as_dict() for r in results])
         return results, store_mod.RECOVERED
 
@@ -115,6 +138,11 @@ def run_due(store, executor, now: float | None = None) -> list:
     auto 는 복구하고, require_approval 은 승인 요청 상태로만 바꾼다.
     """
     processed = []
+    if executor.name == "remote":
+        from executor.remote_sync import reconcile
+        for record in store.all():
+            if record.executor_name == "remote" and record.state not in (store_mod.RECOVERED, store_mod.SKIPPED, store_mod.BLOCKED):
+                reconcile(store, executor, record)
     for record in store.due_recoveries(now=now):
         results, state = recover(store, executor, record)
         processed.append((record, results, state))
@@ -141,7 +169,7 @@ class TtlScanner:
         import asyncio
         while not self._stop:
             try:
-                for record, results, state in run_due(self.store, self.executor):
+                for record, results, state in await asyncio.to_thread(run_due, self.store, self.executor):
                     logger.info("[Recovery] TTL 처리: %s %s -> %s",
                                 record.action_type, record.targets, state)
                     if self.on_event is not None:

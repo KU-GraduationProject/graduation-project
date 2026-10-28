@@ -143,7 +143,7 @@ class ModeValidationTest(unittest.TestCase):
 
     def test_unknown_mode_fails_fast(self):
         with self.assertRaises(ValueError):
-            load_main("remote")
+            load_main("invalid-mode")
 
 
 if __name__ == "__main__":

@@ -107,6 +107,7 @@ class FakeNetwork:
     def __init__(self, fake, name):
         self.fake = fake
         self.name = name
+        self.id = "net-" + name
 
     def disconnect(self, target):
         self.fake.calls.append(("disconnect", self.name))

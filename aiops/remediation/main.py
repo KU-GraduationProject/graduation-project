@@ -25,6 +25,7 @@ import store as store_mod
 from actions.notify import Notifier
 from executor.base import RECOVERY_ACTION, DisabledExecutor
 from executor.local_docker import LocalDockerExecutor
+from executor.remote import RemoteExecutor
 from policy.engine import load_engine
 from policy.schema import (
     AUTO_EXECUTE_CANDIDATE,
@@ -56,8 +57,8 @@ _replay_guard = ReplayGuard()
 #            같은 이름의 로컬 컨테이너(남은 leafy-* 또는 AIOps 자신)를 건드릴 위험만 있다. 원격 조치 경로가 생기기 전까지 쓴다.
 #            판단·알림·승인 기록은 그대로 남기고, 실행 결과는 SKIPPED로 기록한다.
 REMEDIATION_MODE = os.getenv("REMEDIATION_MODE", "disabled")
-if REMEDIATION_MODE not in ("docker", "disabled"):
-    raise ValueError(f"REMEDIATION_MODE must be docker or disabled: {REMEDIATION_MODE!r}")
+if REMEDIATION_MODE not in ("docker", "disabled", "remote"):
+    raise ValueError(f"REMEDIATION_MODE must be docker, remote or disabled: {REMEDIATION_MODE!r}")
 
 notifier = Notifier()
 
@@ -75,6 +76,8 @@ executor = (
     )
     if REMEDIATION_MODE == "docker" else DisabledExecutor()
 )
+if REMEDIATION_MODE == "remote":
+    executor = RemoteExecutor.from_env()
 # 하위 호환: 기존 테스트·코드가 "조치 실행기가 있는지" 를 이 이름으로 본다.
 container_actions = executor if REMEDIATION_MODE == "docker" else None
 
@@ -190,6 +193,37 @@ async def health():
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
 
 
+class RemoteReconcileRequest(BaseModel):
+    operation: str
+    remediation_id: str
+    retry: bool = False
+
+
+@app.post("/remote/reconcile", dependencies=[Depends(require_service_auth)])
+async def reconcile_remote(request: RemoteReconcileRequest):
+    # This endpoint can only revisit an already approved durable record.
+    # The operation marker is signed in the body (Phase 0 HMAC does not bind paths).
+    if request.operation != "reconcile_remote" or not isinstance(executor, RemoteExecutor):
+        raise HTTPException(400, "remote_reconciliation_unavailable")
+    record = record_store.get(request.remediation_id)
+    if record is None or record.executor_name != "remote":
+        raise HTTPException(404, "unknown_remote_record")
+    from executor.remote_sync import reconcile
+    record = await asyncio.to_thread(reconcile, record_store, executor, record)
+    if request.retry and record.state in (store_mod.UNKNOWN, store_mod.NEEDS_REVIEW,
+                                          store_mod.RECOVERY_UNKNOWN):
+        allowed, _ = policy_engine.execution_allowed(record.action_type, record.targets)
+        recovering = record.state == store_mod.RECOVERY_UNKNOWN or bool(record.recovery_started_at)
+        approver = record.recovery_approved_by if recovering else record.approved_by
+        if not allowed or not approver:
+            raise HTTPException(403, "stored_approval_and_current_policy_required")
+        for target in record.targets:
+            await asyncio.to_thread(executor.execute_record, record, target, approver,
+                                    RECOVERY_ACTION.get(record.action_type) if recovering else None)
+        record = await asyncio.to_thread(reconcile, record_store, executor, record)
+    return record.as_dict()
+
+
 @app.post("/action", dependencies=[Depends(require_service_auth)])
 async def execute_action(request: ActionRequest):
     """
@@ -254,10 +288,12 @@ async def execute_action(request: ActionRequest):
                 "policy": decision.as_dict()}
 
     # ③ 승인 필요 — high risk 는 confidence·critical 과 무관하게 항상 여기로 온다
-    if decision.outcome == AWAITING_APPROVAL:
+    remote_manual_only = isinstance(executor, RemoteExecutor) and decision.outcome == AUTO_EXECUTE_CANDIDATE
+    if decision.outcome == AWAITING_APPROVAL or remote_manual_only:
         rid = record.remediation_id if record else None
         if record:
             record_store.update(rid, state=store_mod.AWAITING_APPROVAL,
+                                requires_approval=True,
                                 approval_requested_at=store_mod.utcnow())
         # 승인 버튼에 remediation_id 를 실어 보낸다 — 중복 승인이 한 건으로 합쳐진다.
         slack_dispatch = await notifier.send_approval_request(
@@ -265,7 +301,8 @@ async def execute_action(request: ActionRequest):
         await _push_slack_status(alert, analysis, slack_dispatch, "approval_request")
         if record:
             await _push_record(record_store.get(rid) or record, "approval_requested")
-        return {"status": "pending_approval", "reasons": list(decision.reasons),
+        return {"status": "pending_approval", "reasons": list(decision.reasons) +
+                (["remote_auto_disabled_manual_approval_required"] if remote_manual_only else []),
                 "remediation_id": rid, "policy": decision.as_dict()}
 
     # ④ 자동 실행 후보 — 정책 조건은 충족했다. 실제 실행은 execution_allowed 가 정한다.
@@ -289,7 +326,7 @@ async def execute_action(request: ActionRequest):
         if decision.notify == "post_action":
             slack_dispatch = await notifier.send_alert_only(alert, analysis)
             await _push_slack_status(alert, analysis, slack_dispatch, "alert_only")
-        status = {store_mod.VERIFIED: "executed", store_mod.SKIPPED: "skipped",
+        status = {store_mod.VERIFIED: "executed", store_mod.SKIPPED: "skipped", store_mod.UNKNOWN: "unknown",
                   store_mod.BLOCKED: "blocked"}.get(state, "failed")
         return {"status": status, "remediation_id": record.remediation_id if record else None,
                 "record_state": state,
@@ -461,9 +498,16 @@ async def slack_interactive_action(request: Request):
         if record is None:
             return JSONResponse(status_code=404,
                                 content={"error": "unknown_remediation_id"})
-        if (record.action_type != action_type or sorted(record.targets) != sorted(action_targets)
-                or record.state not in (store_mod.RECOVERY_PENDING,
-                                        store_mod.RECOVERY_APPROVAL_REQUIRED)):
+        if record.action_type != action_type or sorted(record.targets) != sorted(action_targets):
+            return JSONResponse(status_code=409, content={"error": "recovery_not_eligible"})
+        if (record.executor_name == "remote" and record.state in
+                (store_mod.UNKNOWN, store_mod.NEEDS_REVIEW, store_mod.FAILED)
+                and RECOVERY_ACTION.get(record.action_type)
+                and all(evidence_mod.for_target(record.evidence, t).get("container_id") for t in record.targets)):
+            # Explicit signed human recovery approval for a partial/uncertain execution.
+            # Agent still requires its own evidence and an idle claim before mutation.
+            record_store.update(remediation_id, state=store_mod.RECOVERY_APPROVAL_REQUIRED)
+        if record.state not in (store_mod.RECOVERY_PENDING, store_mod.RECOVERY_APPROVAL_REQUIRED):
             return JSONResponse(status_code=409, content={"error": "recovery_not_eligible"})
         results, state = await asyncio.get_event_loop().run_in_executor(
             None, recovery_mod.recover, record_store, executor, record, user_name, True)
@@ -540,6 +584,10 @@ async def _run_executor(action: str, target: str, target_evidence: dict):
 
 
 def _result_status(result: str) -> str:
+    if result.startswith("UNKNOWN"):
+        return "UNKNOWN"
+    if result.startswith("Blocked:"):
+        return "BLOCKED"
     if result.startswith("Success"):
         return "SUCCESS"
     return "SKIPPED" if result.startswith("Skipped:") else "FAILED"
@@ -578,6 +626,15 @@ async def _perform(record, decision_targets, action_type: str,
     같은 remediation_id 로 두 번 들어오면 두 번째는 실행하지 않고 이전 결과를 돌려준다.
     """
     rid = record.remediation_id
+    approved_by = record.approved_by or approved_by
+    if record.action_type != action_type or sorted(record.targets) != sorted(decision_targets):
+        return [], store_mod.BLOCKED
+    if isinstance(executor, RemoteExecutor):
+        allowed, _ = policy_engine.execution_allowed(action_type, decision_targets)
+        if not allowed or not approved_by:
+            record_store.update(rid, state=store_mod.BLOCKED,
+                                results=[{"blocked_reason": "remote_requires_policy_and_manual_approval"}])
+            return [], store_mod.BLOCKED
 
     # ① 멱등성 — 실행 권리를 선점한다. 이미 처리된 조치면 재실행하지 않는다.
     claimed, why = record_store.claim_execution(rid)
@@ -591,7 +648,7 @@ async def _perform(record, decision_targets, action_type: str,
         })
         return [], existing.state
 
-    record_store.update(rid, approved_by=approved_by)
+    record_store.update(rid, approved_by=approved_by, executor_name=executor.name)
 
     # ② 증거 보존 — 되돌릴 수 없는 격리·동결을 막는 게이트
     target_evidence, block_reason = await asyncio.get_event_loop().run_in_executor(
@@ -615,8 +672,11 @@ async def _perform(record, decision_targets, action_type: str,
     # ③ 실행 + ④ 검증 (실행기가 상태를 재조회해 확인한다)
     results = []
     for target in decision_targets:
-        results.append(await _run_executor(
-            action_type, target, evidence_mod.for_target(target_evidence, target)))
+        if isinstance(executor, RemoteExecutor):
+            results.append(await asyncio.to_thread(executor.execute_record, record, target, approved_by))
+        else:
+            results.append(await _run_executor(
+                action_type, target, evidence_mod.for_target(target_evidence, target)))
 
     all_ok = bool(results) and all(r.ok for r in results)
     any_skipped = any(r.status == store_mod.SKIPPED for r in results)
@@ -625,6 +685,9 @@ async def _perform(record, decision_targets, action_type: str,
         state = store_mod.VERIFIED
         record_store.update(rid, state=state, action_verified_at=store_mod.utcnow(),
                             results=[r.as_dict() for r in results])
+    elif any(r.status == "UNKNOWN" for r in results):
+        state = store_mod.UNKNOWN
+        record_store.update(rid, state=state, results=[r.as_dict() for r in results])
     elif any_skipped:
         # disabled 모드 — 실행하지 않았다. 성공으로 표시하지 않는다.
         state = store_mod.SKIPPED
@@ -639,6 +702,10 @@ async def _perform(record, decision_targets, action_type: str,
         recovery_mod.schedule(record_store, current, record.ttl_seconds,
                               record.recovery_mode)
         current = record_store.get(rid) or current
+
+    if isinstance(executor, RemoteExecutor):
+        from executor.remote_sync import reconcile
+        current = await asyncio.to_thread(reconcile, record_store, executor, current)
 
     await _push_record(current, "remediation_executed", current.state)
     # 반환하는 state 는 '이번 실행의 결과' 다. 레코드 상태는 복구 일정이 걸리면

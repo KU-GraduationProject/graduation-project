@@ -1,0 +1,18 @@
+# Copy to allowlist.yml. Empty means deny all. Do not commit runtime IDs or secrets.
+controller_id: pc1
+targets: {}
+
+# Phase 4 example (replace full immutable IDs from local Docker inspect):
+# targets:
+#   leafy-backend:
+#     container_id: <64 lowercase hex characters>
+#     image_id: sha256:<64 lowercase hex characters>
+#     labels:
+#       io.leafy.remediation: workload
+#       com.docker.compose.project: <actual project label>
+#       com.docker.compose.service: backend
+#     actions: [RESTART, PAUSE, UNPAUSE, ISOLATE, RECONNECT, THROTTLE, UNTHROTTLE]
+#     isolate_networks: [leafy-net]
+#     preserve_networks: [mgmt-net]
+# Only backend/frontend/minio compose services are eligible. Each reversible
+# action also requires its recovery action in this allowlist.

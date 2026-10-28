@@ -100,6 +100,8 @@ def gate(executor, store, remediation_id: str, action_type: str, targets):
     격리를 되돌릴 수 없게 된다.
     """
     action = str(action_type).upper()
+    if getattr(executor, "evidence_at_agent", False):
+        return {}, None
     if not requires_evidence(action):
         return {}, None
     if not getattr(executor, "changes_system", True):
