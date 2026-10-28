@@ -90,7 +90,7 @@ LLM·정책·Slack 승인은 PC 1에 유지합니다. Agent는 정책 판단을 
 | 분석·대응 API | Python 3.11 컨테이너, FastAPI, Uvicorn, Pydantic 2, HTTPX |
 | 대응 정책·상태 | PyYAML 정책, Controller JSON 상태 저장소, Agent SQLite, Docker SDK, HMAC-SHA256 |
 | 네트워크 Enricher | Python 3.12 컨테이너, Docker SDK 7.1.0, PyYAML 6.0.2 |
-| LLM | Ollama, Compose 모델 `llama3.2:3b` |
+| LLM | Ollama, Compose 모델 `llama3.1:8b` |
 | 로그 | Fluentd 1.16, Ruby 필터, fluent-plugin-grafana-loki 1.3.0, fluent-plugin-concat 2.6.2, Loki, 원격 Fluent Bit |
 | 메트릭·알림·시각화 | Prometheus, Alertmanager, Grafana, node-exporter, cAdvisor, Nginx/PostgreSQL exporters, Slack webhook |
 | 네트워크·배포 | Zeek, Docker Compose v2, 원격 Tailscale, 선택적 NVIDIA GPU 오버레이 |
@@ -150,7 +150,7 @@ Copy-Item .env.example .env  # 최초 설정 때만 실행
 
 원격 Agent 설정은 [Phase 3 배포 문서](docs/remote/PHASE3_REMOTE_AGENT.md)를 따릅니다. PC 1의 `REMEDIATION_AGENT_URL`·`AGENT_CONTROLLER_ID`, 양쪽의 **별도** `AGENT_HMAC_KEY_FILE`(또는 `AGENT_HMAC_KEY`), PC 2의 `AGENT_ALLOWLIST_PATH`·`AGENT_STATE_PATH`·`AGENT_MODE`를 사용합니다. Agent 키를 Pipeline 키나 Slack secret과 공유하지 않습니다. 실제 키와 대상 ID가 들어간 allowlist는 커밋하지 않습니다.
 
-Pipeline의 `LLM_MODEL`, `LLM_TIMEOUT`, `PROMETHEUS_URL`, `LOKI_URL`, `OLLAMA_URL`, `REMEDIATION_URL`은 Compose의 `environment`에 직접 지정되어 있습니다. `.env`에 같은 이름만 추가해도 덮어써지지 않습니다. 변경하려면 Compose 환경 설정이나 오버레이를 수정합니다. 로컬 Python에서는 프로세스 환경 변수로 지정합니다. `config.py`의 모델 기본값은 `llama3.1:8b`이므로 아래에서는 Compose와 같은 모델을 명시합니다.
+Pipeline의 `LLM_MODEL`, `LLM_TIMEOUT`, `PROMETHEUS_URL`, `LOKI_URL`, `OLLAMA_URL`, `REMEDIATION_URL`은 Compose의 `environment`에 직접 지정되어 있습니다. `.env`에 같은 이름만 추가해도 덮어써지지 않습니다. 변경하려면 Compose 환경 설정이나 오버레이를 수정합니다. 로컬 Python에서는 프로세스 환경 변수로 지정합니다. Compose와 `config.py`의 모델 기본값은 모두 `llama3.1:8b`이며, 아래 로컬 실행 예시에서도 같은 모델을 명시합니다.
 
 ### Docker: 단일 PC 통합 구성
 
@@ -160,7 +160,7 @@ Pipeline의 `LLM_MODEL`, `LLM_TIMEOUT`, `PROMETHEUS_URL`, `LOKI_URL`, `OLLAMA_UR
 docker compose -f docker-compose.yml config --quiet
 docker compose -f docker-compose.yml up -d --build fluentd
 docker compose -f docker-compose.yml up -d --build frontend backend db minio node-exporter cadvisor nginx-exporter postgres-exporter prometheus alertmanager loki grafana ollama pipeline network-observer-zeek network-observer-enricher
-docker exec ollama ollama pull llama3.2:3b
+docker exec ollama ollama pull llama3.1:8b
 docker compose -f docker-compose.yml ps
 ```
 
@@ -183,7 +183,7 @@ GPU 사용 시 위 명령의 `-f docker-compose.yml` 대신 `-f docker-compose.y
 ```powershell
 docker compose -f docker-compose.aiops.yml config --quiet
 docker compose -f docker-compose.aiops.yml up -d --build
-docker exec ollama ollama pull llama3.2:3b
+docker exec ollama ollama pull llama3.1:8b
 docker compose -f docker-compose.aiops.yml ps
 ```
 
@@ -214,7 +214,7 @@ $env:LOKI_URL = 'http://127.0.0.1:3100'
 $env:OLLAMA_URL = 'http://127.0.0.1:11434'
 $env:REMEDIATION_URL = 'http://127.0.0.1:8001'
 $env:REMEDIATION_API_KEY = '<Controller와 동일한 공유키로 교체>'
-$env:LLM_MODEL = 'llama3.2:3b'
+$env:LLM_MODEL = 'llama3.1:8b'
 Set-Location aiops/pipeline
 ..\..\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```

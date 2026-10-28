@@ -98,7 +98,7 @@ Fluentd 경고·오류(Loki 4xx 거부 포함) ─▶ @FLUENT_LOG ─▶ Loki {l
 docker compose -f docker-compose.yml down
 # 3) 기동 (Tailscale이 먼저 연결돼 있어야 Tailscale IP에 바인딩된다)
 docker compose -f docker-compose.aiops.yml -f docker-compose.gpu.yml up -d --build
-docker exec ollama ollama pull llama3.2:3b   # 새 프로젝트(leafy-aiops) 볼륨에는 모델이 없다
+docker exec ollama ollama pull llama3.1:8b   # 새 프로젝트(leafy-aiops) 볼륨에는 모델이 없다
 ```
 
 정상 결과 (같은 Compose 파일을 격리 이름으로 띄워 확인한 값):

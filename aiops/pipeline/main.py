@@ -672,24 +672,54 @@ async def _fetch_loki_aiops_results(window_sec: int) -> list[dict]:
         return []
 
 
+def _llm_options() -> dict:
+    """모든 LLM 호출이 공유하는 Ollama options. seed 는 설정했을 때만 넣는다."""
+    options = {
+        "temperature": settings.llm_temperature,
+        "num_ctx": settings.llm_num_ctx,
+        "num_predict": settings.llm_num_predict,
+    }
+    if settings.llm_seed is not None:
+        options["seed"] = settings.llm_seed
+    return options
+
+
+async def _ollama_chat(client: httpx.AsyncClient, system: str, user: str) -> str:
+    """Ollama /api/chat 1회 호출 → message.content. 모델·options·사용량 로그를 여기서 한 번에 처리한다."""
+    options = _llm_options()
+    response = await client.post(
+        f"{settings.ollama_url}/api/chat",
+        json={
+            "model": settings.llm_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user",   "content": user},
+            ],
+            "format": "json",
+            "stream": False,
+            "options": options,
+        },
+    )
+    response.raise_for_status()
+    data = response.json()
+    prompt_tokens = data.get("prompt_eval_count")
+    total_sec = (data.get("total_duration") or 0) / 1e9
+    logger.info(
+        f"[LLM] model={settings.llm_model} options={options} prompt_eval_count={prompt_tokens} "
+        f"eval_count={data.get('eval_count')} total_duration={total_sec:.2f}s done_reason={data.get('done_reason')}"
+    )
+    if prompt_tokens is not None and prompt_tokens >= 0.9 * options["num_ctx"]:
+        logger.warning(
+            f"[LLM] 입력 토큰이 num_ctx 의 90% 이상 ({prompt_tokens}/{options['num_ctx']}) — 프롬프트 잘림 위험"
+        )
+    return data["message"]["content"]
+
+
 async def _call_llm_raw(prompt: dict) -> dict | None:
     """주기적 스캔 전용 LLM 호출 — 결과를 dict로 반환"""
     try:
         async with httpx.AsyncClient(timeout=settings.llm_timeout) as client:
-            response = await client.post(
-                f"{settings.ollama_url}/api/chat",
-                json={
-                    "model": settings.llm_model,
-                    "messages": [
-                        {"role": "system", "content": prompt["system"]},
-                        {"role": "user",   "content": prompt["user"]},
-                    ],
-                    "format": "json",
-                    "stream": False,
-                },
-            )
-            response.raise_for_status()
-            raw = response.json()["message"]["content"]
+            raw = await _ollama_chat(client, prompt["system"], prompt["user"])
             return json.loads(raw)
     except Exception as e:
         logger.error(f"[Periodic] LLM 호출 실패: {e}")
@@ -879,20 +909,7 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
 
         try:
             async with httpx.AsyncClient(timeout=settings.llm_timeout) as client:
-                response = await client.post(
-                    f"{settings.ollama_url}/api/chat",
-                    json={
-                        "model": settings.llm_model,
-                        "messages": [
-                            {"role": "system", "content": prompt["system"]},
-                            {"role": "user",   "content": user_content},
-                        ],
-                        "format": "json",
-                        "stream": False,
-                    },
-                )
-                response.raise_for_status()
-                last_raw = response.json()["message"]["content"]
+                last_raw = await _ollama_chat(client, prompt["system"], user_content)
                 raw = json.loads(last_raw)
                 return LLMAnalysisResult(**raw)
         except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
