@@ -1,0 +1,2 @@
+label,scenario,variant,should_alert,detected,valid,outcome,mttd_seconds,detail
+S2-V1,S2,V1,True,True,True,TP,59.138296,"crosscheck_ok=True; stages={'loki_ruler_firing': True, 'alertmanager_received': True, 'delivery': False}"
