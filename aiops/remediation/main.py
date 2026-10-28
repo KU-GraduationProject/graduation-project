@@ -7,7 +7,7 @@ AIOps Remediation Agent (Final Version)
        - source="llm_health_check"   → LLM 헬스체크에서 온 승인
        - source="alert_triggered"    → 기존 alert 기반 승인 (기본값)
 """
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from datetime import datetime
@@ -20,10 +20,23 @@ import urllib.parse
 import httpx
 from actions.container import ContainerActions
 from actions.notify import Notifier
+from security.replay import ReplayGuard
+from security.service_auth import SIGNATURE_HEADER as SERVICE_SIGNATURE_HEADER
+from security.service_auth import verify_service_request
+from security.slack_signature import SIGNATURE_HEADER as SLACK_SIGNATURE_HEADER
+from security.slack_signature import verify_slack_request
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 LOKI_URL = os.getenv("LOKI_URL", "http://loki:3100")
+
+# ─── 인증 (Phase 0) ──────────────────────────────────────
+# 두 엔드포인트 모두 서명을 요구한다. 키가 없으면 요청을 거부한다 (fail closed) —
+# 설정 누락을 "인증 없이 실행"으로 처리하면 안전장치가 의미를 잃는다.
+SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
+REMEDIATION_API_KEY = os.getenv("REMEDIATION_API_KEY", "")
+
+_replay_guard = ReplayGuard()
 
 # docker   : 로컬 Docker SDK로 조치를 실행한다 (기존 all-in-one docker-compose.yml)
 # disabled : 조치를 실행하지 않는다. AIOps 단독 배포에서는 Leafy가 다른 PC에 있어 로컬 Docker 조치가 대상에 닿지 않고,
@@ -38,11 +51,46 @@ app = FastAPI(title="AIOps Remediation", version="0.1.0")
 container_actions = ContainerActions() if REMEDIATION_MODE == "docker" else None
 notifier = Notifier()
 logger.info(f"[Remediation] REMEDIATION_MODE={REMEDIATION_MODE}")
+# 키 값은 찍지 않는다. 설정 여부만 남겨 fail closed 상태를 운영자가 바로 알 수 있게 한다.
+logger.info(
+    "[Remediation] auth: SLACK_SIGNING_SECRET=%s REMEDIATION_API_KEY=%s",
+    "set" if SLACK_SIGNING_SECRET else "MISSING (/slack/action 전부 거부)",
+    "set" if REMEDIATION_API_KEY else "MISSING (/action 전부 거부)",
+)
 
 
 class ActionRequest(BaseModel):
     alert: dict
     analysis: dict
+
+
+# ─── 인증 게이트 ─────────────────────────────────────────
+
+async def _push_auth_denied(endpoint: str, reason: str, signature: str | None) -> None:
+    """인증 거부를 감사 로그에 남긴다. 서명 원문은 남기지 않는다(앞 12자만)."""
+    logger.warning(f"[Auth] 거부: endpoint={endpoint} reason={reason}")
+    await _push_soc_event("aiops-remediation", {
+        "event":       "auth_denied",
+        "endpoint":    endpoint,
+        "reason":      reason,
+        "signature_prefix": (signature or "")[:12],
+        "status":      "DENIED",
+    })
+
+
+async def require_service_auth(request: Request) -> None:
+    """
+    /action 서명 검증. 거부 시 401 을 올려 핸들러에 들어가지 않게 한다 —
+    조치 실행 코드는 핸들러 안에만 있으므로 여기서 막히면 Docker 호출이 없다.
+    """
+    body = await request.body()
+    signature = request.headers.get(SERVICE_SIGNATURE_HEADER)
+    ok, reason = verify_service_request(body, request.headers, REMEDIATION_API_KEY)
+    if ok and not _replay_guard.remember(signature or ""):
+        ok, reason = False, "replayed_signature"
+    if not ok:
+        await _push_auth_denied("/action", reason, signature)
+        raise HTTPException(status_code=401, detail="unauthorized")
 
 
 # ─── 기존 엔드포인트 ─────────────────────────────────────
@@ -52,7 +100,7 @@ async def health():
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
 
 
-@app.post("/action")
+@app.post("/action", dependencies=[Depends(require_service_auth)])
 async def execute_action(request: ActionRequest):
     """분석 결과 수신 → 신뢰도와 위험도에 따른 실행 분기"""
     analysis = request.analysis
@@ -128,8 +176,17 @@ async def slack_interactive_action(request: Request):
       periodic_log_scan → 주기적 로그 스캔에서 온 승인
       llm_health_check  → LLM 헬스체크에서 온 승인
     """
-    # 1. Slack payload 파싱
+    # 0. Slack 서명 검증 — 파싱·실행보다 먼저. 거부되면 조치 코드에 닿지 않는다.
     body = await request.body()
+    slack_signature = request.headers.get(SLACK_SIGNATURE_HEADER)
+    ok, reason = verify_slack_request(body, request.headers, SLACK_SIGNING_SECRET)
+    if ok and not _replay_guard.remember(slack_signature or ""):
+        ok, reason = False, "replayed_signature"
+    if not ok:
+        await _push_auth_denied("/slack/action", reason, slack_signature)
+        return JSONResponse(status_code=401, content={"error": "unauthorized"})
+
+    # 1. Slack payload 파싱
     params = urllib.parse.parse_qs(body.decode("utf-8"))
     raw_payload = params.get("payload", [None])[0]
 

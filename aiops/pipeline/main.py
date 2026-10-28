@@ -27,6 +27,7 @@ from correlation import CorrelationContext, MONITORED_SERVICES, parse_target_map
 from prompt.builder import PromptBuilder
 from prompt.log_line import render_log_line
 from schemas.llm_output import LLMAnalysisResult
+from security.service_auth import build_headers as build_service_auth_headers
 from config import settings
 
 
@@ -937,12 +938,28 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
 
 
 async def forward_to_remediation(alert: Alert, result: LLMAnalysisResult):
-    """Remediation Agent에 분석 결과 전달 → 여기서 Slack 전송 결정됨"""
+    """
+    Remediation Agent에 분석 결과 전달 → 여기서 Slack 전송 결정됨.
+
+    /action 은 HMAC 서명을 요구한다. 서명 범위가 본문 전체이므로 직렬화한 바이트를
+    그대로 전송한다(httpx 가 다시 직렬화하면 바이트가 달라져 검증이 깨진다).
+    """
+    if not settings.remediation_api_key:
+        logger.error(
+            "[Pipeline] REMEDIATION_API_KEY 미설정 — /action 전달 생략 "
+            "(서명 없는 요청은 Remediation 이 거부한다)"
+        )
+        return
+
+    body = json.dumps(
+        {"alert": alert.model_dump(), "analysis": result.model_dump()},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    headers = build_service_auth_headers(settings.remediation_api_key, body)
+
     async with httpx.AsyncClient(timeout=30) as client:
         await client.post(
             f"{settings.remediation_url}/action",
-            json={
-                "alert": alert.model_dump(),
-                "analysis": result.model_dump(),
-            },
+            content=body,
+            headers=headers,
         )

@@ -154,6 +154,8 @@ services:
       ALERTMANAGER_URL: http://alertmanager:9093
       REMEDIATION_URL: http://remediation:8001
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      # Remediation /action 서명 공유키 (remediation 과 같은 값). 미설정이면 전달 생략.
+      REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
       # alert annotation의 대상 이름 -> canonical service. Leafy가 다른 PC에 있어 로컬 Docker로 해석할 수 없다.
       # db는 Windows 호스트 PostgreSQL 17 (runtime=host). Loki의 {service="db", runtime="host"}와 같은 identity
       TARGET_SERVICE_MAP: "leafy-frontend=frontend,leafy-backend=backend,leafy-minio=minio,leafy-db=db:host"
@@ -178,6 +180,9 @@ services:
       PIPELINE_URL: http://pipeline:8000
       LOKI_URL: http://loki:3100
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      # Phase 0 인증. 없으면 해당 엔드포인트가 모든 요청을 거부한다 (fail closed).
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
       # 원격 Leafy에 대한 조치 경로가 없다. Docker socket도 마운트하지 않는다.
       REMEDIATION_MODE: disabled
     ports:

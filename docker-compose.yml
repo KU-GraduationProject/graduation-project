@@ -353,6 +353,8 @@ services:
       ALERTMANAGER_URL: http://alertmanager:9093
       REMEDIATION_URL: http://remediation:8001
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      # Remediation /action 서명 공유키 (remediation 과 같은 값). 미설정이면 전달 생략.
+      REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
       # P3: Loki 규칙과 같은 Allowlist 정책을 LLM Network Context 가 읽어 일관성 유지
       ALLOWLIST_PATH: /app/config/allowlist.yml
     ports:
@@ -377,8 +379,18 @@ services:
       PIPELINE_URL: http://pipeline:8000
       LOKI_URL: http://loki:3100
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      # Phase 0 인증. 두 값이 없으면 해당 엔드포인트는 모든 요청을 거부한다.
+      #   SLACK_SIGNING_SECRET : Slack app 설정의 Signing Secret
+      #   REMEDIATION_API_KEY  : Pipeline 과 공유하는 HMAC 키 (openssl rand -hex 32)
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
     ports:
-      - "8001:8001"
+      # 조치 실행 경로이므로 호스트 루프백에만 공개한다. Pipeline 은 mgmt-net 으로
+      # http://remediation:8001 로 접근하므로 publish 가 필요하지 않다.
+      # Slack Interactivity 를 쓰려면 리버스 프록시나 터널을 앞에 두고,
+      # 0.0.0.0 publish 로 되돌리지 않는다 (Windows/Docker Desktop 에서는
+      # Docker Desktop Backend 방화벽 규칙 때문에 LAN 에 노출된다 — docs/remote 실측).
+      - "127.0.0.1:8001:8001"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:

@@ -9,6 +9,8 @@ class Settings:
     llm_model: str = os.getenv("LLM_MODEL", "llama3.1:8b")  # ← 3b → 8b
     llm_timeout: float = float(os.getenv("LLM_TIMEOUT", "180"))  # 120 → 180
     slack_webhook_url: str = os.getenv("SLACK_WEBHOOK_URL", "")
+    # Remediation /action 서명 공유키. 미설정이면 조치 전달을 생략한다 (fail closed).
+    remediation_api_key: str = os.getenv("REMEDIATION_API_KEY", "")
     # 원격 대상 이름 -> canonical service. 형식은 correlation.parse_target_map 참고. 비우면 Docker metadata만 쓴다.
     target_service_map: str = os.getenv("TARGET_SERVICE_MAP", "")
 settings = Settings()
