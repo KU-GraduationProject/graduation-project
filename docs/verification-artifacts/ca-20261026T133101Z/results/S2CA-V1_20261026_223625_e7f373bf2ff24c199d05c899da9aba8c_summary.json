@@ -1,0 +1,27 @@
+{
+  "label": "S2CA-V1",
+  "created_at": "20261026_223625",
+  "confusion_matrix": {
+    "tp": 0,
+    "fp": 0,
+    "tn": 1,
+    "fn": 0,
+    "invalid": 0,
+    "total_valid": 1,
+    "precision": null,
+    "recall": null,
+    "specificity": 1.0,
+    "false_positive_rate": 0.0,
+    "accuracy": 1.0,
+    "f1": null,
+    "mttd": {
+      "count": 0,
+      "min": null,
+      "max": null,
+      "mean": null
+    }
+  },
+  "frozen_config": null,
+  "experiment_id": "e7f373bf2ff24c199d05c899da9aba8c",
+  "measurement_basis": "loki_ruler_activeAt_minus_orchestrator_t0"
+}

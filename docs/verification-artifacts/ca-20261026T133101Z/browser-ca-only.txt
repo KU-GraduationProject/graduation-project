@@ -1,0 +1,30 @@
+탐지 시간 및 수신 경보
+평균 탐지 시간 (MTTD) · 표본 수
+표본 수
+0
+활성 네트워크 경보
+활성 인스턴스
+0
+회차별 탐지 지연
+experiment_id
+repetition
+scenario
+variant
+detection_status
+valid
+mttd_seconds
+started_at
+detected_at
+transfer_id
+e7f373bf2ff24c199d05c899da9aba8c
+1
+C-a
+V1
+not_detected
+true
+미측정
+2026-10-26T13:34:21.501770+00:00
+미측정
+C-a-V1-0-1793021661
+네트워크 경보 상세
+No data

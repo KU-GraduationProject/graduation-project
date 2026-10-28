@@ -1,0 +1,123 @@
+{
+  "results": {
+    "A": {
+      "status": 200
+    },
+    "B": {
+      "status": 200,
+      "frames": [
+        {
+          "schema": {
+            "refId": "B",
+            "meta": {
+              "type": "numeric-multi",
+              "typeVersion": [
+                0,
+                1
+              ],
+              "stats": [
+                {
+                  "displayName": "Summary: bytes processed per second",
+                  "unit": "Bps",
+                  "value": 1060838
+                },
+                {
+                  "displayName": "Summary: lines processed per second",
+                  "value": 1106
+                },
+                {
+                  "displayName": "Summary: total bytes processed",
+                  "unit": "decbytes",
+                  "value": 3835
+                },
+                {
+                  "displayName": "Summary: total lines processed",
+                  "value": 4
+                },
+                {
+                  "displayName": "Summary: exec time",
+                  "unit": "s",
+                  "value": 0.003615064
+                },
+                {
+                  "displayName": "Ingester: total reached",
+                  "value": 1
+                },
+                {
+                  "displayName": "Ingester: total chunks matched",
+                  "value": 1
+                },
+                {
+                  "displayName": "Ingester: total batches",
+                  "value": 1
+                },
+                {
+                  "displayName": "Ingester: total lines sent",
+                  "value": 0
+                },
+                {
+                  "displayName": "Ingester: head chunk bytes",
+                  "unit": "decbytes",
+                  "value": 0
+                },
+                {
+                  "displayName": "Ingester: head chunk lines",
+                  "value": 0
+                },
+                {
+                  "displayName": "Ingester: decompressed bytes",
+                  "unit": "decbytes",
+                  "value": 0
+                },
+                {
+                  "displayName": "Ingester: decompressed lines",
+                  "value": 0
+                },
+                {
+                  "displayName": "Ingester: compressed bytes",
+                  "unit": "decbytes",
+                  "value": 0
+                },
+                {
+                  "displayName": "Ingester: total duplicates",
+                  "value": 0
+                }
+              ],
+              "executedQueryString": "Expr: (sum(count_over_time({job=\"network-experiment\", event_type=\"network_experiment_result\"} | json | __error__=\"\" | experiment_id=~\"e7f373bf2ff24c199d05c899da9aba8c\" | valid=\"true\" | should_alert=\"true\" | detected=\"true\" | mttd_seconds!=\"\" [86400s]))) or vector(0)"
+            },
+            "fields": [
+              {
+                "name": "Time",
+                "type": "time",
+                "typeInfo": {
+                  "frame": "time.Time"
+                }
+              },
+              {
+                "name": "Value",
+                "type": "number",
+                "typeInfo": {
+                  "frame": "float64"
+                },
+                "labels": {},
+                "config": {
+                  "displayNameFromDS": "표본 수"
+                }
+              }
+            ]
+          },
+          "data": {
+            "values": [
+              [
+                1793021802574
+              ],
+              [
+                0
+              ]
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
