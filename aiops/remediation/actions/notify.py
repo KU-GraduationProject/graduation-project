@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 LOKI_URL = os.getenv("LOKI_URL", "http://loki:3100")
 # main.py와 같은 값. disabled면 승인해도 실행되지 않는다는 것을 메시지에 밝힌다.
-REMEDIATION_DISABLED = os.getenv("REMEDIATION_MODE", "docker") == "disabled"
+REMEDIATION_DISABLED = os.getenv("REMEDIATION_MODE", "disabled") == "disabled"
 DISABLED_NOTE = "\n_자동 조치 비활성화(REMEDIATION_MODE=disabled): 승인해도 실행되지 않고 기록만 남습니다._"
 
 
@@ -62,6 +62,17 @@ def _push_loki_slack_event(
 
 
 class Notifier:
+    async def send_recovery_request(self, record):
+        value = json.dumps({"remediation_id": record.remediation_id,
+                            "alertname": record.alertname, "action_type": record.action_type,
+                            "action_targets": record.targets})
+        return await self._send_slack(record.alertname, {"blocks": [
+            {"type": "section", "text": {"type": "mrkdwn", "text":
+                f"복구 승인 필요: `{record.action_type}` / `{record.remediation_id}`"}},
+            {"type": "actions", "elements": [{"type": "button",
+                "text": {"type": "plain_text", "text": "복구 승인"},
+                "action_id": "approve_recovery", "value": value}]}]})
+
     def _extract_analysis(self, alert: dict, analysis: dict) -> dict:
         return {
             "alertname":      alert.get("labels", {}).get("alertname", "unknown"),

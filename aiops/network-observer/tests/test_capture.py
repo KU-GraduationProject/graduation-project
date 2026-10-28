@@ -16,6 +16,15 @@ from capture import CaptureInterface  # noqa: E402
 
 class TestCaptureInterface(unittest.TestCase):
 
+    def test_isolate_clears_interface_and_reconnect_refreshes_it(self):
+        self._write("eth1\n", mtime=100)
+        iface = CaptureInterface(self.path)
+        self.assertEqual(iface.get(), "eth1")
+        self._write("\n", mtime=200)
+        self.assertIsNone(iface.get())
+        self._write("eth2\n", mtime=300)
+        self.assertEqual(iface.get(), "eth2")
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.path = os.path.join(self.tmp.name, "capture-interface")

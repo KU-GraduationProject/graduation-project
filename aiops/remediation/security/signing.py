@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import time
 
 SIGNATURE_VERSION = "v0"
@@ -67,7 +68,7 @@ def verify(
 
     now = time.time() if now is None else now
     # 과거(리플레이)와 미래(시계 왜곡) 양쪽을 같은 창으로 제한한다.
-    if abs(now - ts) > max_age_sec:
+    if not math.isfinite(ts) or abs(now - ts) > max_age_sec:
         return False, "timestamp_out_of_window"
 
     expected = sign(secret, timestamp, body)

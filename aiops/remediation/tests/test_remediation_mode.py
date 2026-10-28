@@ -135,11 +135,11 @@ class DisabledModeTest(unittest.TestCase):
 
 
 class ModeValidationTest(unittest.TestCase):
-    def test_default_mode_keeps_local_docker_actions(self):
+    def test_default_mode_disables_docker_actions(self):
         main, from_env = load_main(None)
-        self.assertEqual(main.REMEDIATION_MODE, "docker")
-        from_env.assert_called_once()
-        self.assertIsNotNone(main.container_actions)
+        self.assertEqual(main.REMEDIATION_MODE, "disabled")
+        from_env.assert_not_called()
+        self.assertIsNone(main.container_actions)
 
     def test_unknown_mode_fails_fast(self):
         with self.assertRaises(ValueError):

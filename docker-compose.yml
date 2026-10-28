@@ -377,6 +377,7 @@ services:
     build: ./aiops/remediation
     container_name: aiops-remediation
     environment:
+      REMEDIATION_MODE: ${REMEDIATION_MODE:-disabled}
       PIPELINE_URL: http://pipeline:8000
       LOKI_URL: http://loki:3100
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}

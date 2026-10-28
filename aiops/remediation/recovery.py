@@ -71,6 +71,11 @@ def recover(store, executor, record, approved_by: str | None = None,
         store.update(record.remediation_id, recovery_mode=NONE)
         return [], store_mod.RECOVERED   # 되돌릴 것이 없다 (RESTART 등)
 
+    if not getattr(executor, "changes_system", True):
+        return [], record.state
+    if record.state not in (store_mod.RECOVERY_PENDING, store_mod.RECOVERY_APPROVAL_REQUIRED):
+        return [], record.state
+
     if mode == REQUIRE_APPROVAL and not force:
         # 자동 복구하지 않는다. 승인 요청 상태로 바꾸고 멈춘다.
         store.update(record.remediation_id,
@@ -79,6 +84,8 @@ def recover(store, executor, record, approved_by: str | None = None,
                     record.action_type, record.targets)
         return [], store_mod.RECOVERY_APPROVAL_REQUIRED
 
+    if not store.claim_recovery(record.remediation_id, approved=force):
+        return [], record.state
     store.update(record.remediation_id, state=store_mod.RECOVERING,
                  recovery_started_at=store_mod.utcnow(),
                  approved_by=approved_by or record.approved_by)

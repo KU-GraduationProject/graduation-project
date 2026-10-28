@@ -77,6 +77,7 @@ class CaptureInterface:
             self._mtime = mtime
             self._warned_missing = False
             if not name:
+                self._value = self._fallback
                 return self._value
             if name != self._value:
                 logger.info("실제 캡처 인터페이스: %s (%s)", name, self._path)

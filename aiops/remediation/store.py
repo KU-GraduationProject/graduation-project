@@ -50,12 +50,13 @@ RECOVERY_APPROVAL_REQUIRED = "RECOVERY_APPROVAL_REQUIRED"
 RECOVERING = "RECOVERING"
 RECOVERED = "RECOVERED"
 RECOVERY_FAILED = "RECOVERY_FAILED"
+NEEDS_REVIEW = "NEEDS_REVIEW"
 
 # 조치가 끝나 더 이상 실행하지 않아야 하는 상태 (멱등성 판정용)
 TERMINAL_EXECUTION_STATES = (
     EXECUTING, VERIFIED, FAILED, BLOCKED, SKIPPED, REJECTED,
     RECOVERY_PENDING, RECOVERY_APPROVAL_REQUIRED, RECOVERING, RECOVERED,
-    RECOVERY_FAILED,
+    RECOVERY_FAILED, NEEDS_REVIEW,
 )
 
 
@@ -192,6 +193,7 @@ class RecordStore:
         self._records: dict = {}
         self._loaded = False
         self._writable = True
+        self._load_error = False
 
     # ── 영속화 ────────────────────────────────────────────────────────────────
     def load(self) -> None:
@@ -206,11 +208,19 @@ class RecordStore:
             except (OSError, json.JSONDecodeError) as exc:
                 # 상태 파일이 깨졌다 — 멱등성 근거를 잃었으므로 크게 남긴다.
                 logger.error("[Store] 상태 파일을 읽을 수 없다 (%s): %s", self.path, exc)
+                self._load_error = True
+                self._writable = False
+                return
+            if not isinstance(raw, dict) or not isinstance(raw.get("records"), dict):
+                self._load_error = True
+                self._writable = False
                 return
             for rid, body in (raw.get("records") or {}).items():
                 try:
                     self._records[rid] = RemediationRecord(**body)
                 except TypeError as exc:
+                    self._load_error = True
+                    self._writable = False
                     logger.warning("[Store] 레코드 건너뜀 %s: %s", rid, exc)
             logger.info("[Store] 레코드 %d건 복원: %s", len(self._records), self.path)
 
@@ -219,6 +229,9 @@ class RecordStore:
             self.load()
 
     def _flush(self) -> None:
+        if self._load_error:
+            self._writable = False
+            return
         payload = jsonable({"version": 1, "saved_at": utcnow(),
                             "records": {rid: r.as_dict()
                                         for rid, r in self._records.items()}})
@@ -230,6 +243,8 @@ class RecordStore:
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as fh:
                     json.dump(payload, fh, ensure_ascii=False, indent=2)
+                    fh.flush()
+                    os.fsync(fh.fileno())
                 os.replace(tmp, self.path)
             except Exception:
                 if os.path.exists(tmp):
@@ -326,6 +341,8 @@ class RecordStore:
         """
         with self._lock:
             self._ensure_loaded()
+            if not self._writable:
+                return False, "store_not_writable"
             record = self._records.get(remediation_id)
             if record is None:
                 return False, "unknown_remediation_id"
@@ -335,7 +352,41 @@ class RecordStore:
             record.action_started_at = utcnow()
             record.updated_at = record.action_started_at
             self._flush()
-            return True, "claimed"
+            return self._writable, "claimed" if self._writable else "store_not_writable"
+
+    def claim_recovery(self, remediation_id, approved=False):
+        with self._lock:
+            self._ensure_loaded()
+            record = self._records.get(remediation_id)
+            if not self._writable or record is None:
+                return False
+            if record.state not in (RECOVERY_PENDING, RECOVERY_APPROVAL_REQUIRED):
+                return False
+            if record.recovery_mode == "require_approval" and not approved:
+                return False
+            record.state = RECOVERING
+            record.recovery_started_at = utcnow()
+            self._flush()
+            return self._writable
+
+    def reconcile_interrupted(self):
+        """Never retry uncertain mutations or discard orphaned recovery evidence."""
+        with self._lock:
+            self._ensure_loaded()
+            changed = []
+            for record in self._records.values():
+                if record.state in (EXECUTING, RECOVERING) or (
+                    record.state == FAILED and record.evidence
+                ):
+                    record.state = NEEDS_REVIEW
+                    changed.append(record.remediation_id)
+                elif record.state == VERIFIED and record.recovery_mode not in (None, "none"):
+                    record.state = RECOVERY_APPROVAL_REQUIRED
+                    changed.append(record.remediation_id)
+            if changed:
+                self._flush()
+                logger.error("[Store] manual reconciliation required: %s", changed)
+            return changed
 
     # ── TTL ───────────────────────────────────────────────────────────────────
     def due_recoveries(self, now: float | None = None) -> list:

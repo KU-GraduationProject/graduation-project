@@ -55,7 +55,7 @@ _replay_guard = ReplayGuard()
 # disabled : 조치를 실행하지 않는다. AIOps 단독 배포에서는 Leafy가 다른 PC에 있어 로컬 Docker 조치가 대상에 닿지 않고,
 #            같은 이름의 로컬 컨테이너(남은 leafy-* 또는 AIOps 자신)를 건드릴 위험만 있다. 원격 조치 경로가 생기기 전까지 쓴다.
 #            판단·알림·승인 기록은 그대로 남기고, 실행 결과는 SKIPPED로 기록한다.
-REMEDIATION_MODE = os.getenv("REMEDIATION_MODE", "docker")
+REMEDIATION_MODE = os.getenv("REMEDIATION_MODE", "disabled")
 if REMEDIATION_MODE not in ("docker", "disabled"):
     raise ValueError(f"REMEDIATION_MODE must be docker or disabled: {REMEDIATION_MODE!r}")
 
@@ -81,6 +81,7 @@ container_actions = executor if REMEDIATION_MODE == "docker" else None
 # 조치 레코드 저장소 (멱등성·TTL·MTTR). 파일에 영속화해 재시작을 견딘다.
 record_store = store_mod.RecordStore()
 record_store.load()
+record_store.reconcile_interrupted()
 if not record_store.check_writable():
     logger.error("[Remediation] 상태 저장 불가 — 되돌려야 하는 조치(격리/동결/쿼터)는 "
                  "차단된다 (REMEDIATION_STATE_DIR 확인)")
@@ -460,6 +461,10 @@ async def slack_interactive_action(request: Request):
         if record is None:
             return JSONResponse(status_code=404,
                                 content={"error": "unknown_remediation_id"})
+        if (record.action_type != action_type or sorted(record.targets) != sorted(action_targets)
+                or record.state not in (store_mod.RECOVERY_PENDING,
+                                        store_mod.RECOVERY_APPROVAL_REQUIRED)):
+            return JSONResponse(status_code=409, content={"error": "recovery_not_eligible"})
         results, state = await asyncio.get_event_loop().run_in_executor(
             None, recovery_mod.recover, record_store, executor, record, user_name, True)
         summaries = [r.summary() for r in results] or [f"Not recovered ({state})"]
@@ -547,6 +552,7 @@ async def _on_ttl_event(record, results, state) -> None:
     updated = record_store.get(record.remediation_id) or record
     await _push_record(updated, "ttl_recovery_processed", state)
     if state == store_mod.RECOVERY_APPROVAL_REQUIRED:
+        await notifier.send_recovery_request(updated)
         # 자동 복구 금지 조치 — 사람에게 복구 승인을 요청한다.
         await _push_soc_event("aiops-timeline", {
             "event": "recovery_approval_required", "status": state,
@@ -603,6 +609,8 @@ async def _perform(record, decision_targets, action_type: str,
         })
         return [], store_mod.BLOCKED
     record_store.update(rid, evidence=target_evidence)
+    if not record_store.writable:
+        return [], store_mod.BLOCKED
 
     # ③ 실행 + ④ 검증 (실행기가 상태를 재조회해 확인한다)
     results = []
