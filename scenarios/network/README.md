@@ -37,6 +37,7 @@
 |------|------|
 | `scenarios/network/sink/sink_server.py` | 수신 Sink (바이트·SHA-256 기록, `/stats` 조회) |
 | `scenarios/network/payload.py` | 전송 파일 생성(원본+합성, 결정적, 해시) — P1 순수 로직 |
+| `scenarios/network_runner.py` | run.py 메뉴 → `experiment.py` 호출 런처 (사전 점검·실행 옵션) |
 | `aiops/policy/allowlist.yml` | 목적지 Allowlist(사람 작성) — P3 단일 정책 소스 |
 | `aiops/pipeline/policy/` | Allowlist 평가기 + LogQL 규칙 생성기 (P3) |
 | `aiops/network-observer/zeek/local.zeek` | Zeek conn.log + ConnThreshold 조기 이벤트 (P6) |
@@ -208,6 +209,74 @@ DB_PASSWORD=... python3 experiment.py run V2 --frozen results/frozen.json
 
 > ⚠ 실제 실행(전송·Zeek·Loki·FIRING·MTTD)은 Docker/Loki 런타임이 있어야 한다. 이
 > 환경엔 없으므로 **최종 수치는 UNVERIFIED** 다. 추정 TP/FN/FP/TN·MTTD 를 만들지 않는다.
+
+## run.py 메뉴에서 실행 (통합 런처)
+
+위 CLI 를 직접 쓰는 대신 통합 시나리오 런처에서 선택할 수 있다. 메뉴는 기존 12개
+시나리오 뒤에 **카테고리 3: 네트워크 탐지** 를 붙인다 (기존 번호·순서는 그대로).
+
+```bash
+cd scenarios
+set DB_PASSWORD=<DB 비밀번호>        # Windows (bash: export DB_PASSWORD=...)
+python run.py
+```
+
+```text
+── 카테고리 3: 네트워크 탐지 ───────────────────────
+ 13.  S2 — 비인가 목적지 데이터 전송        실험 러너
+ 14.  C-a — 인가 목적지 대용량 전송        실험 러너
+ 15.  S2/C-a — 비교 실험                실험 러너
+```
+
+| 선택 | 실제 호출되는 명령 |
+|------|-------------------|
+| 13 (S2) | `experiment.py run V1 --s2-reps 1 --ca-reps 0` |
+| 14 (C-a) | `experiment.py run V1 --s2-reps 0 --ca-reps 1` |
+| 15 (비교) | `experiment.py run V1 --s2-reps 1 --ca-reps 1` |
+
+`scenarios/network_runner.py` 가 런처다. 탐지 규칙·판정·MTTD·결과 저장·Loki 전송은
+재구현하지 않고 위 CLI 를 `subprocess` 로 호출한다(`shell` 미사용, `sys.executable`
+사용). experiment.py 출력은 터미널에 그대로 흐르고, 종료 후 메뉴로 돌아온다.
+
+### 실행 옵션
+
+- **V1 (기본)** — 분할 전송, 튜닝용. 메뉴 기본 반복은 S2/C-a 각 **1회**이고, 선택한
+  시나리오의 반복 횟수만 입력받는다(5, 30 등). 선택하지 않은 쪽은 `--*-reps 0` 으로
+  고정되므로 S2만 골랐을 때 C-a 가 실행되지 않는다. 음수·비정수·전체 0회는 거부한다.
+- **V2 (held-out)** — 저속 전송 최종 평가. 반복 기본값은 CLI 기본값(S2 30 / C-a 75)을
+  그대로 쓰고, **동결 스냅샷 경로를 요구한다**(`--frozen`). 파일이 없으면 생성 방법을
+  안내하고 실행을 중단한다 — 런처는 동결 파일을 만들지 않고, V2 를 V1 으로 바꾸지도
+  않는다. 동결 이후 설정이 바뀌면 기존 drift 검증이 평가를 거부한다.
+
+### 실행 전 점검 (읽기 전용)
+
+`DB_PASSWORD` 환경변수, Docker 접근, 필수 컨테이너(`leafy-backend`, `s2-sink-a`,
+`s2-sink-b`), Sink readout(8091/8092 `/healthz`), Loki `/ready`, Alertmanager
+`/-/ready` 를 확인하고 부족한 항목을 표로 보여준 뒤 메뉴로 복귀한다. 런처는 컨테이너를
+자동 기동하거나 Docker 환경을 변경하지 않으므로, Sink 가 없으면 위
+[Sink 배치](#sink-배치-step-1--p2) 명령으로 먼저 올린다. 원격 PC 실행은 지원하지
+않는다 — 실험은 런처가 실행된 호스트의 Docker 환경에서만 동작한다.
+
+`DB_PASSWORD` 는 자식 프로세스 환경으로만 전달되며 커맨드라인·로그·화면에 출력되지
+않는다. `LOKI_URL`, `ALERTMANAGER_URL` 은 설정되어 있으면 그대로 쓰고 없으면
+기본값(`localhost:3100`, `localhost:9093`)을 쓴다.
+
+### 결과
+
+`scenarios/network/results/` 에 기존 러너가 저장한다 (`*_runs.jsonl`, `*_runs.csv`,
+`*_summary.json`). 실행이 끝나면 런처가 최신 `*_summary.json` 경로와 TP/FP/TN/FN ·
+MTTD 요약을 표시한다. Loki 평가 결과 자동 전송도 기존 동작 그대로다.
+
+### 기존 `data_exfil` 과의 차이
+
+| | `data_exfil` (7번, 카테고리 2) | S2 (13번, 카테고리 3) |
+|---|---|---|
+| 행위 | leafy-db 에서 `leaked_users` 덤프 → 컨테이너 내부 CSV | backend 네트워크 공간에서 **외부 목적지로 전송** |
+| 관측 | 탐지 사각지대 (경보 없음) | Zeek 가 관측한 실제 네트워크 이벤트 |
+| 판정 | 연출/시각화 (사각지대 설명) | Allowlist 기반 Loki Ruler 경보 + TP/FP/TN/FN·MTTD 평가 |
+| 대조군 | 없음 | C-a (같은 전송, 인가 목적지) |
+
+둘은 다른 시나리오다. S2 는 `data_exfil` 을 대체하지 않는다.
 
 ## 테스트
 

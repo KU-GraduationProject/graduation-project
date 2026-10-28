@@ -19,6 +19,9 @@ AIOps 시나리오 통합 런처
   data_exfil       — 탐지 사각지대 + 탈취 데이터 reveal
   secret_dump      — 탈취 환경변수 + 공격 체인
   lateral_movement — 소스 IP 비교 (정상 vs 공격자)
+
+네트워크 탐지(S2/C-a)는 자체 Verifier·결과 저장을 갖는 독립 실험 러너를 호출하므로
+위 공통 파이프라인(LLM 폴링)을 타지 않고 network_runner.py 로 분기한다.
 """
 
 import json
@@ -41,6 +44,8 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 from rich.columns import Columns
+
+from network_runner import NETWORK_SCENARIO_REGISTRY, run_network_scenario
 
 console = Console()
 
@@ -1045,7 +1050,8 @@ def select_scenario() -> dict | None:
 
     infra  = [m for m in SCENARIO_REGISTRY if m["category"] == "인프라"]
     sec    = [m for m in SCENARIO_REGISTRY if m["category"] == "보안"]
-    all_sc = infra + sec
+    # 네트워크 항목은 기존 번호 뒤에 동적으로 붙는다 (기존 순서/번호 불변)
+    all_sc = infra + sec + NETWORK_SCENARIO_REGISTRY
 
     console.print("  [bold cyan]── 카테고리 1: 인프라 ──────────────────────────────[/bold cyan]")
     for i, m in enumerate(infra, 1):
@@ -1060,6 +1066,13 @@ def select_scenario() -> dict | None:
         tag = "[dim red]사각지대[/dim red]" if m["blind_spot"] else (
               "[dim yellow]수동 웹훅[/dim yellow]" if not m["alert_fires"] else "[dim green]자동 Alert[/dim green]")
         console.print(f"  [bold yellow]{i:2d}[/bold yellow].  {m['label']:<28s}  {tag}")
+        console.print(f"       [dim]{m['subtitle']}[/dim]")
+
+    console.print()
+    console.print("  [bold cyan]── 카테고리 3: 네트워크 탐지 ───────────────────────[/bold cyan]")
+    for i, m in enumerate(NETWORK_SCENARIO_REGISTRY, len(infra) + len(sec) + 1):
+        console.print(f"  [bold yellow]{i:2d}[/bold yellow].  {m['label']:<28s}  "
+                      f"[dim magenta]실험 러너[/dim magenta]")
         console.print(f"       [dim]{m['subtitle']}[/dim]")
 
     console.print()
@@ -1087,7 +1100,11 @@ def main():
             if meta is None:
                 console.print("\n[yellow]종료합니다.[/yellow]\n")
                 break
-            run_scenario(meta)
+            # 네트워크 시나리오는 자체 Verifier/결과 저장을 갖는 전용 실행 경로로 분기
+            if meta.get("kind") == "network":
+                run_network_scenario(meta)
+            else:
+                run_scenario(meta)
             again = console.input(
                 "  [bold white]다른 시나리오를 실행하시겠습니까? (y/n): [/bold white]"
             ).strip().lower()
