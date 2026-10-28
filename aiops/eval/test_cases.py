@@ -9,8 +9,11 @@ action_risk 는 LLM 출력이 아니라 정책 엔진이 action_type 으로 정�
 """
 
 import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from pipeline.prompt.builder import SYSTEM_PROMPT
+# 파이프라인은 aiops/pipeline 을 루트로 두고 `prompt.*` 처럼 최상위 import 한다 (Dockerfile WORKDIR=/app).
+_PIPELINE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "pipeline"))
+if _PIPELINE_DIR not in sys.path:
+    sys.path.insert(0, _PIPELINE_DIR)
+from prompt.builder import SYSTEM_PROMPT
 
 # ── Baseline SYSTEM_PROMPT (few-shot 예제 없는 버전) ────────────────────────
 SYSTEM_PROMPT_BASELINE = """You are an AIOps engineer. Analyze Docker container anomaly data and return JSON only. Always respond in English regardless of the input language.
