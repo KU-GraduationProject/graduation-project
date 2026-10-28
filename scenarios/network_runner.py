@@ -162,6 +162,10 @@ class Check:
     hint: str = ""
 
 
+# preflight(containers=...) 의 "주입 안 함"과 "Docker 접근 불가(None)"를 구분하는 센티넬
+_NOT_INJECTED = object()
+
+
 def _http_ok(url: str, timeout: int = 3) -> bool:
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
@@ -182,11 +186,14 @@ def running_containers() -> set | None:
     return {line.strip() for line in r.stdout.splitlines() if line.strip()}
 
 
-def preflight(variant: str, frozen=None, containers=None,
+def preflight(variant: str, frozen=None, containers=_NOT_INJECTED,
               http_probe=_http_ok) -> list:
     """
     실험 실행에 필요한 사전 조건을 '읽기만' 해서 점검한다. containers/http_probe 는
     테스트에서 주입한다. 무엇이 부족한지 Check 리스트로 반환한다.
+
+    containers 를 넘기지 않으면 실제 Docker 를 조회한다. None 을 넘기면
+    'Docker 접근 불가' 를 뜻한다 — 두 경우를 섞지 않도록 센티넬로 구분한다.
     """
     checks = [
         Check("DB_PASSWORD 환경변수", bool(os.getenv("DB_PASSWORD")),
@@ -195,7 +202,7 @@ def preflight(variant: str, frozen=None, containers=None,
               f"{EXPERIMENT_PY} 를 찾을 수 없다"),
     ]
 
-    names = running_containers() if containers is None else containers
+    names = running_containers() if containers is _NOT_INJECTED else containers
     checks.append(Check("Docker 접근", names is not None,
                         "Docker 데몬이 응답하지 않는다 (Docker Desktop 실행 확인)"))
     missing = sorted(set(REQUIRED_CONTAINERS) - (names or set()))
