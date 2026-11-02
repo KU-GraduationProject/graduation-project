@@ -105,15 +105,31 @@ groups:
           summary: "컨테이너 반복 재시작 감지 (10분 내 2회 이상, CrashLoop/OOM 가능성)"
           container: "{{ $labels.name }}"
       # [역할] DDoS/포트스캔 탐지 목적 — 실제 운영 환경 대응용
-      # [한계] Mac Docker Desktop에서 per-container 메트릭 미지원
-      #        name 라벨 없어서 Pipeline이 수동 분석 경로로 진입
       # [시나리오] 직접 연결된 시나리오 없음 — 실제 공격 발생 시 탐지용
-      # [참고] id 필터 제거 → Mac(id="/")·Linux/Windows(id="/docker/...") 모두 동작
+      # [대상] 앱 컨테이너 4개만 (HighCpuUsage 와 같은 목록). cAdvisor name 라벨로 고르므로 Pipeline 메타데이터에 의존하지 않는다
+      #        루트 cgroup(id="/", 호스트 전체)과 Ollama 등 AIOps 컨테이너는 제외 — 모델 pull(약 15~19MB/s, 10-07 실측)이
+      #        id="/"·ollama 두 시리즈로 동시에 울리던 오탐을 없앤다 (재생: 10-07 pull 4회 1,020s → 0회)
+      # [Mac 대체 경로] Mac Docker Desktop 의 cAdvisor 는 컨테이너별(/docker/...) 네트워크 시리즈가 없고 id="/" 만 있다.
+      #        /docker/... 시리즈가 하나도 없을 때만 id="/" 합계로 평가한다 (Windows/Linux 에서는 비활성)
+      #        Mac 에서는 호스트 전체 수신량이므로 모델 pull 때 울릴 수 있다 (10-07 pull 을 id="/" 로 재생: 2회 530s)
+      #        이 경로의 경보는 name 이 없어 Pipeline 이 "컨테이너 정보 없음"으로 분석을 생략한다
       - alert: HighNetworkReceive
         expr: >
-          sum without(interface) (
-            rate(container_network_receive_bytes_total{interface!="lo"}[1m])
-          ) > 1e7
+          (
+            sum by (name) (
+              rate(container_network_receive_bytes_total{interface!="lo", id=~"/docker/.+", name!="", name=~"leafy-frontend|leafy-backend|leafy-db|leafy-minio"}[1m])
+            ) > 1e7
+          )
+          or
+          (
+            (
+              sum without (interface) (
+                rate(container_network_receive_bytes_total{interface!="lo", id="/"}[1m])
+              ) > 1e7
+            )
+            unless on ()
+            (count(container_network_receive_bytes_total{id=~"/docker/.+"}) > 0)
+          )
         for: 30s
         labels:
           severity: warning
@@ -121,7 +137,7 @@ groups:
         # 변경 후
         annotations:
           summary: "네트워크 수신량 급증 (잠재적 DDoS/스캔)"
-          container: "unknown (host-level)"
+          container: "{{ $labels.name }}"
       # [수정] alert 이름을 실제 측정값(요청량)에 맞게 변경
       # Before: HighNginxErrorRate (에러율로 오해 유발)
       # After:  HighNginxRequestRate (요청량 급증)
