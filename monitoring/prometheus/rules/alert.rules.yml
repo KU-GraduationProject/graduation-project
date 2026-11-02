@@ -112,7 +112,7 @@ groups:
       # [Mac 대체 경로] Mac Docker Desktop 의 cAdvisor 는 컨테이너별(/docker/...) 네트워크 시리즈가 없고 id="/" 만 있다.
       #        /docker/... 시리즈가 하나도 없을 때만 id="/" 합계로 평가한다 (Windows/Linux 에서는 비활성)
       #        Mac 에서는 호스트 전체 수신량이므로 모델 pull 때 울릴 수 있다 (10-07 pull 을 id="/" 로 재생: 2회 530s)
-      #        이 경로의 경보는 name 이 없어 Pipeline 이 "컨테이너 정보 없음"으로 분석을 생략한다
+      #        이 경로의 경보는 name 이 없어 annotation container 가 예전 값 "unknown (host-level)" 이 된다 (Pipeline 동작은 이전과 같다)
       - alert: HighNetworkReceive
         expr: >
           (
@@ -137,7 +137,7 @@ groups:
         # 변경 후
         annotations:
           summary: "네트워크 수신량 급증 (잠재적 DDoS/스캔)"
-          container: "{{ $labels.name }}"
+          container: "{{ if $labels.name }}{{ $labels.name }}{{ else }}unknown (host-level){{ end }}"
       # [수정] alert 이름을 실제 측정값(요청량)에 맞게 변경
       # Before: HighNginxErrorRate (에러율로 오해 유발)
       # After:  HighNginxRequestRate (요청량 급증)
