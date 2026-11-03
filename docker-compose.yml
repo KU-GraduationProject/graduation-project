@@ -17,6 +17,16 @@ networks:
         - subnet: 10.210.0.0/24
   mgmt-net:
     driver: bridge
+  # [F2-a] prometheus<->minio 메트릭 전용. S3 API 를 관리망에 노출하지 않고, backend 를 넣지 않아
+  # backend->minio 경로는 leafy-net 그대로다(Zeek 관측·allowlist 불변). internal: 외부 연결 없음.
+  # 서브넷 10.212.0.0/24 는 기존과 겹치지 않는다: leafy-net 10.210.0.0/24, sink-net 10.211.0.0/24,
+  # 앱 단독배포 10.203.0.0/24, mgmt-net 은 Docker 기본 풀(172.x)에서 자동 할당 — 10.212 는 어디와도 안 겹침.
+  minio-metrics-net:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.212.0.0/24
 
 # ─────────────────────────────────────────────
 # 볼륨: 컨테이너 재시작 시 데이터 영속성 확보
@@ -172,9 +182,9 @@ services:
       - minio_data:/data
     networks:
       - leafy-net
-      # prometheus(mgmt-net) 가 minio:9000 을 service name 으로 수집하려면 같은 망이 필요하다.
-      # backend 와 같은 방식의 추가 멤버십일 뿐, 호스트 포트는 열지 않는다. (F2-a)
-      - mgmt-net
+      # [F2-a] prometheus 수집 전용 망. mgmt-net 에 붙이지 않는다 — 관리망에 S3 API 노출 방지,
+      # backend->minio 트래픽을 leafy-net 밖으로 빼지 않아 Zeek 관측·allowlist 가 그대로 유지된다.
+      - minio-metrics-net
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -281,6 +291,7 @@ services:
       - "9090:9090"
     networks:
       - mgmt-net
+      - minio-metrics-net   # [F2-a] minio:9000 메트릭 수집 전용 (backend 없음)
     restart: unless-stopped
 
   alertmanager:

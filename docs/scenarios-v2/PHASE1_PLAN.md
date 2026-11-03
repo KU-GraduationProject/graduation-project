@@ -183,8 +183,18 @@ RunOutcome) → `ConfusionMatrix` → `write_results`(JSONL/CSV/summary). V2(hel
    - 순수 로직(`should_abort_start`/`plan_allocation`/할당기 소스 컴파일) 단위 테스트 추가.
 2. **F2-a 탐지 룰 — A안 구현.** minio 를 Prometheus 수집 대상으로 만들고 `up{job="minio"}==0` 로 탐지.
    - `docker-compose.yml`: minio 에 `MINIO_PROMETHEUS_AUTH_TYPE: public`(토큰 없이 수집). **호스트 포트는 안 연다.**
-     단, 메인 prometheus 는 mgmt-net, minio 는 leafy-net 이라 `minio:9000` 이 안 닿는다 → minio 를 **mgmt-net 에
-     추가 멤버십**(backend 와 같은 방식, 포트 공개 아님)으로 둬 service name 으로 도달하게 했다.
+     prometheus↔minio 전용 네트워크 `minio-metrics-net`(`internal: true`, subnet `10.212.0.0/24`)을 새로 만들어
+     **prometheus 와 minio 만** 연결한다. minio 는 `leafy-net` + `minio-metrics-net`, prometheus 는 `mgmt-net` +
+     `minio-metrics-net`.
+     - **왜 mgmt-net 공유를 안 쓰나:** minio 를 mgmt-net 에 넣으면 backend(leafy-net+mgmt-net)가 minio 를
+       mgmt-net 주소로 찾아 backend→minio 트래픽이 leafy-net 밖으로 빠질 수 있고(Zeek 미관측·allowlist 밖 IP),
+       관리망에 S3 API 가 열린다. 전용 internal 망은 이 둘을 모두 피한다.
+     - **backend→minio 경로 불변 근거:** `minio-metrics-net` 에는 **backend 가 없다**. backend 는 여전히
+       `leafy-net`+`mgmt-net` 뿐이고 minio 도 `leafy-net` 을 유지하므로 backend→minio 는 **leafy-net 그대로** —
+       Zeek 관측·allowlist(`dst_service=minio`) 불변. prometheus→minio 메트릭만 전용망으로 흐른다(backend 아님).
+     - **서브넷 비겹침 근거:** `10.212.0.0/24` 는 leafy-net `10.210.0.0/24`·sink-net `10.211.0.0/24`·앱단독
+       `10.203.0.0/24` 와 겹치지 않고, mgmt-net 은 Docker 기본 풀(172.x)에서 자동 할당돼 10.212 와 안 겹친다.
+     - backend·frontend·zeek 등 다른 서비스의 네트워크는 건드리지 않았다.
    - `prometheus.yml`: `job_name: minio` / `targets: [minio:9000]` / `metrics_path: /minio/v2/metrics/cluster`.
    - `alert.rules.yml`: `MinioDown` — `up{job="minio"} == 0 for 30s`, severity warning(=medium)/category infra/
      annotation container `leafy-minio` (기존 룰 라벨·형식과 동일).
