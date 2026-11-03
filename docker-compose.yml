@@ -165,11 +165,16 @@ services:
       MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY 를 .env 에 설정}
       MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY 를 .env 에 설정 (8자 이상)}
       TZ: Asia/Seoul
+      # Prometheus 가 토큰 없이 /minio/v2/metrics/* 를 수집하도록 공개(F2-a up==0 탐지용). 호스트 포트는 열지 않는다.
+      MINIO_PROMETHEUS_AUTH_TYPE: public
     # 포트는 publish 하지 않는다. 브라우저는 frontend nginx 의 /files/ 로만 받는다(GET·HEAD만)
     volumes:
       - minio_data:/data
     networks:
       - leafy-net
+      # prometheus(mgmt-net) 가 minio:9000 을 service name 으로 수집하려면 같은 망이 필요하다.
+      # backend 와 같은 방식의 추가 멤버십일 뿐, 호스트 포트는 열지 않는다. (F2-a)
+      - mgmt-net
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
