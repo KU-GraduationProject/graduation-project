@@ -25,7 +25,11 @@ scenarios-v2 정답 레이블 — 단일 소스 (one place only).
                             나중에 측정 PC 세션에서 저장소로 옮긴다.
   evidence                : 증거가 남는 관측 채널(app_log|nginx_log|metric|network).
                             어떤 룰로 탐지할지는 적지 않는다(룰 작성자 몫, THREAT_SPEC.md).
+  reuse                   : 팀원 네트워크 시나리오 재사용 식별자(net_s2|net_ca). 코드 미수정.
+  notes                   : 실행 시 유의/검증 메모(선택).
   batch                   : 구현 배치 (1|2|3)
+
+  external_tool 기준 경로: 측정 PC D:\develop\leafy-baseline\tools\ (값은 파일명만 적는다).
 
 정책 6개 조치만 expected_action 에 허용한다. 모듈 로드 시 검증한다.
 """
@@ -88,6 +92,119 @@ SCENARIO_REGISTRY_V2 = [
         "evidence": ["app_log", "metric"],
         "batch": 1,
     },
+    # 배치 ② — 주입·정리 구현 대상
+    {
+        "id": "s2_a_resource_theft",
+        "label": "자원 탈취 (채굴형 CPU)",
+        "threat_level": "high",
+        "expected_action": "THROTTLE",      # 서비스 생존 → 스로틀
+        "expected_action_ideal": "RECREATE",
+        "targets": ["leafy-backend"],
+        "module": "v2.s2a_resource_theft",
+        "external_tool": None,
+        "evidence": ["metric", "app_log"],
+        "batch": 2,
+    },
+    {
+        "id": "f2_c_db_pool_exhaustion",
+        "label": "DB 커넥션 풀 고갈",
+        "threat_level": "high",
+        "expected_action": "RESTART",        # backend 재기동
+        "expected_action_ideal": "KILL_SESSIONS",
+        "targets": ["leafy-backend"],
+        "module": "v2.f2c_db_pool_exhaustion",
+        "external_tool": None,
+        "evidence": ["metric", "app_log"],
+        "batch": 2,
+    },
+    {
+        "id": "f3_a_bad_image_deploy",
+        "label": "잘못된 이미지 배포",
+        "threat_level": "high",
+        "expected_action": "NOTIFY",         # 롤백 조치가 없어 알림으로 대체
+        "expected_action_ideal": "ROLLBACK",
+        "targets": ["배포 서비스"],
+        "module": "v2.f3a_bad_image_deploy",
+        "external_tool": None,
+        "evidence": ["metric", "app_log"],
+        "batch": 2,
+    },
+    # 배치 ③ — 재사용/외부도구 대조·반출 (코드 미구현, 레지스트리 등록만)
+    {
+        "id": "s2_c_data_exfil",
+        "label": "데이터 반출 (비인가 목적지)",
+        "threat_level": "critical",
+        "expected_action": "ISOLATE",
+        "expected_action_ideal": "ISOLATE",
+        "targets": ["leafy-backend"],
+        "module": None,
+        "external_tool": None,
+        "reuse": "net_s2",                   # 팀원 네트워크 시나리오 재사용(코드 미수정)
+        "evidence": ["network"],
+        "batch": 3,
+    },
+    {
+        "id": "c_a_authorized_transfer",
+        "label": "인가 목적지 대량 전송",
+        "threat_level": "low",
+        "expected_action": "NONE",
+        "expected_action_ideal": "NONE",
+        "targets": [],
+        "module": None,
+        "external_tool": None,
+        "reuse": "net_ca",                   # 팀원 네트워크 시나리오 재사용(코드 미수정)
+        "evidence": ["network"],
+        "batch": 3,
+    },
+    {
+        "id": "c_g_jvm_normal_memory",
+        "label": "JVM 평상시 메모리",
+        "threat_level": "low",
+        "expected_action": "NONE",
+        "expected_action_ideal": "NONE",
+        "targets": [],
+        "module": None,
+        "external_tool": "traffic_gen.py --control none",
+        "evidence": ["metric"],
+        "batch": 3,
+    },
+    {
+        "id": "c_n_aiops_self_load",
+        "label": "AIOps 자체 부하 (모델 다운로드)",
+        "threat_level": "low",
+        "expected_action": "NONE",
+        "expected_action_ideal": "NONE",
+        "targets": [],
+        "module": None,
+        "external_tool": "replay_rule.py (+ 모델 pull)",
+        "evidence": ["network"],
+        "batch": 3,
+    },
+    {
+        "id": "c_c_blocked_attack",
+        "label": "이미 차단된 공격 (4xx 다발)",
+        "threat_level": "low",
+        "expected_action": "NOTIFY",
+        "expected_action_ideal": "NOTIFY",
+        "targets": [],
+        "module": None,
+        "external_tool": "traffic_gen.py (차단되는 요청)",
+        "evidence": ["nginx_log"],
+        "notes": "요청이 실제 4xx 로 막히는지 확인(controls.all_blocked_4xx) + 자기신고 문자열 점검(controls.has_self_report_markers).",
+        "batch": 3,
+    },
+    {
+        "id": "c_e_password_mistype",
+        "label": "비밀번호 오입력",
+        "threat_level": "low",
+        "expected_action": "NONE",
+        "expected_action_ideal": "NONE",
+        "targets": [],
+        "module": None,
+        "external_tool": "traffic_gen.py --control wrong-password",
+        "evidence": ["app_log"],
+        "batch": 3,
+    },
 ]
 
 # 배치 ②·③ 항목(S2-a / F2-c / F3-a / S2-c / C-a / C-c / C-e / C-g / C-n)은
@@ -123,8 +240,10 @@ def load_heldout_specs():
     """
     try:
         variant_specs = importlib.import_module("v2.heldout.variant_specs")
-    except ModuleNotFoundError as e:
-        if e.name in _HELDOUT_MODULES:
+    except ImportError as e:
+        # heldout 패키지/모듈이 없을 때만 조용히 건너뛴다(폴더 부재, sys.modules None 포함).
+        # 다른 모듈이 없어서 난 오류는 숨기지 않고 그대로 올린다.
+        if getattr(e, "name", None) in _HELDOUT_MODULES or getattr(e, "name", None) is None:
             return None
         raise
     return getattr(variant_specs, "HELDOUT_VARIANT_SPECS", None)
