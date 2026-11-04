@@ -437,13 +437,20 @@ class TestVariants(unittest.TestCase):
             registry.load_heldout_specs = saved
 
     def test_heldout_merged_when_present(self):
-        # heldout 이 있으면 평가용 변형도 생성 가능(없으면 이 검사는 건너뜀)
+        # heldout 이 있으면 튜닝 스펙에 없던 변형이 생긴다 → 그것을 동적으로 찾아 생성.
+        # (평가용 변형 이름을 저장소 코드에 적지 않기 위해 이름을 하드코딩하지 않는다.)
         specs = variants.all_specs()
-        if "multi-path" in variants.variant_ids("s1_a_input_attack", specs):
-            inst = variants.generate("s1_a_input_attack", "multi-path", 1, specs=specs)
-            self.assertEqual(inst.variant_id, "multi-path")
-        else:
-            self.skipTest("heldout 폴더 없음 — 저장소 기본 상태")
+        extra = None
+        for sid, vmap in specs.items():
+            tuning = set(variants.VARIANT_SPECS.get(sid, {}))
+            extras = [v for v in vmap if v not in tuning]
+            if extras:
+                extra = (sid, extras[0])
+                break
+        if extra is None:
+            self.skipTest("평가용 폴더 없음 — 저장소 기본 상태")
+        inst = variants.generate(extra[0], extra[1], 1, specs=specs)
+        self.assertEqual(inst.variant_id, extra[1])
 
 
 class TestRunVariant(unittest.TestCase):
