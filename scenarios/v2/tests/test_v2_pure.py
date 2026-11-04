@@ -24,6 +24,12 @@ from v2 import f1b_memory_leak as f1b
 from v2 import s1a_input_attack as s1a
 from v2 import s1c_login_bruteforce as s1c
 from v2 import run as v2run
+from v2 import s2a_resource_theft as s2a
+from v2 import f2c_db_pool_exhaustion as f2c
+from v2 import f3a_bad_image_deploy as f3a
+from v2 import controls
+from v2 import fixtures
+from v2 import variants
 
 _MISSING = object()
 
@@ -80,7 +86,7 @@ class TestHeldoutOptional(unittest.TestCase):
 
     def test_absent_is_silent(self):
         # heldout 폴더가 없는 저장소(기본 상태) — 예외 없이 None
-        saved = self._with_modules({"v2.heldout": None})
+        saved = self._with_modules({"v2.heldout": None, "v2.heldout.variant_specs": None})
         try:
             self.assertIsNone(registry.load_heldout_specs())
         finally:
@@ -290,6 +296,160 @@ class TestRun(unittest.TestCase):
         self.assertNotIn("loginId", d)
         self.assertNotIn(s1c.TARGET_LOGIN_ID, str(d.get("note", "")))
 
+
+
+class TestS2a(unittest.TestCase):
+    def test_plan_load(self):
+        p = s2a.plan_load("strong")
+        self.assertEqual(p["workers"], s2a.STRENGTH_WORKERS["strong"])
+        self.assertGreater(p["duration_seconds"], 0)
+
+    def test_unknown_strength(self):
+        with self.assertRaises(ValueError):
+            s2a.plan_load("nope")
+
+    def test_command_has_marker_timeout_and_workers(self):
+        p = s2a.plan_load("medium", duration_seconds=90)
+        cmd = s2a.build_load_command(p)
+        self.assertIn(s2a.MARKER, cmd)
+        self.assertIn("timeout 90", cmd)
+        self.assertIn("[ $i -lt 2 ]", cmd)
+
+
+class TestF2c(unittest.TestCase):
+    def test_plan_connections(self):
+        p = f2c.plan_connections("weak")
+        self.assertEqual(p["connections"], f2c.STRENGTH_CONNECTIONS["weak"])
+
+    def test_hold_query_is_readonly(self):
+        self.assertTrue(f2c.is_readonly_statement(f2c.HOLD_QUERY))
+        self.assertTrue(f2c.is_readonly_statement("select 1"))
+        self.assertFalse(f2c.is_readonly_statement("DELETE FROM t"))
+        self.assertFalse(f2c.is_readonly_statement("update t set x=1"))
+
+    def test_unknown_strength(self):
+        with self.assertRaises(ValueError):
+            f2c.plan_connections("nope")
+
+
+class TestF3a(unittest.TestCase):
+    def test_failing_command_modes(self):
+        self.assertEqual(f3a.failing_command("crashloop")[-1], "exit 1")
+        self.assertIn("sleep", f3a.failing_command("healthcheck-fail")[-1])
+
+    def test_unknown_mode(self):
+        with self.assertRaises(ValueError):
+            f3a.failing_command("nope")
+
+    def test_stateful_targets_forbidden(self):
+        for t in f3a.FORBIDDEN_TARGETS:
+            with self.assertRaises(ValueError):
+                f3a.assert_target_allowed(t)
+        f3a.assert_target_allowed("leafy-backend")  # 허용
+
+    def test_capture_original(self):
+        attrs = {"Config": {"Image": "img:1", "Entrypoint": ["e"], "Cmd": ["c"]}}
+        self.assertEqual(f3a.capture_original(attrs)["image"], "img:1")
+
+
+class TestControls(unittest.TestCase):
+    def test_all_blocked_4xx(self):
+        self.assertTrue(controls.all_blocked_4xx([403, 404, 400]))
+        self.assertFalse(controls.all_blocked_4xx([403, 200]))  # 2xx 통과 → C-c 아님
+        self.assertFalse(controls.all_blocked_4xx([]))
+
+    def test_self_report_markers(self):
+        self.assertTrue(controls.has_self_report_markers("x [ATTACK] y"))
+        self.assertTrue(controls.has_self_report_markers("expected_action=NOTIFY"))
+        self.assertFalse(controls.has_self_report_markers("GET /api/plants 404"))
+
+
+class TestFixtures(unittest.TestCase):
+    def test_build_no_labels(self):
+        fx = fixtures.build_fixture("f1_b_memory_leak", {"labels": {"alertname": "A"}},
+                                    {"loki": ["l"], "prometheus": [{"v": 1}]},
+                                    variant_id="gradual", seed=5)
+        self.assertEqual(fx["scenario_id"], "f1_b_memory_leak")
+        for k in fixtures.ANSWER_LABEL_KEYS:
+            self.assertNotIn(k, fx["alert"])
+            self.assertNotIn(k, fx["observations"])
+
+    def test_rejects_answer_label_nested(self):
+        with self.assertRaises(ValueError):
+            fixtures.build_fixture("x", {"a": {"expected_action": "NOTIFY"}}, {})
+
+    def test_find_nested_labels(self):
+        found = fixtures.find_answer_label_keys({"a": [{"threat_level": "high"}]})
+        self.assertIn("threat_level", found)
+
+    def test_save_roundtrip(self):
+        import json
+        import tempfile
+        fx = fixtures.build_fixture("s1_c_login_bruteforce", {"labels": {}}, {"loki": []})
+        d = tempfile.mkdtemp()
+        path = fixtures.save_fixture(fx, d)
+        saved = json.load(open(path, encoding="utf-8"))
+        self.assertEqual(saved["scenario_id"], "s1_c_login_bruteforce")
+        self.assertNotIn("threat_level", json.dumps(saved))
+
+
+class TestVariants(unittest.TestCase):
+    def test_all_tuning_variants_generate(self):
+        # 모든 시나리오·튜닝 변형에서 인스턴스 생성(= --dry-run 가능)
+        for sid, vmap in variants.VARIANT_SPECS.items():
+            for vid in vmap:
+                inst = variants.generate(sid, vid, 1, specs=variants.VARIANT_SPECS)
+                self.assertEqual(inst.scenario_id, sid)
+                self.assertEqual(inst.variant_id, vid)
+                self.assertIsInstance(inst.params, dict)
+
+    def test_same_seed_same_instance(self):
+        a = variants.generate("f1_b_memory_leak", "gradual", 7, specs=variants.VARIANT_SPECS)
+        b = variants.generate("f1_b_memory_leak", "gradual", 7, specs=variants.VARIANT_SPECS)
+        self.assertEqual(a, b)
+
+    def test_different_seed_differs(self):
+        a = variants.generate("f1_b_memory_leak", "gradual", 7, specs=variants.VARIANT_SPECS)
+        b = variants.generate("f1_b_memory_leak", "gradual", 8, specs=variants.VARIANT_SPECS)
+        self.assertNotEqual(a.params, b.params)
+
+    def test_unknown_rejected(self):
+        with self.assertRaises(KeyError):
+            variants.generate("nope", "x", 1, specs=variants.VARIANT_SPECS)
+        with self.assertRaises(KeyError):
+            variants.generate("f1_b_memory_leak", "nope", 1, specs=variants.VARIANT_SPECS)
+
+    def test_labels_from_registry_not_variant(self):
+        lab = variants.labels_for("s2_a_resource_theft")
+        self.assertEqual(lab["expected_action"], "THROTTLE")
+
+    def test_works_without_heldout(self):
+        # heldout 폴더가 없는 저장소를 흉내 — 튜닝 스펙만으로 전부 동작
+        saved = registry.load_heldout_specs
+        registry.load_heldout_specs = lambda: None
+        try:
+            specs = variants.all_specs()
+            self.assertEqual(set(specs), set(variants.VARIANT_SPECS))
+            for sid, vmap in specs.items():
+                for vid in vmap:
+                    variants.generate(sid, vid, 3, specs=specs)
+        finally:
+            registry.load_heldout_specs = saved
+
+    def test_heldout_merged_when_present(self):
+        # heldout 이 있으면 평가용 변형도 생성 가능(없으면 이 검사는 건너뜀)
+        specs = variants.all_specs()
+        if "multi-path" in variants.variant_ids("s1_a_input_attack", specs):
+            inst = variants.generate("s1_a_input_attack", "multi-path", 1, specs=specs)
+            self.assertEqual(inst.variant_id, "multi-path")
+        else:
+            self.skipTest("heldout 폴더 없음 — 저장소 기본 상태")
+
+
+class TestRunVariant(unittest.TestCase):
+    def test_variant_dry_run(self):
+        self.assertEqual(
+            v2run.run("f1_b_memory_leak", dry_run=True, variant_id="gradual", seed=1), 0)
 
 if __name__ == "__main__":
     unittest.main()
