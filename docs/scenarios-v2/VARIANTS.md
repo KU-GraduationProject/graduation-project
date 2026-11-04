@@ -58,6 +58,7 @@ instance = generate(scenario_id, variant_id, seed):
 | single-path | target_count=single | 한 취약 추정 경로 집중 공략 | 한 경로에 패턴 집중 |
 | slow-probe | time_pattern=spread | 저빈도로 길게 퍼뜨려 보냄 | 시간에 넓게 퍼진 소수 요청 |
 | mixed-family | 공격 유형 다양성 | SQLi·path traversal 등 섞어 시도 | 여러 유형의 패턴 혼재 |
+| multi-path | target_count=many | 여러 노출 경로를 동시에 훑는 스캔 | 여러 경로에 패턴 분산(경로별 밀도 낮음) |
 
 **정리:** 없음(읽기성 GET, DB 불변). **안전:** 2xx 통과만 노림, 데이터 변경 없음.
 

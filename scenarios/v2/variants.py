@@ -30,6 +30,9 @@ VARIANT_SPECS: dict[str, dict[str, dict]] = {
                        "time_pattern": ("fixed", "spread"), "requests": ("int", 6, 15)},
         "mixed-family": {"strength": ("choice", ["weak", "medium", "strong"]),
                          "families": ("fixed", ["sqli", "path"]), "requests": ("int", 8, 20)},
+        "multi-path": {"strength": ("choice", ["weak", "medium", "strong"]),
+                       "paths": ("int", 3, 8), "requests": ("int", 10, 30),
+                       "time_pattern": ("choice", ["burst", "spread"])},
     },
     "s1_c_login_bruteforce": {
         "single-account": {"strength": ("choice", ["weak", "medium", "strong"]),
