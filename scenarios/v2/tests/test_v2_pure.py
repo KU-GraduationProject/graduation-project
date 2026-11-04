@@ -351,6 +351,67 @@ class TestF3a(unittest.TestCase):
         attrs = {"Config": {"Image": "img:1", "Entrypoint": ["e"], "Cmd": ["c"]}}
         self.assertEqual(f3a.capture_original(attrs)["image"], "img:1")
 
+    def test_capture_original_includes_image_id(self):
+        attrs = {"Image": "sha256:abc", "Config": {"Image": "img:1"}}
+        cap = f3a.capture_original(attrs)
+        self.assertEqual(cap["image"], "img:1")
+        self.assertEqual(cap["image_id"], "sha256:abc")
+
+    def test_assert_recreate_image_same_ok(self):
+        orig = {"image": "img:1", "image_id": "sha256:abc"}
+        f3a.assert_recreate_image(orig, "img:1", "sha256:abc")  # 예외 없음
+
+    def test_assert_recreate_image_tag_mismatch_aborts(self):
+        orig = {"image": "img:1", "image_id": "sha256:abc"}
+        with self.assertRaises(ValueError):
+            f3a.assert_recreate_image(orig, "img:2", "sha256:abc")
+
+    def test_assert_recreate_image_digest_mismatch_aborts(self):
+        orig = {"image": "img:1", "image_id": "sha256:abc"}
+        with self.assertRaises(ValueError):
+            f3a.assert_recreate_image(orig, "img:1", "sha256:def")
+
+    def test_pg_dump_custom_format_no_cred_value(self):
+        argv = f3a.pg_dump_argv()
+        joined = " ".join(argv)
+        self.assertIn("-Fc", joined)                 # custom 포맷
+        self.assertIn("pg_dump", joined)
+        self.assertIn(f3a.DB_CONTAINER, argv)
+        self.assertNotIn("leafy_secret", joined)     # 비밀번호 값 미노출
+        self.assertIn("$POSTGRES_PASSWORD", joined)  # 컨테이너 env 로만 참조
+
+    def test_pg_restore_list_argv(self):
+        argv = f3a.pg_restore_list_argv()
+        self.assertIn("--list", argv)
+        self.assertIn("pg_restore", argv)
+
+    def test_verify_backup_ok(self):
+        f3a.verify_backup(0, 0, ";\n; Archive created ...\n")  # 예외 없음
+
+    def test_verify_backup_dump_failure_aborts(self):
+        with self.assertRaises(RuntimeError):
+            f3a.verify_backup(1, 0, "x")
+
+    def test_verify_backup_list_failure_aborts(self):
+        with self.assertRaises(RuntimeError):
+            f3a.verify_backup(0, 1, "x")
+
+    def test_verify_backup_empty_list_aborts(self):
+        with self.assertRaises(RuntimeError):
+            f3a.verify_backup(0, 0, "   ")
+
+    def test_restore_hint_no_cred_value(self):
+        hint = f3a.restore_hint("/backup/leafy-x.dump")
+        self.assertIn("pg_restore", hint)
+        self.assertIn("/backup/leafy-x.dump", hint)
+        self.assertNotIn("leafy_secret", hint)
+
+    def test_restored_healthy(self):
+        self.assertTrue(f3a.restored_healthy({"State": {"Running": True, "Health": {"Status": "healthy"}}}))
+        self.assertFalse(f3a.restored_healthy({"State": {"Running": True, "Health": {"Status": "starting"}}}))
+        self.assertFalse(f3a.restored_healthy({"State": {"Running": False}}))
+        self.assertTrue(f3a.restored_healthy({"State": {"Running": True}}))  # healthcheck 없으면 Running 이면 OK
+
 
 class TestControls(unittest.TestCase):
     def test_all_blocked_4xx(self):

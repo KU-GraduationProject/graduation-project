@@ -162,6 +162,7 @@ instance = generate(scenario_id, variant_id, seed):
 | healthcheck-fail | 실패 양상=기동 OK/헬스 실패 | 떠 있으나 준비 안 됨 | 헬스 실패 지속 |
 
 **정리:** 원본 이미지/태그로 재배포(완전 가역). **안전:** 데이터 손상 금지, 롤백 가능한 태그만 사용.
+> **스키마 안전:** 다른 앱 버전 이미지·태그로 띄우지 말 것(ddl-auto=update 로 스키마 변경 위험). 실행 전 DB 백업(pg_dump -Fc + pg_restore --list 검증) 필수.
 
 ---
 
