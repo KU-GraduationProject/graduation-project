@@ -4,10 +4,11 @@ S1-a — 입력값 공격 (앱까지 통과) (scenarios-v2).
 정의(사용자 조건): "앱까지 통과"가 핵심이다. 요청이 nginx 에서 막히지 않고(2xx/비차단)
   앱까지 도달해 앱·nginx 로그에 남는지가 검증 기준이다. 차단된 공격(4xx 다발)은 C-c 쪽이다.
 
-주입: frontend 에 주입 패턴 쿼리를 다수 전송한다. 패턴은 검색 파라미터 같은 읽기성 요청에 실어
-  보내 앱이 리터럴 문자열로 처리하고 2xx 를 돌려주게 한다(DB 변경 없음).
-증거: frontend nginx JSON 액세스 로그의 페이로드 + 2xx. 자기신고 문자열은 없다 —
-  탐지는 기존 SQLInjectionAttempt / PathTraversalAttempt 가 액세스 로그의 패턴으로 한다.
+주입: frontend 에 실제 공격형 입력(SQL 인젝션 등)을 검색 파라미터 같은 읽기성 요청에 실어
+  다수 전송한다. 앱이 리터럴 문자열로 처리해 2xx 를 돌려주게 한다(DB 변경 없음).
+증거: frontend nginx JSON 액세스 로그의 페이로드 + 2xx, 그리고 앱 로그. 자기신고 문자열은 없다 —
+  페이로드는 정답/시나리오를 암시하는 문자열이 아니라 실제 공격 입력 그 자체다.
+  (어떤 룰로 탐지할지는 룰 작성자 몫 — THREAT_SPEC.md 참조.)
 
 미확정(측정 PC): 어떤 경로가 nginx 를 통과해 앱에서 2xx 를 돌려주는지 확정해야 한다.
   기본 경로는 env(S1A_PATH)로 바꾼다. 검증 기준은 "nginx 비차단 + 앱 로그 기록"이다.
@@ -25,7 +26,7 @@ BASE_URL = os.getenv("S1A_BASE_URL", "http://127.0.0.1:80")
 TARGET_PATH = os.getenv("S1A_PATH", "/api/plants/search")   # 측정 PC에서 2xx 경로로 확정
 PARAM = os.getenv("S1A_PARAM", "q")
 
-# SQLInjectionAttempt 정규식에 매칭되는 공격형 입력. 앱은 리터럴 검색어로 처리 → 2xx, DB 불변.
+# 실제 SQL 인젝션 공격 입력. 앱은 리터럴 검색어로 처리 → 2xx, DB 불변.
 # (정답/시나리오를 암시하는 문자열이 아니라 실제 공격 입력 그 자체다.)
 PAYLOADS = [
     "1' OR 1=1 --",
@@ -36,7 +37,8 @@ PAYLOADS = [
     "test' OR 1=1--",
 ]
 
-# SQLInjectionAttempt 임계(>5/2m)를 여유 있게 넘기기 위한 총 요청 수.
+# 공격이 일회성이 아닌 "탐지 가능한 프로브 버스트"가 되도록 하는 기본 요청 수.
+# (수치 근거는 룰 임계가 아니라 현실적인 자동 스캐닝 볼륨 — THREAT_SPEC/VARIANTS 참조.)
 DEFAULT_REQUESTS = 10
 
 # nginx 가 "막지 않음"으로 볼 상태코드. 2xx = 앱 통과. 403/444 등은 nginx 차단으로 본다.

@@ -52,7 +52,7 @@ def run(scenario_id: str, dry_run: bool) -> int:
         print(f"[dry-run] id={row['id']} label={row['label']}")
         print(f"  threat={row['threat_level']} action={row['expected_action']} "
               f"ideal={row['expected_action_ideal']} targets={row['targets']}")
-        print(f"  detection={row['detection']}")
+        print(f"  evidence={row['evidence']}")
         if hasattr(mod, "dry_run"):
             print(f"  plan={mod.dry_run()}")
         else:

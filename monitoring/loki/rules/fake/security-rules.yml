@@ -165,29 +165,3 @@ groups:
         annotations:
           summary: "컨테이너 탈출 시도 탐지 (host_fs/docker.sock 접근)"
           container: "leafy-backend"
-
-      # [역할] 로그인 대입(brute force) 탐지 — S1-c (scenarios-v2)
-      # [근거] backend jar AuthService 가 로그인 실패 시 남기는 실제 로그:
-      #        "[AUTH] 로그인 실패 loginId={} userId={} reason=wrong_password"
-      #        (reason=unknown_login_id 도 있음, 응답 401 invalid_credentials)
-      #        계정 잠금·시도 제한 로직은 앱에 없다 → 탐지는 로그 빈도로만 한다.
-      # [자기신고 아님] 시나리오가 심는 문자열이 아니라 앱이 정상적으로 남기는 인증 실패 로그다.
-      # [임계값] 2분 내 5회 초과 — 잠정값. 최종 N 은 C-e 측정으로 확정한다:
-      #        정상 오입력은 분당 약 1건 수준(11-01 실측)이라 2분 창에서 ~2건 → 5 밑이면 미발화가 보장된다.
-      #        배치 ③ C-e(traffic_gen --control wrong-password, 정상 재시도 포함)로 재검증 후 고정.
-      # [평문 ID 노출 방지] loginId 를 경보 라벨로 올리지 않는다. sum() 집계만 하고 by (loginId) 금지.
-      # [미확정] 측정 PC에서 이 줄이 Loki 에 평문으로 들어오는지, JSON message 필드에 담기는지
-      #        확인한 뒤 확정한다. substring 매치(|~)는 두 경우 모두 라인에 문자열이 있으면 잡히지만,
-      #        JSON 이라 | json 파싱이 필요하면 그때 보강한다. (S1-c 룰 초안)
-      - alert: LoginBruteForce
-        expr: |
-          sum(count_over_time(
-            {service="backend"} |~ "\\[AUTH\\] 로그인 실패" [2m]
-          )) > 5
-        for: 0m
-        labels:
-          severity: warning
-          category: security
-        annotations:
-          summary: "로그인 실패 급증 (인증 대입 공격 의심)"
-          container: "leafy-backend"

@@ -151,21 +151,3 @@ groups:
         annotations:
           summary: "PostgreSQL 동시 연결 수 과다 (서비스 과부하 또는 연결 누수)"
           container: "leafy-db"
-
-      # [역할] MinIO(오브젝트 스토리지) 중단 탐지 — F2-a (scenarios-v2)
-      # [신호] prometheus 의 minio 수집 대상(up{job="minio"}). 중단되면 up==0.
-      #        minio 서비스에 MINIO_PROMETHEUS_AUTH_TYPE=public 설정, prometheus.yml 에 minio:9000 잡 추가.
-      # [임계] 30s — 일시적 scrape 실패(1회)로 발화하지 않도록 HighMemory/Cpu 와 같은 for 패턴.
-      # [정답] threat medium / expected_action RESTART (remediation disabled 환경에선 정리 단계가 재기동 담당).
-      # [영향 없음] 새 시계열(up{job="minio"})만 추가한다. 기존 cadvisor/node/backend 지표와 룰은 불변이라
-      #        C-g(JVM working_set)·C-n(네트워크/aiops) 등 기존 측정 결과에 영향을 주지 않는다.
-      #        minio 잡이 없는 배포(prometheus.aiops.yml)에선 up{job="minio"} 시계열이 없어 발화하지 않는다.
-      - alert: MinioDown
-        expr: up{job="minio"} == 0
-        for: 30s
-        labels:
-          severity: warning
-          category: infra
-        annotations:
-          summary: "MinIO 오브젝트 스토리지 중단 (수집 대상 down)"
-          container: "leafy-minio"

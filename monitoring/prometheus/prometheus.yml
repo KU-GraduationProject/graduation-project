@@ -40,10 +40,3 @@ scrape_configs:
     static_configs:
       - targets: ["backend:9090"]       # 8080 → 9090 (Actuator 관리 포트 분리)
     metrics_path: /actuator/prometheus  # ← Spring Boot Actuator 경로
-
-  # [F2-a] MinIO 가용성 — up{job="minio"}==0 로 중단 탐지. 호스트 포트 없이 leafy-net/mgmt-net 공유로 도달.
-  #        minio 서비스에 MINIO_PROMETHEUS_AUTH_TYPE=public 설정(토큰 불필요).
-  - job_name: "minio"
-    static_configs:
-      - targets: ["minio:9000"]
-    metrics_path: /minio/v2/metrics/cluster

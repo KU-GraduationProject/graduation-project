@@ -1,23 +1,24 @@
 """
 F1-b — 메모리 압박·누수 (서서히) (scenarios-v2).
 
-목표(사용자 조건): 현재 룰 HighMemoryUsage(working_set > 0.85, for 5m)에 걸리는 속도로,
-  512MiB limit 안에서 OOM 이 나기 전에 경보가 뜨도록 증가율과 상한을 근거와 함께 둔다.
+위협 정의: 서비스가 회수되지 않는 메모리를 시간에 걸쳐 쌓는다(누수). 누수는 자가 치유되지
+  않고 재기동 전까지 유지된다.
 
-증가량은 **주입 시점의 실제 working set**(cgroup)을 읽어서 정한다. 가정값(baseline)은
-  읽기 실패 시 폴백으로만 쓴다.
-  - 시작 시 working set 이 0.85(임계) 이상이면 주입하지 않고 중단한다.
-  - 증가 중에도 0.94(OOM 가드)에 닿으면 즉시 멈추고 해제한다(할당기가 cgroup 을 자가 감시).
+강도(strength) = **누수 속도(MiB/분) × 지속 시간(분)**. 목표 사용률은 두지 않는다.
+  근거는 실제 메모리 누수 패턴이다:
+    - weak   (서서히): 요청마다 작은 객체가 조금씩 남는 누수. 분당 수 MiB 이하로 오래 샌다.
+    - medium (중간)  : 캐시·세션이 정리되지 않고 쌓이는 누수. 분당 수 MiB 수준.
+    - strong (빠름)  : 큰 버퍼·컬렉션이 계속 커지는 누수. 분당 10MiB 안팎으로 빠르게 쌓인다.
+  초 단위로 한계까지 치솟는 급속 누수는 강도가 아니라 별도 형태 변형(fast-spike)으로 다룬다.
+  최종 점유량은 강도가 정하지 않는다 — 상한은 아래 OOM 안전 가드가 막는다.
 
-근거(수치):
-  - leafy-backend mem_limit = 512 MiB (docker-compose.yml). 룰 임계 = 0.85 → 435.2 MiB.
-  - 기준선 측정(backend 평상시 working set) 0.76~0.82. 목표 working_set = 0.88
-    (435 < 0.88*512 = 450.6 MiB < 512), OOM 가드 = 0.94 (481.3 MiB).
-  - 추가 점유 = target - 현재, 단 (oom_guard - 현재) 로 상한(cap). "서서히": step 씩 interval 초
-    간격으로 ramp 후 hold_seconds(≥5m+여유) 유지. ramp 가 급격하면 급속 누수가 되어(미탐 영역)
-    for:5m 전에 OOM 위험.
-
-급속 누수(빠른 할당 → for:5m 전 OOM/kill)는 이 룰로는 미탐 — 계획에 명시된 blind spot.
+OOM 안전 가드(룰과 무관한 안전장치):
+  - 주입 시점의 **실제 working set**(cgroup)을 읽어 남은 여유(OOM 가드까지)를 구한다.
+    가정 baseline 은 읽기 실패 시(dry-run) 폴백으로만 쓴다.
+  - 시작 가드: working set 을 못 읽거나 이미 OOM 가드(0.94) 이상이면 주입하지 않는다.
+  - 상한(cap): 주입량 = min(속도×지속, OOM가드 - 현재). 여유가 있으면 주입량은 항상 > 0.
+  - 증가 가드: 증가 중 0.94 에 닿으면 즉시 멈추고 해제(할당기가 cgroup 자가 감시).
+  - sh 경로: /dev/shm 여유(df) 부족 시 주입 안 함(exit 3), trap 으로 파일 정리.
 
 할당기 실행 수단 (둘 다 cgroup 자가 감시 + 즉시 해제):
   1순위 python3(컨테이너 내부). 익명 메모리를 늘리며 cgroup(memory.current/memory.max v2,
@@ -40,14 +41,19 @@ BACKEND_CONTAINER = "leafy-backend"
 MEM_LIMIT_BYTES = 512 * MIB
 SHM_FILE = "/dev/shm/f1b_leak"
 
-THRESHOLD_FRACTION = 0.85    # 룰 임계
-TARGET_FRACTION = 0.88       # 목표 (임계 위, OOM 아래)
-OOM_GUARD_FRACTION = 0.94    # 주입 상한 + 증가 중 자가 감시 가드
+OOM_GUARD_FRACTION = 0.94    # OOM 안전 가드(상한 + 증가 중 자가 감시). 룰과 무관.
 ASSUMED_BASELINE_FRACTION = 0.79  # 읽기 실패 시 폴백(기준선 0.76~0.82 중앙값)
 
-DEFAULT_STEP_MIB = 16
-DEFAULT_STEP_INTERVAL = 15   # 초. ramp 가 급격하지 않도록
-DEFAULT_HOLD_SECONDS = 420   # 5분 + 2분 여유 (for:5m 를 넘겨 유지)
+# 강도 = 누수 속도(MiB/분) × 지속(분). 근거는 실제 누수 패턴(서서히/중간/빠름)이다.
+STRENGTH_PROFILE = {
+    "weak":   {"rate_mib_per_min": 2, "duration_min": 12},   # 서서히: 작은 객체가 조금씩 남음
+    "medium": {"rate_mib_per_min": 5, "duration_min": 10},   # 중간: 캐시·세션 미정리 누적
+    "strong": {"rate_mib_per_min": 9, "duration_min": 8},    # 빠름: 큰 버퍼·컬렉션 증가
+}
+DEFAULT_STRENGTH = "medium"
+
+DEFAULT_STEP_INTERVAL = 15   # 초. 속도를 이 간격의 step 으로 나눠 서서히 늘린다
+DEFAULT_HOLD_SECONDS = 420   # 지속 유지(누수는 자가 치유 안 됨). 실험·안전상 유한 구간으로 둔다.
 DEFAULT_SH_CHUNK_MIB = 4     # sh 할당기 dd 조각 크기
 
 
@@ -56,11 +62,11 @@ DEFAULT_SH_CHUNK_MIB = 4     # sh 할당기 dd 조각 크기
 # --------------------------------------------------------------------------- #
 
 def should_abort_start(current_ws_bytes: int | None, limit_bytes: int = MEM_LIMIT_BYTES,
-                       threshold_fraction: float = THRESHOLD_FRACTION) -> bool:
-    """시작 가드: working set 을 못 읽거나(안전상 중단) 이미 임계(0.85) 이상이면 주입하지 않는다."""
+                       oom_guard_fraction: float = OOM_GUARD_FRACTION) -> bool:
+    """시작 안전 가드: working set 을 못 읽으면 중단, 이미 OOM 가드(0.94) 이상이면 더 올리지 않는다."""
     if current_ws_bytes is None:
         return True
-    return (current_ws_bytes / limit_bytes) >= threshold_fraction
+    return (current_ws_bytes / limit_bytes) >= oom_guard_fraction
 
 
 def shm_has_room(extra_bytes: int, shm_avail_bytes: int) -> bool:
@@ -70,32 +76,38 @@ def shm_has_room(extra_bytes: int, shm_avail_bytes: int) -> bool:
 
 def plan_allocation(limit_bytes: int = MEM_LIMIT_BYTES,
                     current_ws_bytes: int | None = None,
-                    target_fraction: float = TARGET_FRACTION,
+                    strength: str = DEFAULT_STRENGTH,
                     oom_guard_fraction: float = OOM_GUARD_FRACTION,
-                    step_mib: int = DEFAULT_STEP_MIB,
                     step_interval: int = DEFAULT_STEP_INTERVAL,
                     hold_seconds: int = DEFAULT_HOLD_SECONDS) -> dict:
     """
-    추가로 점유할 바이트와 ramp 일정. extra = target - 현재, cap = oom_guard - 현재 로 상한.
-    현재값이 None 이면 ASSUMED_BASELINE_FRACTION 폴백. 결과 working_set 이 임계~OOM가드 사이면 valid.
+    누수 계획. 요청량 = 속도(MiB/분) × 지속(분). 주입량 = min(요청량, OOM가드 - 현재).
+    step 은 속도를 step_interval 로 나눈 크기라 ramp 기울기가 곧 누수 속도다.
+    현재값이 None 이면 ASSUMED_BASELINE_FRACTION 폴백. 여유가 있으면 주입량 > 0 이고 valid.
+    여유가 없으면(현재 ≥ OOM 가드) 주입량 0·invalid — 이 경우는 should_abort_start 가 먼저 막는다.
     """
+    if strength not in STRENGTH_PROFILE:
+        raise ValueError(f"unknown strength: {strength}")
     if current_ws_bytes is None:
         current_ws_bytes = int(ASSUMED_BASELINE_FRACTION * limit_bytes)
-    target_bytes = int(target_fraction * limit_bytes)
+    prof = STRENGTH_PROFILE[strength]
+    rate, duration_min = prof["rate_mib_per_min"], prof["duration_min"]
+
     guard_bytes = int(oom_guard_fraction * limit_bytes)
+    headroom = max(0, guard_bytes - current_ws_bytes)
+    requested = rate * duration_min * MIB
+    extra = min(requested, headroom)
 
-    extra = max(0, target_bytes - current_ws_bytes)
-    cap = max(0, guard_bytes - current_ws_bytes)
-    extra = min(extra, cap)
-
-    step_bytes = step_mib * MIB
+    step_bytes = max(1, int(rate * MIB * step_interval / 60))
     steps = (extra + step_bytes - 1) // step_bytes if extra > 0 else 0
     resulting_fraction = (current_ws_bytes + extra) / limit_bytes
-    valid = (THRESHOLD_FRACTION < resulting_fraction <= oom_guard_fraction) and extra > 0
+    valid = extra > 0 and resulting_fraction <= oom_guard_fraction
     return {
+        "strength": strength, "rate_mib_per_min": rate, "duration_min": duration_min,
         "limit_bytes": limit_bytes, "current_ws_bytes": current_ws_bytes,
-        "target_bytes": target_bytes, "guard_bytes": guard_bytes,
-        "extra_bytes": extra, "step_bytes": step_bytes, "steps": steps,
+        "guard_bytes": guard_bytes, "requested_bytes": requested,
+        "extra_bytes": extra, "capped": extra < requested,
+        "step_bytes": step_bytes, "steps": steps,
         "step_interval": step_interval, "hold_seconds": hold_seconds,
         "oom_guard_fraction": oom_guard_fraction,
         "resulting_fraction": resulting_fraction, "valid": valid,
@@ -212,14 +224,14 @@ def current_working_set(container) -> int | None:
         return None
 
 
-def inject(container_name: str = BACKEND_CONTAINER):
+def inject(container_name: str = BACKEND_CONTAINER, strength: str = DEFAULT_STRENGTH):
     import docker
     client = docker.from_env()
     container = client.containers.get(container_name)
     ws = current_working_set(container)
     if should_abort_start(ws):
-        raise SystemExit(f"[F1-b] 시작 가드: working set 미측정 또는 이미 임계 이상 — 주입 중단 (ws={ws})")
-    plan = plan_allocation(current_ws_bytes=ws)
+        raise SystemExit(f"[F1-b] 시작 가드: working set 미측정 또는 이미 OOM 가드 이상 — 주입 중단 (ws={ws})")
+    plan = plan_allocation(current_ws_bytes=ws, strength=strength)
     print(f"[F1-b] plan={plan}", flush=True)
     if not plan["valid"]:
         raise SystemExit(f"[F1-b] 안전 설계 실패(valid=False) — 주입 중단. plan={plan}")

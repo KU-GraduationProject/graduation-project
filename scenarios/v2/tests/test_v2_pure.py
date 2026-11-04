@@ -1,14 +1,17 @@
 """
 scenarios-v2 배치 ① 순수 로직 단위 테스트 (Docker/HTTP 불필요).
 런타임 주입(inject)·cleanup 은 Docker/Loki 가 필요해 여기서 검증하지 않는다(UNVERIFIED).
+
+탐지 룰은 팀원(룰 작성자) 몫이라, 테스트는 룰 이름·임계값에 의존하지 않는다.
+강도(strength)·안전 가드(OOM 0.94)만 검증한다.
 """
 
 import ast
 import os
-import re
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 
 SCENARIOS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -22,10 +25,7 @@ from v2 import s1a_input_attack as s1a
 from v2 import s1c_login_bruteforce as s1c
 from v2 import run as v2run
 
-# SQLInjectionAttempt (security-rules.yml) 의 정규식 — S1-a 페이로드가 잡히는지 교차검증.
-SQLI_RE = re.compile(
-    r"(?i)(union.{0,3}select|or.{0,3}1=1|drop.{0,3}table|sleep\(|extractvalue|"
-    r"information_schema|admin'--|and.{0,3}1=1)")
+_MISSING = object()
 
 
 class TestRegistry(unittest.TestCase):
@@ -35,6 +35,15 @@ class TestRegistry(unittest.TestCase):
     def test_expected_action_in_policy(self):
         for row in registry.SCENARIO_REGISTRY_V2:
             self.assertIn(row["expected_action"], registry.POLICY_ACTIONS)
+
+    def test_evidence_channels_valid(self):
+        for row in registry.SCENARIO_REGISTRY_V2:
+            for ch in row["evidence"]:
+                self.assertIn(ch, registry.EVIDENCE_CHANNELS)
+
+    def test_no_rule_names_in_registry(self):
+        # 레지스트리는 탐지 룰 이름을 담지 않는다(역할 분리).
+        self.assertFalse(any("detection" in row for row in registry.SCENARIO_REGISTRY_V2))
 
     def test_unique_ids(self):
         ids = [r["id"] for r in registry.SCENARIO_REGISTRY_V2]
@@ -48,6 +57,45 @@ class TestRegistry(unittest.TestCase):
         bad = [{"id": "x", "expected_action": "KILL", "module": None, "external_tool": None}]
         with self.assertRaises(ValueError):
             registry._validate(bad)
+
+    def test_rejects_bad_evidence(self):
+        bad = [{"id": "x", "expected_action": "NONE", "evidence": ["bogus"],
+                "module": None, "external_tool": None}]
+        with self.assertRaises(ValueError):
+            registry._validate(bad)
+
+
+class TestHeldoutOptional(unittest.TestCase):
+    def _with_modules(self, mapping):
+        saved = {k: sys.modules.get(k, _MISSING) for k in mapping}
+        sys.modules.update(mapping)
+        return saved
+
+    def _restore(self, saved):
+        for k, v in saved.items():
+            if v is _MISSING:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
+
+    def test_absent_is_silent(self):
+        # heldout 폴더가 없는 저장소(기본 상태) — 예외 없이 None
+        saved = self._with_modules({"v2.heldout": None})
+        try:
+            self.assertIsNone(registry.load_heldout_specs())
+        finally:
+            self._restore(saved)
+
+    def test_present_is_loaded(self):
+        pkg = types.ModuleType("v2.heldout")
+        mod = types.ModuleType("v2.heldout.variant_specs")
+        mod.HELDOUT_VARIANT_SPECS = {"x": {"v": {}}}
+        pkg.variant_specs = mod
+        saved = self._with_modules({"v2.heldout": pkg, "v2.heldout.variant_specs": mod})
+        try:
+            self.assertEqual(registry.load_heldout_specs(), {"x": {"v": {}}})
+        finally:
+            self._restore(saved)
 
 
 class TestF2a(unittest.TestCase):
@@ -63,27 +111,70 @@ class TestF2a(unittest.TestCase):
 
 
 class TestF1b(unittest.TestCase):
-    def test_plan_valid_default_baseline(self):
+    def test_plan_valid_default_strength(self):
         p = f1b.plan_allocation()
+        self.assertEqual(p["strength"], "medium")
         self.assertTrue(p["valid"])
-        # 주입 후 working_set 은 임계(0.85) 위, OOM 가드(0.94) 이하
-        self.assertGreater(p["resulting_fraction"], 0.85)
-        self.assertLessEqual(p["resulting_fraction"], 0.94)
         self.assertGreater(p["extra_bytes"], 0)
         self.assertGreater(p["steps"], 0)
-        self.assertGreaterEqual(p["hold_seconds"], 300)  # for:5m 를 넘겨 유지
+        # 결과는 OOM 안전 가드(0.94) 이하 — 룰 임계가 아니라 안전장치다.
+        self.assertLessEqual(p["resulting_fraction"], f1b.OOM_GUARD_FRACTION)
+        self.assertGreater(p["hold_seconds"], 0)  # 누수는 지속(자가 치유 안 됨)
 
-    def test_cap_prevents_oom_when_baseline_high(self):
-        # 현재가 이미 0.90 이면 OOM 가드(0.94)까지만 올린다
-        limit = f1b.MEM_LIMIT_BYTES
-        p = f1b.plan_allocation(current_ws_bytes=int(0.90 * limit))
-        self.assertLessEqual(p["resulting_fraction"], 0.94)
+    def test_strength_is_rate_and_duration(self):
+        # 강도는 누수 속도(MiB/분)와 지속(분)으로만 정의한다(목표 비율 없음).
+        self.assertEqual(set(f1b.STRENGTH_PROFILE), {"weak", "medium", "strong"})
+        for prof in f1b.STRENGTH_PROFILE.values():
+            self.assertEqual(set(prof), {"rate_mib_per_min", "duration_min"})
+        for name in ("THRESHOLD_FRACTION", "TARGET_FRACTION", "STRENGTH_TARGET_FRACTION"):
+            self.assertFalse(hasattr(f1b, name))
 
-    def test_no_alloc_when_already_above_target(self):
+    def test_rate_ordering(self):
+        r = {k: v["rate_mib_per_min"] for k, v in f1b.STRENGTH_PROFILE.items()}
+        self.assertLess(r["weak"], r["medium"])
+        self.assertLess(r["medium"], r["strong"])
+
+    def test_requested_is_rate_times_duration(self):
+        for name, prof in f1b.STRENGTH_PROFILE.items():
+            p = f1b.plan_allocation(current_ws_bytes=0, strength=name)
+            self.assertEqual(p["requested_bytes"],
+                             prof["rate_mib_per_min"] * prof["duration_min"] * f1b.MIB)
+
+    def test_ramp_slope_matches_rate(self):
+        # step 크기 / step 간격 = 누수 속도 → ramp 기울기가 곧 강도다.
+        for name, prof in f1b.STRENGTH_PROFILE.items():
+            p = f1b.plan_allocation(strength=name)
+            per_min = p["step_bytes"] * 60 / p["step_interval"] / f1b.MIB
+            self.assertAlmostEqual(per_min, prof["rate_mib_per_min"], places=3)
+
+    def test_injection_never_zero_while_headroom(self):
+        # 여유가 있는 한 어떤 강도·baseline 에서도 주입량은 0 이 아니다.
         limit = f1b.MEM_LIMIT_BYTES
-        p = f1b.plan_allocation(current_ws_bytes=int(0.95 * limit))
+        for frac in (0.60, 0.76, 0.79, 0.82, 0.90, 0.93):
+            for name in f1b.STRENGTH_PROFILE:
+                p = f1b.plan_allocation(current_ws_bytes=int(frac * limit), strength=name)
+                self.assertGreater(p["extra_bytes"], 0, (frac, name))
+                self.assertTrue(p["valid"], (frac, name))
+
+    def test_unknown_strength_rejected(self):
+        with self.assertRaises(ValueError):
+            f1b.plan_allocation(strength="nope")
+
+    def test_oom_guard_caps_amount(self):
+        # 여유보다 요청이 크면 OOM 가드까지만 — 상한은 가드가 막는다.
+        limit = f1b.MEM_LIMIT_BYTES
+        p = f1b.plan_allocation(current_ws_bytes=int(0.92 * limit), strength="strong")
+        self.assertTrue(p["capped"])
+        self.assertLessEqual(p["resulting_fraction"], f1b.OOM_GUARD_FRACTION)
+
+    def test_no_headroom_is_invalid_and_aborted(self):
+        # 이미 가드 이상이면 주입량 0·invalid, 시작 가드가 먼저 막는다(0 주입은 실행되지 않음).
+        limit = f1b.MEM_LIMIT_BYTES
+        ws = int(0.95 * limit)
+        p = f1b.plan_allocation(current_ws_bytes=ws, strength="strong")
         self.assertEqual(p["extra_bytes"], 0)
-        self.assertFalse(p["valid"])  # 더 올릴 여지 없음 → 안전상 주입 안 함
+        self.assertFalse(p["valid"])
+        self.assertTrue(f1b.should_abort_start(ws))
 
     def test_command_embeds_bytes(self):
         p = f1b.plan_allocation()
@@ -94,9 +185,9 @@ class TestF1b(unittest.TestCase):
     def test_should_abort_start(self):
         limit = f1b.MEM_LIMIT_BYTES
         self.assertTrue(f1b.should_abort_start(None))                      # 못 읽으면 중단
-        self.assertTrue(f1b.should_abort_start(int(0.851 * limit)))       # 임계 이상 중단
-        self.assertTrue(f1b.should_abort_start(int(0.90 * limit)))
-        self.assertFalse(f1b.should_abort_start(int(0.80 * limit)))       # 임계 아래 진행
+        self.assertTrue(f1b.should_abort_start(int(0.95 * limit)))         # OOM 가드 이상 중단
+        self.assertFalse(f1b.should_abort_start(int(0.90 * limit)))        # 가드 아래 진행
+        self.assertFalse(f1b.should_abort_start(int(0.80 * limit)))
 
     def test_allocator_self_monitors_and_compiles(self):
         p = f1b.plan_allocation()
@@ -123,7 +214,7 @@ class TestF1b(unittest.TestCase):
         self.assertIn("memory.current", sh)                  # cgroup v2
         self.assertIn("usage_in_bytes", sh)                  # cgroup v1
         self.assertIn("$((CUR*100))", sh)                    # 정수 비교 가드
-        self.assertIn("GPCT=94", sh)
+        self.assertIn("GPCT=94", sh)                         # OOM 안전 가드(=0.94)
         self.assertNotIn("'", sh)                            # _shq 안전(작은따옴표 없음)
 
     def test_sh_allocator_passes_sh_syntax_check(self):
@@ -143,20 +234,15 @@ class TestF1b(unittest.TestCase):
         self.assertIn("else sh -c", cmd)
 
 
-
 class TestS1a(unittest.TestCase):
     def test_build_urls_count(self):
         urls = s1a.build_request_urls(count=10)
         self.assertEqual(len(urls), 10)
 
-    def test_default_exceeds_sqli_threshold(self):
-        # SQLInjectionAttempt 임계 >5 — 기본 요청 수가 여유 있게 넘는다
-        self.assertGreater(s1a.DEFAULT_REQUESTS, 5)
-
-    def test_payloads_match_detection_regex(self):
-        # 모든 페이로드가 탐지 정규식에 걸려야 "앱 통과"해도 액세스 로그로 잡힌다
-        for p in s1a.PAYLOADS:
-            self.assertRegex(p, SQLI_RE)
+    def test_build_urls_cycles_payloads(self):
+        urls = s1a.build_request_urls(count=len(s1a.PAYLOADS) + 1)
+        # 페이로드가 순환돼 요청에 실린다(실제 공격 입력 그 자체)
+        self.assertIn(s1a.PARAM + "=", urls[0])
 
     def test_passed_to_app(self):
         self.assertTrue(s1a.passed_to_app(200))
@@ -166,19 +252,27 @@ class TestS1a(unittest.TestCase):
 
 
 class TestS1c(unittest.TestCase):
-    def test_build_attempts_count_at_least_3x_threshold(self):
-        att = s1c.build_attempts()
-        self.assertGreaterEqual(len(att), 15)  # 임계(5)의 최소 3배 (사용자 조건)
+    def test_strength_counts_and_ordering(self):
+        self.assertEqual(set(s1c.STRENGTH_ATTEMPTS), {"weak", "medium", "strong"})
+        self.assertLess(s1c.STRENGTH_ATTEMPTS["weak"], s1c.STRENGTH_ATTEMPTS["medium"])
+        self.assertLess(s1c.STRENGTH_ATTEMPTS["medium"], s1c.STRENGTH_ATTEMPTS["strong"])
 
-    def test_same_account_wrong_passwords(self):
+    def test_default_strength_count(self):
+        att = s1c.build_attempts()  # 기본=medium
+        self.assertEqual(len(att), s1c.STRENGTH_ATTEMPTS["medium"])
+
+    def test_explicit_attempts_override(self):
         att = s1c.build_attempts(attempts=4, login_id="acct", passwords=["a", "b"])
         self.assertTrue(all(a["loginId"] == "acct" for a in att))
         self.assertEqual([a["password"] for a in att], ["a", "b", "a", "b"])
 
+    def test_unknown_strength_rejected(self):
+        with self.assertRaises(ValueError):
+            s1c.build_attempts(strength="nope")
+
     def test_is_auth_failure(self):
         self.assertTrue(s1c.is_auth_failure(401))
         self.assertFalse(s1c.is_auth_failure(200))
-
 
 
 class TestRun(unittest.TestCase):
