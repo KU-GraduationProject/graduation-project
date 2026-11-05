@@ -143,13 +143,17 @@ RunOutcome) → `ConfusionMatrix` → `write_results`(JSONL/CSV/summary). V2(hel
 - `scenarios/v2/s1a_input_attack.py` — frontend 에 실제 공격형 쿼리(읽기성 GET)로 2xx 통과 시도.
   검증 기준 = nginx 비차단(2xx) + 앱 로그 기록. (페이로드가 어떤 룰에 걸리는지는 단정하지 않는다.)
 - `scenarios/v2/s1c_login_bruteforce.py` — 테스트 계정 오답 로그인 반복. 횟수는 **강도**로 결정.
-  실제 자격증명 미사용, 계정상태 불변, loginId 비노출.
+  실제 자격증명 미사용, 계정상태 불변, login_id 비노출. 로그인 필드는 API(auth_api.js)와 같은 `login_id`.
 - `scenarios/v2/run.py` — `python -m scenarios.v2.run <id> [--dry-run] [--list]`.
 - `scenarios/v2/tests/test_v2_pure.py` — 순수 로직 단위 테스트(Docker/HTTP 불필요). 룰 이름·임계 비의존.
 
-측정 PC 확정 필요(코드에 주석):
-- S1-a `S1A_PATH`: 2xx로 앱까지 통과하는 실제 경로.
-- S1-c `S1C_LOGIN_PATH` / 본문 형식 / 전용 테스트 계정(seed).
+실행 설정(주소·대상은 **인자·환경변수**로 받는다 — Tailscale IP 등 주소를 코드에 하드코딩하지 않는다. `--dry-run` 출력에 설정·env 가 나온다):
+- S1-a `S1A_BASE_URL`/`S1A_PATH`/`S1A_PARAM` — **확정**: 공개 2xx 경로 `/api/v1/auth/check-login-id`(파라미터 `login_id`).
+- S1-c `S1C_BASE_URL`/`S1C_LOGIN_PATH`/`S1C_LOGIN_ID` — **확정**: 로그인 필드 `login_id`(auth_api.js 일치). 경로/테스트 계정은 env.
+- F2-c `F2C_DB_CONTAINER`/`F2C_DB_NAME` — **접속 방식 변경**: 호스트 비밀번호 접속 대신 **DB 컨테이너 로컬 소켓**(`docker exec … psql … pg_sleep`)으로 세션 점유(자격증명 미사용). 정리 때 표시된 세션 종료 + `numbackends` 복귀 확인.
+- 자동 복구 watchdog(`V2_WORK_DIR`) — 장애 시나리오(F3-a·F2-a·F2-c·F1-b·S2-a)는 주입 시 `max_seconds` 를 받고, 세션이 멈춰도 그 시간 뒤 **분리 프로세스**가 스스로 복구한다. 정상 cleanup 이 먼저 되면 조용히 종료, 복구 실패는 로그로 남긴다.
+- 배경 트래픽(`V2_TRAFFIC_GEN` = traffic_gen 경로, PR #22 미머지라 **인자로 전달**) — 시나리오 실행 중 정상 트래픽(정상 모드)을 함께 돌리는 옵션. **F2-a·F2-c·F3-a 는 기본 ON**, 나머지는 OFF. 경로가 없으면 조용히 건너뛴다.
+- F3-a `F3A_BACKUP_DIR`(저장소 밖)/`V2_COMPOSE_DIR` — 실행 전 DB 백업 필수, 원본 이미지 고정(태그 변경 금지). watchdog 복구 = compose `--force-recreate`.
 - F1-b: backend 이미지의 할당기(python3 유무·/dev/shm) — 바이트 산정은 이미지 무관(테스트됨).
 
 외부 대조 도구(측정 PC `D:\develop\leafy-baseline\tools\`, 나중에 저장소로 이동):
@@ -165,5 +169,6 @@ RunOutcome) → `ConfusionMatrix` → `write_results`(JSONL/CSV/summary). V2(hel
 - **F2-a 메트릭 네트워크 분리** — minio 메트릭을 전용 internal 망으로.
 - **역할 분리 정리 (현재)** — 탐지 룰·메트릭 수집 설정을 되돌리고 `RULES_HANDOFF.md` 로 이관.
   시나리오에서 룰 이름·임계 의존 제거(강도 파라미터화). `THREAT_SPEC.md`·`VARIANTS.md` 추가.
+- **측정 PC 결과 반영 (현재)** — S1-c 로그인 필드 `login_id`(auth_api.js), S1-a 공개 2xx 경로 `/api/v1/auth/check-login-id`, F2-c 로컬 소켓 세션 점유(자격증명 미사용)·`numbackends` 복귀 확인. 장애 시나리오 자동 복구 watchdog(분리 프로세스) + 배경 트래픽 옵션(F2-a·F2-c·F3-a 기본 ON) 추가. 주소·대상은 인자·env, Tailscale IP 비하드코딩.
 - **평가용 격리·F1-b 재정의** — 평가용 설계·분할 규칙을 `.gitignore` 대상 heldout 폴더로 분리(`HELDOUT_POLICY.md`),
   레지스트리는 heldout 이 있으면 선택적으로 로드. F1-b 강도를 목표 비율 → 누수 속도×지속으로 재정의.
