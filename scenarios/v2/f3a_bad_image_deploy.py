@@ -30,7 +30,12 @@ F3-a — 잘못된 이미지 배포 (scenarios-v2).
 
 from __future__ import annotations
 
-DEFAULT_TARGET = "leafy-backend"
+import os
+import shlex
+
+from v2 import supervisor
+
+DEFAULT_TARGET = os.getenv("F3A_TARGET", "leafy-backend")
 # 상태 저장 서비스는 대상에서 제외(데이터 안전).
 FORBIDDEN_TARGETS = ("leafy-db", "leafy-minio")
 
@@ -39,7 +44,11 @@ DEFAULT_MODE = "crashloop"
 DEFAULT_DURATION_SECONDS = 180
 
 # DB 백업 대상(컨테이너·DB명). 자격증명은 컨테이너 env(POSTGRES_USER/PASSWORD/DB)로만 참조.
-DB_CONTAINER = "leafy-db"
+DB_CONTAINER = os.getenv("F3A_DB_CONTAINER", "leafy-db")
+
+DEFAULT_MAX_SECONDS = 300    # watchdog 자동 복구 상한(세션이 멈춰도 복구)
+BACKGROUND_DEFAULT = True    # F3-a 는 배경 트래픽 기본 ON
+COMPOSE_DIR = os.getenv("V2_COMPOSE_DIR", ".")   # watchdog 복구(compose up --force-recreate) 실행 위치
 
 
 # --------------------------------------------------------------------------- #
@@ -162,14 +171,22 @@ def preflight_backup(backup_dir: str, db_container: str = DB_CONTAINER) -> dict:
 # docker 런타임 (UNVERIFIED)
 # --------------------------------------------------------------------------- #
 
+def watchdog_restore_sh(target: str = DEFAULT_TARGET, compose_dir: str = COMPOSE_DIR) -> str:
+    """watchdog 복구 명령(호스트 sh): 원본 이미지로 compose 재생성(F3-a 복구 = 원본 재배포)."""
+    return (f"cd {shlex.quote(compose_dir)} && "
+            f"docker compose up -d --force-recreate {shlex.quote(target)}")
+
+
 def inject(mode: str = DEFAULT_MODE, target: str = DEFAULT_TARGET,
            duration_seconds: int = DEFAULT_DURATION_SECONDS,
-           backup_dir: str | None = None):
+           backup_dir: str | None = None, max_seconds: int = DEFAULT_MAX_SECONDS,
+           compose_dir: str = COMPOSE_DIR, work_dir: str | None = None,
+           background: bool | None = None, traffic_gen_path: str | None = None,
+           traffic_target: str | None = None):
     """
-    (1) 실행 전 DB 백업(필수) → (2) 원본 기록 → (3) 원본 이미지 고정 단언 → (4) 실패 명령 덮어쓰기.
-    재생성은 측정 PC에서 compose 기반으로 하는 것을 권장(여기선 원본·실패 명령·백업 메타를 돌려준다).
+    (1) 실행 전 DB 백업(필수) → (2) 원본 기록 → (3) 원본 이미지 고정 단언 → (4) watchdog·배경 →
+    (5) 실패 명령 덮어쓰기. 재생성은 측정 PC에서 compose 기반으로 하는 것을 권장.
     """
-    import os
     import docker
 
     assert_target_allowed(target)
@@ -188,11 +205,19 @@ def inject(mode: str = DEFAULT_MODE, target: str = DEFAULT_TARGET,
     recreate_image = original["image"]
     assert_recreate_image(original, recreate_image, original.get("image_id"))
 
+    # 자동 복구 watchdog + 배경 트래픽.
+    wd = supervisor.spawn_watchdog(watchdog_restore_sh(target, compose_dir), max_seconds,
+                                   tag="f3a", work_dir=work_dir)
+    bg = None
+    if supervisor.background_enabled(BACKGROUND_DEFAULT, background) and traffic_target:
+        bg = supervisor.spawn_background_traffic(traffic_gen_path, traffic_target)
+
     print(f"[F3-a] mode={mode} target={target} image={recreate_image}(원본 고정)", flush=True)
     return {"mode": mode, "target": target, "original": original,
             "recreate_image": recreate_image,
             "failing_command": failing_command(mode),
-            "duration_seconds": duration_seconds, "backup": backup}
+            "duration_seconds": duration_seconds, "backup": backup,
+            "watchdog": wd, "background": bg}
 
 
 def cleanup(meta: dict) -> None:
@@ -216,13 +241,19 @@ def cleanup(meta: dict) -> None:
         if not (img_ok and cmd_ok and healthy):
             print("[F3-a] 경고: 복원이 완전하지 않음 — 수동 확인 필요", flush=True)
     except Exception as e:  # 도커 접근 불가 등
-        print(f"[F3-a] 복원 확인 생략(도커 접근 불가): {e}", flush=True)
+        print(f"[F3-a] 복원 확인 생략(watchdog 이 복구함): {e}", flush=True)
+    finally:
+        supervisor.cancel_watchdog(meta.get("watchdog"))
+        supervisor.stop_background_traffic(meta.get("background"))
 
 
 def dry_run() -> dict:
     return {"mode": DEFAULT_MODE, "target": DEFAULT_TARGET,
             "failing_command": failing_command(DEFAULT_MODE),
             "forbidden_targets": list(FORBIDDEN_TARGETS),
+            "watchdog_max_seconds": DEFAULT_MAX_SECONDS, "background_default": BACKGROUND_DEFAULT,
+            "env": ["F3A_TARGET", "F3A_DB_CONTAINER", "F3A_BACKUP_DIR", "V2_COMPOSE_DIR",
+                    "V2_WORK_DIR", "V2_TRAFFIC_GEN"],
             "note": "원본 이미지 고정(태그 변경 금지) + 실행 전 DB 백업 필수(backup_dir)"}
 
 

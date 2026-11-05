@@ -10,8 +10,8 @@ S1-a — 입력값 공격 (앱까지 통과) (scenarios-v2).
   페이로드는 정답/시나리오를 암시하는 문자열이 아니라 실제 공격 입력 그 자체다.
   (어떤 룰로 탐지할지는 룰 작성자 몫 — THREAT_SPEC.md 참조.)
 
-미확정(측정 PC): 어떤 경로가 nginx 를 통과해 앱에서 2xx 를 돌려주는지 확정해야 한다.
-  기본 경로는 env(S1A_PATH)로 바꾼다. 검증 기준은 "nginx 비차단 + 앱 로그 기록"이다.
+경로(측정 PC 확정): 공개 2xx 경로 `/api/v1/auth/check-login-id`(login_id 파라미터). env(S1A_PATH·S1A_PARAM)로 바꾼다.
+  검증 기준은 "nginx 비차단 + 앱 로그 기록"이다.
 
 순수 로직(요청 계획·페이로드)은 단위 테스트, HTTP 실행은 UNVERIFIED.
 """
@@ -22,9 +22,11 @@ import os
 import urllib.parse
 import urllib.request
 
+from v2 import supervisor
+
 BASE_URL = os.getenv("S1A_BASE_URL", "http://127.0.0.1:80")
-TARGET_PATH = os.getenv("S1A_PATH", "/api/plants/search")   # 측정 PC에서 2xx 경로로 확정
-PARAM = os.getenv("S1A_PARAM", "q")
+TARGET_PATH = os.getenv("S1A_PATH", "/api/v1/auth/check-login-id")   # 측정 PC 확정: 공개 2xx 경로
+PARAM = os.getenv("S1A_PARAM", "login_id")
 
 # 실제 SQL 인젝션 공격 입력. 앱은 리터럴 검색어로 처리 → 2xx, DB 불변.
 # (정답/시나리오를 암시하는 문자열이 아니라 실제 공격 입력 그 자체다.)
@@ -43,6 +45,7 @@ DEFAULT_REQUESTS = 10
 
 # nginx 가 "막지 않음"으로 볼 상태코드. 2xx = 앱 통과. 403/444 등은 nginx 차단으로 본다.
 PASS_STATUSES = set(range(200, 300))
+BACKGROUND_DEFAULT = False   # S1-a 는 배경 트래픽 기본 OFF
 
 
 # --------------------------------------------------------------------------- #
@@ -82,21 +85,30 @@ def _send(url: str, timeout: float = 5.0) -> int:
         return 0
 
 
-def inject(count: int = DEFAULT_REQUESTS):
+def inject(count: int = DEFAULT_REQUESTS, background: bool | None = None,
+           traffic_gen_path: str | None = None, traffic_target: str | None = None):
     """요청을 보내고 각 상태코드를 모은다. 통과(2xx) 비율을 요약한다 — Loki 에 쓰지 않는다."""
-    urls = build_request_urls(count)
-    statuses = [_send(u) for u in urls]
-    passed = sum(1 for s in statuses if passed_to_app(s))
-    print(f"[S1-a] sent={len(urls)} passed_to_app(2xx)={passed} statuses={statuses}", flush=True)
-    if passed == 0:
-        print("[S1-a] 경고: 2xx 통과 0건 — nginx 차단이거나 경로가 틀림. S1A_PATH 확인 필요.", flush=True)
-    return {"sent": len(urls), "passed_to_app": passed, "statuses": statuses}
+    bg = None
+    if supervisor.background_enabled(BACKGROUND_DEFAULT, background) and traffic_target:
+        bg = supervisor.spawn_background_traffic(traffic_gen_path, traffic_target)
+    try:
+        urls = build_request_urls(count)
+        statuses = [_send(u) for u in urls]
+        passed = sum(1 for s in statuses if passed_to_app(s))
+        print(f"[S1-a] sent={len(urls)} passed_to_app(2xx)={passed} statuses={statuses}", flush=True)
+        if passed == 0:
+            print("[S1-a] 경고: 2xx 통과 0건 — nginx 차단이거나 경로가 틀림. S1A_PATH 확인 필요.", flush=True)
+        return {"sent": len(urls), "passed_to_app": passed, "statuses": statuses}
+    finally:
+        supervisor.stop_background_traffic(bg)
 
 
 def dry_run() -> dict:
     """HTTP 없이 요청 계획만. run --dry-run 용."""
     urls = build_request_urls()
-    return {"count": len(urls), "sample_urls": urls[:3], "target_path": TARGET_PATH}
+    return {"count": len(urls), "sample_urls": urls[:3], "target_path": TARGET_PATH,
+            "base_url": BASE_URL, "param": PARAM, "background_default": BACKGROUND_DEFAULT,
+            "env": ["S1A_BASE_URL", "S1A_PATH", "S1A_PARAM", "V2_TRAFFIC_GEN"]}
 
 
 def main():

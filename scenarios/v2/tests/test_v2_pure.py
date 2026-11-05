@@ -28,6 +28,7 @@ from v2 import s2a_resource_theft as s2a
 from v2 import f2c_db_pool_exhaustion as f2c
 from v2 import f3a_bad_image_deploy as f3a
 from v2 import controls
+from v2 import supervisor
 from v2 import fixtures
 from v2 import variants
 
@@ -269,8 +270,15 @@ class TestS1c(unittest.TestCase):
 
     def test_explicit_attempts_override(self):
         att = s1c.build_attempts(attempts=4, login_id="acct", passwords=["a", "b"])
-        self.assertTrue(all(a["loginId"] == "acct" for a in att))
+        self.assertTrue(all(a["login_id"] == "acct" for a in att))
         self.assertEqual([a["password"] for a in att], ["a", "b", "a", "b"])
+
+    def test_request_body_key_is_login_id(self):
+        # API(auth_api.js)와 같은 login_id 필드. 과거 loginId 는 쓰지 않는다.
+        body = s1c.build_attempts(attempts=1)[0]
+        self.assertIn("login_id", body)
+        self.assertNotIn("loginId", body)
+        self.assertIn("password", body)
 
     def test_unknown_strength_rejected(self):
         with self.assertRaises(ValueError):
@@ -321,11 +329,41 @@ class TestF2c(unittest.TestCase):
         p = f2c.plan_connections("weak")
         self.assertEqual(p["connections"], f2c.STRENGTH_CONNECTIONS["weak"])
 
-    def test_hold_query_is_readonly(self):
-        self.assertTrue(f2c.is_readonly_statement(f2c.HOLD_QUERY))
-        self.assertTrue(f2c.is_readonly_statement("select 1"))
+    def test_hold_sql_is_readonly(self):
+        self.assertTrue(f2c.is_readonly_statement(f2c.hold_sql(120)))
+        self.assertIn("pg_sleep", f2c.hold_sql(120))
         self.assertFalse(f2c.is_readonly_statement("DELETE FROM t"))
         self.assertFalse(f2c.is_readonly_statement("update t set x=1"))
+
+    def test_hold_uses_local_socket_no_credentials(self):
+        # 로컬 소켓·컨테이너 env 참조만 — 비밀번호 값이 명령에 들어가지 않는다.
+        inner = f2c.hold_inner_sh(120)
+        self.assertIn("pg_sleep", inner)
+        self.assertIn("$POSTGRES_USER", inner)       # 컨테이너 env 로만 참조
+        self.assertIn(f2c.HOLD_APPNAME, inner)
+        self.assertNotIn("PGPASSWORD", inner)         # 자격증명 미사용
+        self.assertNotIn("leafy_secret", inner)
+        argv = f2c.hold_session_argv()
+        self.assertEqual(argv[:3], ["docker", "exec", "-d"])
+
+    def test_terminate_targets_only_marked_sessions(self):
+        sql = f2c.terminate_sql()
+        self.assertIn("pg_terminate_backend", sql)
+        self.assertIn(f2c.HOLD_APPNAME, sql)
+        self.assertIn("pg_backend_pid()", sql)        # 자기 자신 제외
+
+    def test_numbackends_recovered(self):
+        self.assertTrue(f2c.numbackends_recovered(after=12, baseline=10))   # +2 이내
+        self.assertFalse(f2c.numbackends_recovered(after=40, baseline=10))
+
+    def test_watchdog_restore_terminates_sessions(self):
+        sh = f2c.watchdog_restore_sh()
+        self.assertIn("docker exec", sh)
+        self.assertIn("pg_terminate_backend", sh)
+        self.assertNotIn("leafy_secret", sh)
+
+    def test_background_default_on(self):
+        self.assertTrue(f2c.BACKGROUND_DEFAULT)
 
     def test_unknown_strength(self):
         with self.assertRaises(ValueError):
@@ -518,6 +556,95 @@ class TestRunVariant(unittest.TestCase):
     def test_variant_dry_run(self):
         self.assertEqual(
             v2run.run("f1_b_memory_leak", dry_run=True, variant_id="gradual", seed=1), 0)
+
+class TestSupervisor(unittest.TestCase):
+    def test_watchdog_script_has_cancel_restore_and_logging(self):
+        script = supervisor.build_watchdog_script(
+            "docker start leafy-minio", 120, "/w/c.cancel", "/w/c.log")
+        self.assertIn("$CANCEL", script)
+        self.assertIn("docker start leafy-minio", script)      # 복구 명령 포함
+        self.assertIn("watchdog restored", script)
+        self.assertIn("RESTORE FAILED", script)                # 복구 실패 로그
+        self.assertIn("exit 1", script)
+
+    def test_watchdog_script_is_valid_sh(self):
+        script = supervisor.build_watchdog_script("true", 5, "/w/c", "/w/l")
+        with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as fh:
+            fh.write(script); path = fh.name
+        try:
+            r = subprocess.run(["sh", "-n", path], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        finally:
+            os.unlink(path)
+
+    def test_watchdog_rejects_bad_args(self):
+        with self.assertRaises(ValueError):
+            supervisor.build_watchdog_script("true", 0, "/c", "/l")   # timeout < 1
+        with self.assertRaises(ValueError):
+            supervisor.build_watchdog_script("   ", 5, "/c", "/l")    # 빈 복구 명령
+
+    def test_watchdog_paths_and_workdir(self):
+        paths = supervisor.watchdog_paths("/wd", "f2a")
+        self.assertEqual(paths["script"], "/wd/wd_f2a.sh")
+        self.assertEqual(paths["cancel"], "/wd/wd_f2a.cancel")
+        self.assertTrue(supervisor.resolve_work_dir("/x") == "/x")
+
+    def test_background_enabled_override(self):
+        self.assertTrue(supervisor.background_enabled(False, True))
+        self.assertFalse(supervisor.background_enabled(True, False))
+        self.assertTrue(supervisor.background_enabled(True, None))
+
+    def test_build_traffic_command_normal_mode(self):
+        cmd = supervisor.build_traffic_command("/tools/traffic_gen.py", "http://fe:80")
+        self.assertIn("--control", cmd)
+        self.assertEqual(cmd[cmd.index("--control") + 1], "none")   # 정상 모드
+        self.assertIn("http://fe:80", cmd)
+
+    def test_background_skips_when_path_missing(self):
+        # PR #22 미머지 — 경로가 없으면 조용히 건너뛴다(None).
+        self.assertIsNone(supervisor.spawn_background_traffic(None, "http://fe:80"))
+        self.assertIsNone(supervisor.spawn_background_traffic("/no/such/traffic_gen.py", "http://fe:80"))
+
+
+class TestWatchdogRestore(unittest.TestCase):
+    def test_f2a_restore_starts_container(self):
+        self.assertEqual(f2a.watchdog_restore_sh("leafy-minio"), "docker start leafy-minio")
+        self.assertTrue(f2a.BACKGROUND_DEFAULT)
+
+    def test_s2a_restore_clears_marker(self):
+        sh = s2a.watchdog_restore_sh()
+        self.assertIn("docker exec", sh)
+        self.assertIn(s2a.MARKER, sh)
+        self.assertIn("rm -f", sh)
+        self.assertFalse(s2a.BACKGROUND_DEFAULT)
+
+    def test_f1b_restore_restarts_container(self):
+        self.assertIn("docker restart", f1b.watchdog_restore_sh("leafy-backend"))
+        self.assertFalse(f1b.BACKGROUND_DEFAULT)
+
+    def test_f3a_restore_recreates_from_compose(self):
+        sh = f3a.watchdog_restore_sh("leafy-backend", "/compose")
+        self.assertIn("docker compose up -d --force-recreate", sh)
+        self.assertIn("leafy-backend", sh)
+        self.assertTrue(f3a.BACKGROUND_DEFAULT)
+
+    def test_all_fault_restore_scripts_valid_sh(self):
+        scripts = [
+            supervisor.build_watchdog_script(f2a.watchdog_restore_sh(), 10, "/c", "/l"),
+            supervisor.build_watchdog_script(s2a.watchdog_restore_sh(), 10, "/c", "/l"),
+            supervisor.build_watchdog_script(f2c.watchdog_restore_sh(), 10, "/c", "/l"),
+            supervisor.build_watchdog_script(f1b.watchdog_restore_sh(), 10, "/c", "/l"),
+            supervisor.build_watchdog_script(f3a.watchdog_restore_sh(), 10, "/c", "/l"),
+        ]
+        for sc in scripts:
+            with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as fh:
+                fh.write(sc); path = fh.name
+            try:
+                r = subprocess.run(["sh", "-n", path], capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, r.stderr)
+            finally:
+                os.unlink(path)
+
 
 if __name__ == "__main__":
     unittest.main()

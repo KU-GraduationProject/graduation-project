@@ -13,7 +13,7 @@ S1-c — 인증 공격 (로그인 대입) (scenarios-v2).
   - strong : 공격적인 크리덴셜 스터핑.
 
 안전: 실제 사용자 비밀번호를 쓰지 않는다. 대상은 전용 테스트 계정(seed)으로 두고 env 로 바꾼다.
-미확정(측정 PC): 로그인 경로(S1C_LOGIN_PATH)와 요청 본문 형식을 확정한다.
+요청 본문(측정 PC 확정): 로그인 필드는 API(auth_api.js)와 같은 `login_id`. 경로는 env(S1C_LOGIN_PATH).
 
 순수 로직(요청 계획)은 단위 테스트, HTTP 실행은 UNVERIFIED.
 """
@@ -23,6 +23,8 @@ from __future__ import annotations
 import json
 import os
 import urllib.request
+
+from v2 import supervisor
 
 BASE_URL = os.getenv("S1C_BASE_URL", "http://127.0.0.1:80")
 LOGIN_PATH = os.getenv("S1C_LOGIN_PATH", "/api/auth/login")   # 측정 PC에서 확정
@@ -38,6 +40,7 @@ DEFAULT_STRENGTH = "medium"
 
 # 정상 인증 실패로 볼 상태코드(앱이 "[AUTH] 로그인 실패" 를 남기는 경우).
 FAIL_STATUSES = {401, 400, 403}
+BACKGROUND_DEFAULT = False   # S1-c 는 배경 트래픽 기본 OFF
 
 
 # --------------------------------------------------------------------------- #
@@ -60,7 +63,7 @@ def build_attempts(strength: str = DEFAULT_STRENGTH, attempts: int | None = None
     n = attempts if attempts is not None else attempts_for(strength)
     if n < 1:
         raise ValueError("attempts 는 1 이상")
-    return [{"loginId": login_id, "password": passwords[i % len(passwords)]}
+    return [{"login_id": login_id, "password": passwords[i % len(passwords)]}
             for i in range(n)]
 
 
@@ -85,20 +88,30 @@ def _post(url: str, body: dict, timeout: float = 5.0) -> int:
         return 0
 
 
-def inject(strength: str = DEFAULT_STRENGTH, attempts: int | None = None):
-    url = f"{BASE_URL}{LOGIN_PATH}"
-    bodies = build_attempts(strength=strength, attempts=attempts)
-    statuses = [_post(url, b) for b in bodies]
-    failures = sum(1 for s in statuses if is_auth_failure(s))
-    # loginId 값을 출력에도 남기지 않는다(평문 ID 보호) — 건수만 센다.
-    print(f"[S1-c] strength={strength} attempts={len(bodies)} auth_failures={failures}", flush=True)
-    return {"strength": strength, "attempts": len(bodies), "auth_failures": failures}
+def inject(strength: str = DEFAULT_STRENGTH, attempts: int | None = None,
+           background: bool | None = None, traffic_gen_path: str | None = None,
+           traffic_target: str | None = None):
+    bg = None
+    if supervisor.background_enabled(BACKGROUND_DEFAULT, background) and traffic_target:
+        bg = supervisor.spawn_background_traffic(traffic_gen_path, traffic_target)
+    try:
+        url = f"{BASE_URL}{LOGIN_PATH}"
+        bodies = build_attempts(strength=strength, attempts=attempts)
+        statuses = [_post(url, b) for b in bodies]
+        failures = sum(1 for s in statuses if is_auth_failure(s))
+        # login_id 값을 출력에도 남기지 않는다(평문 ID 보호) — 건수만 센다.
+        print(f"[S1-c] strength={strength} attempts={len(bodies)} auth_failures={failures}", flush=True)
+        return {"strength": strength, "attempts": len(bodies), "auth_failures": failures}
+    finally:
+        supervisor.stop_background_traffic(bg)
 
 
 def dry_run() -> dict:
     """HTTP 없이 시도 계획만. loginId 값은 노출하지 않는다(건수·경로만). run --dry-run 용."""
     return {"strength": DEFAULT_STRENGTH, "attempts": len(build_attempts()),
-            "login_path": LOGIN_PATH,
+            "login_path": LOGIN_PATH, "login_field": "login_id", "base_url": BASE_URL,
+            "background_default": BACKGROUND_DEFAULT,
+            "env": ["S1C_BASE_URL", "S1C_LOGIN_PATH", "S1C_LOGIN_ID", "V2_TRAFFIC_GEN"],
             "note": "실제 자격증명 미사용, 전용 테스트 계정, 계정상태 불변"}
 
 

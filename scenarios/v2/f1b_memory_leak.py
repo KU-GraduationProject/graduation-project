@@ -36,6 +36,10 @@ OOM 안전 가드(룰과 무관한 안전장치):
 
 from __future__ import annotations
 
+import shlex
+
+from v2 import supervisor
+
 MIB = 1024 * 1024
 BACKEND_CONTAINER = "leafy-backend"
 MEM_LIMIT_BYTES = 512 * MIB
@@ -43,6 +47,9 @@ SHM_FILE = "/dev/shm/f1b_leak"
 
 OOM_GUARD_FRACTION = 0.94    # OOM 안전 가드(상한 + 증가 중 자가 감시). 룰과 무관.
 ASSUMED_BASELINE_FRACTION = 0.79  # 읽기 실패 시 폴백(기준선 0.76~0.82 중앙값)
+
+DEFAULT_MAX_SECONDS = 600    # watchdog 자동 복구 상한(세션이 멈춰도 복구)
+BACKGROUND_DEFAULT = False   # F1-b 는 배경 트래픽 기본 OFF
 
 # 강도 = 누수 속도(MiB/분) × 지속(분). 근거는 실제 누수 패턴(서서히/중간/빠름)이다.
 STRENGTH_PROFILE = {
@@ -224,7 +231,15 @@ def current_working_set(container) -> int | None:
         return None
 
 
-def inject(container_name: str = BACKEND_CONTAINER, strength: str = DEFAULT_STRENGTH):
+def watchdog_restore_sh(container_name: str = BACKEND_CONTAINER) -> str:
+    """watchdog 복구 명령(호스트 sh): 컨테이너 재시작(F1-b 조치 = RESTART). 누수 메모리 회수."""
+    return f"docker restart {shlex.quote(container_name)}"
+
+
+def inject(container_name: str = BACKEND_CONTAINER, strength: str = DEFAULT_STRENGTH,
+           max_seconds: int = DEFAULT_MAX_SECONDS, work_dir: str | None = None,
+           background: bool | None = None, traffic_gen_path: str | None = None,
+           traffic_target: str | None = None):
     import docker
     client = docker.from_env()
     container = client.containers.get(container_name)
@@ -235,24 +250,37 @@ def inject(container_name: str = BACKEND_CONTAINER, strength: str = DEFAULT_STRE
     print(f"[F1-b] plan={plan}", flush=True)
     if not plan["valid"]:
         raise SystemExit(f"[F1-b] 안전 설계 실패(valid=False) — 주입 중단. plan={plan}")
+
+    wd = supervisor.spawn_watchdog(watchdog_restore_sh(container_name), max_seconds,
+                                   tag="f1b", work_dir=work_dir)
+    bg = None
+    if supervisor.background_enabled(BACKGROUND_DEFAULT, background) and traffic_target:
+        bg = supervisor.spawn_background_traffic(traffic_gen_path, traffic_target)
+
     # python3 유무는 명령 안에서 분기한다. sh 경로는 /dev/shm 여유를 스스로 확인하고
     # 부족하면 exit 3 로 주입하지 않는다. 두 경로 모두 가드 도달 시 즉시 해제, trap 으로 정리.
     cmd = build_alloc_command(plan)
     container.exec_run(cmd=["sh", "-c", cmd], detach=True)
     print("[F1-b] allocator 실행(detached, cgroup 자가 감시). 가드 도달 시 즉시 해제, 아니면 hold 후 해제.",
           flush=True)
-    return plan
+    return {"plan": plan, "container": container_name, "watchdog": wd, "background": bg}
 
 
-def cleanup(container_name: str = BACKEND_CONTAINER, shm_file: str = SHM_FILE) -> None:
-    """정리 보강: sh 경로의 /dev/shm 파일을 강제로 삭제한다(trap 이 실패한 경우 대비)."""
+def cleanup(meta: dict | None = None, container_name: str = BACKEND_CONTAINER,
+            shm_file: str = SHM_FILE) -> None:
+    """정리 보강: sh 경로의 /dev/shm 파일 삭제. watchdog·배경 트래픽도 정리."""
+    meta = meta or {}
+    container_name = meta.get("container", container_name)
     try:
         import docker
         container = docker.from_env().containers.get(container_name)
         container.exec_run(cmd=["sh", "-c", f"rm -f {shm_file}"])
         print(f"[F1-b] cleanup: {shm_file} 삭제 시도", flush=True)
-    except Exception as exc:
-        print(f"[F1-b] cleanup 실패(무시): {exc}", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[F1-b] cleanup 실패(watchdog 이 복구함): {exc}", flush=True)
+    finally:
+        supervisor.cancel_watchdog(meta.get("watchdog"))
+        supervisor.stop_background_traffic(meta.get("background"))
 
 
 def dry_run() -> dict:
@@ -262,11 +290,18 @@ def dry_run() -> dict:
         "plan": plan,
         "python_allocator_preview": _allocator_py(plan)[:80] + "...",
         "sh_allocator_preview": _allocator_sh(plan)[:80] + "...",
+        "watchdog_max_seconds": DEFAULT_MAX_SECONDS,
+        "background_default": BACKGROUND_DEFAULT,
+        "env": ["V2_WORK_DIR", "V2_TRAFFIC_GEN"],
     }
 
 
 def main():
-    inject()
+    meta = None
+    try:
+        meta = inject()
+    finally:
+        cleanup(meta)
 
 
 if __name__ == "__main__":
