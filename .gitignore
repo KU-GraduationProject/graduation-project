@@ -244,3 +244,10 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/python,macos,windows
 .aider*
+
+# scenarios-v2 평가용(heldout) — 룰 동결 전 커밋 금지 (docs/scenarios-v2/HELDOUT_POLICY.md)
+docs/scenarios-v2/heldout/
+scenarios/v2/heldout/
+
+# 런타임 픽스처 출력(경보 컨텍스트)
+scenarios/v2/fixtures_data/
