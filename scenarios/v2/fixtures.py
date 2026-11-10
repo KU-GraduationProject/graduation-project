@@ -20,7 +20,7 @@ import os
 from datetime import datetime, timezone
 
 # 픽스처에 절대 들어가면 안 되는 정답 레이블 키(어느 깊이든 금지).
-ANSWER_LABEL_KEYS = ("threat_level", "expected_action", "expected_action_ideal")
+ANSWER_LABEL_KEYS = ("threat_level", "expected_action", "expected_action_ideal", "incident_class")
 
 DEFAULT_FIXTURE_DIR = os.getenv("V2_FIXTURE_DIR", "scenarios/v2/fixtures_data")
 
