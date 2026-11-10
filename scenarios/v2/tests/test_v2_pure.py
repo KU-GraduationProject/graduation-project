@@ -325,49 +325,81 @@ class TestS2a(unittest.TestCase):
 
 
 class TestF2c(unittest.TestCase):
-    def test_plan_connections(self):
-        p = f2c.plan_connections("weak")
-        self.assertEqual(p["connections"], f2c.STRENGTH_CONNECTIONS["weak"])
+    def test_holdable_excludes_reserved_and_margin(self):
+        # 점유 가능 수 = max - 예약 - 현재 - 여유. 예약은 반드시 제외된다.
+        self.assertEqual(f2c.holdable_count(100, 3, 20, 2), 75)
+        self.assertEqual(f2c.holdable_count(100, 3, 0, 0), 97)
+        # 예약을 바꾸면 그만큼 줄어든다(예약 제외 확인).
+        self.assertEqual(f2c.holdable_count(100, 3, 20, 2) - f2c.holdable_count(100, 5, 20, 2), 2)
 
-    def test_hold_sql_is_readonly(self):
-        self.assertTrue(f2c.is_readonly_statement(f2c.hold_sql(120)))
-        self.assertIn("pg_sleep", f2c.hold_sql(120))
-        self.assertFalse(f2c.is_readonly_statement("DELETE FROM t"))
-        self.assertFalse(f2c.is_readonly_statement("update t set x=1"))
+    def test_abort_when_no_headroom(self):
+        self.assertTrue(f2c.should_abort(0))
+        self.assertTrue(f2c.should_abort(-5))
+        self.assertFalse(f2c.should_abort(1))
 
-    def test_hold_uses_local_socket_no_credentials(self):
-        # 로컬 소켓·컨테이너 env 참조만 — 비밀번호 값이 명령에 들어가지 않는다.
-        inner = f2c.hold_inner_sh(120)
-        self.assertIn("pg_sleep", inner)
-        self.assertIn("$POSTGRES_USER", inner)       # 컨테이너 env 로만 참조
-        self.assertIn(f2c.HOLD_APPNAME, inner)
-        self.assertNotIn("PGPASSWORD", inner)         # 자격증명 미사용
-        self.assertNotIn("leafy_secret", inner)
-        argv = f2c.hold_session_argv()
-        self.assertEqual(argv[:3], ["docker", "exec", "-d"])
+    def test_target_never_exceeds_holdable(self):
+        # 어떤 강도·holdable 에서도 목표 점유 수는 계산값(holdable)을 넘지 않는다.
+        for holdable in (1, 10, 75, 200):
+            for strength in f2c.STRENGTH_PROFILE:
+                self.assertLessEqual(f2c.target_for_strength(holdable, strength), holdable)
 
-    def test_terminate_targets_only_marked_sessions(self):
-        sql = f2c.terminate_sql()
-        self.assertIn("pg_terminate_backend", sql)
-        self.assertIn(f2c.HOLD_APPNAME, sql)
-        self.assertIn("pg_backend_pid()", sql)        # 자기 자신 제외
-
-    def test_numbackends_recovered(self):
-        self.assertTrue(f2c.numbackends_recovered(after=12, baseline=10))   # +2 이내
-        self.assertFalse(f2c.numbackends_recovered(after=40, baseline=10))
-
-    def test_watchdog_restore_terminates_sessions(self):
-        sh = f2c.watchdog_restore_sh()
-        self.assertIn("docker exec", sh)
-        self.assertIn("pg_terminate_backend", sh)
-        self.assertNotIn("leafy_secret", sh)
-
-    def test_background_default_on(self):
-        self.assertTrue(f2c.BACKGROUND_DEFAULT)
+    def test_target_per_strength(self):
+        self.assertEqual(f2c.target_for_strength(100, "weak"), 90)    # ~90%, 거부 없음
+        self.assertEqual(f2c.target_for_strength(100, "medium"), 100) # 한도까지
+        self.assertEqual(f2c.target_for_strength(100, "strong"), 100) # 한도까지
+        # strong 은 더 빠르게 채우고 더 오래 유지한다.
+        prof = f2c.STRENGTH_PROFILE
+        self.assertLess(prof["strong"]["open_interval_s"], prof["medium"]["open_interval_s"])
+        self.assertLess(prof["medium"]["open_interval_s"], prof["weak"]["open_interval_s"])
+        self.assertGreater(prof["strong"]["hold_seconds"], prof["medium"]["hold_seconds"])
 
     def test_unknown_strength(self):
         with self.assertRaises(ValueError):
-            f2c.plan_connections("nope")
+            f2c.target_for_strength(100, "nope")
+
+    def test_reserved_untouched(self):
+        self.assertTrue(f2c.reserved_untouched(97, 100, 3))    # 예약 3 비어 있음
+        self.assertFalse(f2c.reserved_untouched(99, 100, 3))   # 예약 침범
+
+    def test_connections_recovered(self):
+        self.assertTrue(f2c.connections_recovered(after=12, baseline=10))
+        self.assertFalse(f2c.connections_recovered(after=40, baseline=10))
+
+    def test_hold_uses_local_socket_no_credentials(self):
+        inner = f2c.hold_inner_sh(120)
+        self.assertIn("pg_sleep", inner)
+        self.assertIn("$POSTGRES_USER", inner)        # 컨테이너 env 로만 참조
+        self.assertIn("mark=" + f2c.CONN_HOLD_MARK, inner)  # pkill 용 argv 표식
+        self.assertNotIn("PGPASSWORD", inner)         # 자격증명 미사용
+        self.assertNotIn("leafy_secret", inner)
+        self.assertEqual(f2c.hold_session_argv()[:3], ["docker", "exec", "-d"])
+
+    def test_cleanup_and_watchdog_need_no_db_connection(self):
+        # 1차 정리·watchdog 은 psql(새 접속) 없이 pkill 로만 동작한다.
+        self.assertIn("pkill", f2c.pkill_cleanup_sh())
+        wd = f2c.watchdog_restore_sh()
+        self.assertIn("pkill", wd)
+        self.assertNotIn("psql", wd)
+        self.assertIn("mark=" + f2c.CONN_HOLD_MARK, wd)
+
+    def test_no_backend_restart_path(self):
+        # backend 를 재시작하지 않는다(재시작하면 DB 재연결 실패로 악화).
+        wd = f2c.watchdog_restore_sh()
+        self.assertNotIn("restart", wd)
+        self.assertNotIn("leafy-backend", wd)
+        src = open(f2c.__file__, encoding="utf-8").read()
+        self.assertNotIn("docker restart", src)
+        self.assertNotIn("leafy-backend", src)
+
+    def test_answer_labels(self):
+        row = next(r for r in registry.SCENARIO_REGISTRY_V2 if r["id"] == "f2_c_db_pool_exhaustion")
+        self.assertEqual(row["threat_level"], "high")
+        self.assertEqual(row["expected_action"], "NOTIFY")
+        self.assertEqual(row["expected_action_ideal"], "KILL_SESSIONS")
+        self.assertNotIn("leafy-backend", row["targets"])   # 대상은 점유 DB 세션
+
+    def test_background_default_on(self):
+        self.assertTrue(f2c.BACKGROUND_DEFAULT)
 
 
 class TestF3a(unittest.TestCase):
@@ -595,10 +627,10 @@ class TestSupervisor(unittest.TestCase):
         self.assertTrue(supervisor.background_enabled(True, None))
 
     def test_build_traffic_command_normal_mode(self):
-        cmd = supervisor.build_traffic_command("/tools/traffic_gen.py", "http://fe:80")
-        self.assertIn("--control", cmd)
+        cmd = supervisor.build_traffic_command("/tools/traffic_gen.py", "http://fe:80", "/run")
         self.assertEqual(cmd[cmd.index("--control") + 1], "none")   # 정상 모드
-        self.assertIn("http://fe:80", cmd)
+        self.assertEqual(cmd[cmd.index("--base") + 1], "http://fe:80")
+        self.assertEqual(cmd[cmd.index("--dir") + 1], "/run")       # 요청·API 실패 기록 위치
 
     def test_background_skips_when_path_missing(self):
         # PR #22 미머지 — 경로가 없으면 조용히 건너뛴다(None).

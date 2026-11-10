@@ -111,12 +111,14 @@ def background_enabled(scenario_default: bool, override: bool | None) -> bool:
     return scenario_default if override is None else override
 
 
-def build_traffic_command(traffic_gen_path: str, target_url: str,
-                          control: str = "none", extra=None) -> list[str]:
-    """정상 모드 배경 트래픽 명령(traffic_gen 정상 모드 = --control none)."""
-    cmd = ["python3", traffic_gen_path, "--control", control, "--target", target_url]
-    if extra:
-        cmd += list(extra)
+def build_traffic_command(traffic_gen_path: str, base_url: str, run_dir: str,
+                          control: str = "none", duration: float | None = None) -> list[str]:
+    """정상 모드 배경 트래픽 명령(tools/measurement/traffic_gen.py 인터페이스).
+    요청·상태(API 실패 포함)는 traffic_gen 이 run_dir/requests.jsonl 에 기록한다."""
+    cmd = ["python3", "-I", traffic_gen_path, "--base", base_url, "--dir", run_dir,
+           "--control", control]
+    if duration is not None:
+        cmd += ["--duration", str(duration)]
     return cmd
 
 
@@ -124,18 +126,21 @@ def build_traffic_command(traffic_gen_path: str, target_url: str,
 # 배경 트래픽 — 런타임 (UNVERIFIED)
 # --------------------------------------------------------------------------- #
 
-def spawn_background_traffic(traffic_gen_path: str | None, target_url: str,
-                             control: str = "none") -> dict | None:
-    """traffic_gen 경로가 없거나 파일이 없으면 조용히 건너뛴다(PR #22 미머지 대비)."""
+def spawn_background_traffic(traffic_gen_path: str | None, base_url: str,
+                             run_dir: str | None = None, control: str = "none",
+                             duration: float | None = None) -> dict | None:
+    """traffic_gen 경로가 없거나 파일이 없으면 조용히 건너뛴다. 요청·API 실패는 run_dir 에 기록."""
     import subprocess
     if not traffic_gen_path or not os.path.exists(traffic_gen_path):
         print(f"[bg] traffic_gen 없음 — 배경 트래픽 생략: {traffic_gen_path}", flush=True)
         return None
-    cmd = build_traffic_command(traffic_gen_path, target_url, control)
+    run_dir = run_dir or os.path.join(resolve_work_dir(), "bg_traffic")
+    os.makedirs(run_dir, exist_ok=True)
+    cmd = build_traffic_command(traffic_gen_path, base_url, run_dir, control, duration)
     proc = subprocess.Popen(cmd, start_new_session=True,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print(f"[bg] 배경 트래픽 시작 pid={proc.pid} target={target_url}", flush=True)
-    return {"pid": proc.pid, "cmd": cmd}
+    print(f"[bg] 배경 트래픽 시작 pid={proc.pid} base={base_url} dir={run_dir}", flush=True)
+    return {"pid": proc.pid, "cmd": cmd, "run_dir": run_dir}
 
 
 def stop_background_traffic(handle: dict | None) -> None:

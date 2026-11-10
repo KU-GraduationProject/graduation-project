@@ -54,9 +54,10 @@ VARIANT_SPECS: dict[str, dict[str, dict]] = {
         "prolonged": {"down_seconds": ("int", 180, 420)},
     },
     "f2_c_db_pool_exhaustion": {
-        "sudden-grab": {"strength": ("choice", ["weak", "medium", "strong"]),
-                        "hold_seconds": ("int", 60, 180)},
-        "gradual-leak": {"strength": ("choice", ["weak", "medium"]), "hold_seconds": ("int", 120, 300)},
+        "fill-steady": {"strength": ("choice", ["weak", "medium", "strong"]),
+                        "hold_seconds": ("int", 120, 300)},
+        "fill-burst": {"strength": ("choice", ["medium", "strong"]),
+                       "hold_seconds": ("int", 60, 180)},
     },
     "f3_a_bad_image_deploy": {
         "crashloop": {"mode": ("fixed", "crashloop"), "duration_seconds": ("int", 120, 240)},
