@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+from dataclasses import replace
 
 from policy.schema import (
     AUTO_EXECUTE_CANDIDATE,
@@ -244,7 +245,22 @@ class PolicyEngine:
                        *reasons, "policy_defines_no_execution_path")
 
     def decide_from_analysis(self, analysis: dict) -> PolicyDecision:
-        """Remediation /action 의 analysis dict 에서 바로 판단한다."""
+        """
+        Remediation /action 의 analysis dict 에서 바로 판단한다.
+
+        analysis_status=invalid(Pipeline 이 LLM 응답 검증에 실패)면 action_type 과 무관하게
+        NOTIFY 로 판단한다 — 깨진 분석으로 자동 조치를 열지 않는다.
+        """
+        if str(analysis.get("analysis_status", "")).lower() == "invalid":
+            decision = self.decide(
+                action_type="NOTIFY",
+                threat_level=analysis.get("threat_level"),
+                confidence=analysis.get("confidence"),
+                action_targets=[],
+                llm_action_risk=analysis.get("action_risk"),
+            )
+            reasons = ",".join(str(r) for r in analysis.get("invalid_reasons") or []) or "unspecified"
+            return replace(decision, reasons=decision.reasons + (f"analysis_invalid:{reasons}",))
         return self.decide(
             action_type=analysis.get("action_type"),
             threat_level=analysis.get("threat_level"),

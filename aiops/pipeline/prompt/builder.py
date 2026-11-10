@@ -70,8 +70,8 @@ MAX_PROMPT_CHARS = 6000  # ← 이 줄 추가
 
 class PromptBuilder:
     def build(self, alert, metrics: dict, logs: list[dict], container_name: str | None = None,
-              network=None) -> dict:
-        """system + user 프롬프트 딕셔너리 반환"""
+              network=None, **_v2_only) -> dict:
+        """system + user 프롬프트 딕셔너리 반환. v2 전용 인자(rule, received_at, log_meta)는 쓰지 않는다."""
         user_content = self._build_user(alert, metrics, logs, container_name, network)
         return {
             "system": SYSTEM_PROMPT,
@@ -145,3 +145,13 @@ class PromptBuilder:
         except Exception as e:
             logger.warning(f"[PromptBuilder] network context 요약 실패, 섹션 생략: {e!r}")
             return None
+
+
+def make_builder(mode: str):
+    """PROMPT_BUILDER 값 -> builder. legacy 는 위 PromptBuilder(전후 비교용으로 그대로 둔다)."""
+    if mode == "legacy":
+        return PromptBuilder()
+    if mode == "v2":
+        from prompt.builder_v2 import PromptBuilderV2
+        return PromptBuilderV2()
+    raise ValueError(f"PROMPT_BUILDER must be legacy or v2 (got {mode!r})")

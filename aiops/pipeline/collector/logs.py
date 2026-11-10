@@ -15,8 +15,12 @@ class LogsCollector:
         self.url = loki_url
         self._transport = transport
 
-    async def fetch(self, ctx: CorrelationContext, limit: int = 200) -> list[dict]:
-        """ctx.service의 [ctx.start, ctx.end] 구간 로그 수집"""
+    async def fetch(self, ctx: CorrelationContext, limit: int = 200,
+                    direction: str = "forward") -> list[dict]:
+        """
+        ctx.service의 [ctx.start, ctx.end] 구간 로그 수집. 반환은 항상 시각 오름차순.
+        direction=backward 면 limit 에 걸려도 최신 줄이 남는다 (v2 경보 분석).
+        """
 
         # service를 모르면 조회하지 않는다 (잘못된 identity로 엉뚱한 로그를 가져오지 않기 위해)
         if not ctx.service:
@@ -30,7 +34,7 @@ class LogsCollector:
                     "start": ctx.start_ns,
                     "end":   ctx.end_ns,
                     "limit": limit,
-                    "direction": "forward",
+                    "direction": direction,
                 },
             )
             data = resp.json()

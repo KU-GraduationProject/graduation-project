@@ -10,7 +10,7 @@ AlertManager 웹훅 수신 → 데이터 수집 → 프롬프트 조립 → LLM 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime, timedelta, timezone
 from collections import deque
 import json
@@ -23,10 +23,12 @@ _DOCKER_UDS = "/var/run/docker.sock"
 from collector.metrics import MetricsCollector
 from collector.logs import LogsCollector
 from collector.network import NetworkCollector
+from collector.rules import RulesCollector
 from correlation import CorrelationContext, MONITORED_SERVICES, parse_target_map, resolve_service
-from prompt.builder import PromptBuilder
+from prompt.builder import make_builder
 from prompt.log_line import render_log_line
-from schemas.llm_output import LLMAnalysisResult
+from schemas.actions import ACTION_TYPES
+from schemas.llm_output import LLMAnalysisResult, output_schema, parse_analysis
 from security.service_auth import build_headers as build_service_auth_headers
 from config import settings
 
@@ -67,6 +69,8 @@ app = FastAPI(title="AIOps Pipeline", version="0.1.0", lifespan=lifespan)
 
 # ─── AlertManager 웹훅 스키마 ───────────────────────────
 class AlertLabel(BaseModel):
+    # 룰이 붙인 라벨(name, category, dst_ip …)을 버리지 않는다 — v2 프롬프트 ALERT 섹션과 룰 값 조회에 쓴다
+    model_config = ConfigDict(extra="allow")
     alertname: str
     severity: str | None = None
     instance: str | None = None
@@ -89,7 +93,8 @@ class AlertManagerWebhook(BaseModel):
 metrics_collector = MetricsCollector(settings.prometheus_url)
 logs_collector    = LogsCollector(settings.loki_url)
 network_collector = NetworkCollector(settings.loki_url)
-prompt_builder    = PromptBuilder()
+rules_collector   = RulesCollector(settings.prometheus_url, settings.loki_url)
+prompt_builder    = make_builder(settings.prompt_builder)
 # 원격 배포: alert 대상 이름 -> canonical service (로컬 Docker에 Leafy 컨테이너가 없다)
 _target_map       = parse_target_map(settings.target_service_map)
 
@@ -249,7 +254,7 @@ async def receive_alert(payload: AlertManagerWebhook, background_tasks: Backgrou
     if not firing_alerts:
         return {"message": "resolved alerts, skip"}
 
-    background_tasks.add_task(analyze_alerts, firing_alerts)
+    background_tasks.add_task(analyze_alerts, firing_alerts, datetime.now(timezone.utc))
     return {"message": f"{len(firing_alerts)} alert(s) queued for analysis"}
 
 
@@ -272,7 +277,14 @@ async def _resolve_top_cpu_container() -> str | None:
     return None
 
 
-async def analyze_alerts(alerts: list[Alert]):
+# v2 로그 조회: [startsAt - 룰 시간 창 - 여유, 경보 수신 시각]. 룰을 모르면 기본 창을 쓴다.
+LOG_WINDOW_MARGIN = timedelta(seconds=60)
+LOG_WINDOW_DEFAULT = timedelta(minutes=5)
+LOG_FETCH_LIMIT = 200
+
+
+async def analyze_alerts(alerts: list[Alert], received_at: datetime | None = None):
+    received_at = received_at or datetime.now(timezone.utc)
     now = time.time()
     expired = [k for k, ts in _recent_alerts.items() if now - ts > DEDUP_WINDOW_SEC * 2]
     for k in expired:
@@ -301,15 +313,7 @@ async def analyze_alerts(alerts: list[Alert]):
             # [FIX] 컨테이너 없음 → Loki 기록만, Slack/Remediation 스킵
             if not container_name or container_name == "unknown":
                 logger.warning(f"[Pipeline] 컨테이너 정보 없음, 스킵: {alert.labels.alertname}")
-                fallback_result = LLMAnalysisResult(
-                    root_cause="컨테이너 정보 없음 — 수동 확인 필요",
-                    action_type="NONE",
-                    action_targets=[],
-                    action_description="manual investigation required",
-                    threat_level="medium",
-                    evidence=[],
-                    confidence=0.0,
-                )
+                fallback_result = LLMAnalysisResult.invalid(["no_target_container"])
                 entry = {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "alert_name": alert.labels.alertname,
@@ -336,11 +340,27 @@ async def analyze_alerts(alerts: list[Alert]):
             service, runtime = await resolve_service(container_name, target_map=_target_map)
             if not service:
                 logger.warning(f"[Pipeline] service 해석 실패, app log 조회 생략: {container_name}")
-            ctx = CorrelationContext.around(
-                service, alert_time, timedelta(minutes=5),
-                container_name=container_name, runtime=runtime,
-            )
-            logs = await logs_collector.fetch(ctx)
+            rule, log_meta = None, None
+            if settings.prompt_builder == "v2":
+                labels = {k: v for k, v in alert.labels.model_dump().items() if v is not None}
+                rule = await rules_collector.fetch(alert.labels.alertname, labels, alert_time)
+                window = (timedelta(seconds=rule.window_seconds) if rule.window_seconds
+                          else LOG_WINDOW_DEFAULT)
+                ctx = CorrelationContext(
+                    service=service, start=alert_time - window - LOG_WINDOW_MARGIN,
+                    end=max(received_at, alert_time), anchor=alert_time,
+                    container_name=container_name, runtime=runtime,
+                )
+                # 최신 우선: limit 에 걸려도 경보 직전 줄이 남는다 (forward 는 창 앞부분만 남았다)
+                logs = await logs_collector.fetch(ctx, limit=LOG_FETCH_LIMIT, direction="backward")
+                log_meta = {"start": ctx.start, "end": ctx.end, "limit": LOG_FETCH_LIMIT}
+                logger.info(f"[Pipeline] rule context: {rule.as_dict()}")
+            else:
+                ctx = CorrelationContext.around(
+                    service, alert_time, timedelta(minutes=5),
+                    container_name=container_name, runtime=runtime,
+                )
+                logs = await logs_collector.fetch(ctx)
             # Network Context (best-effort, 예외를 던지지 않는다). 프롬프트에는 요약만 들어간다 (#11).
             network = await network_collector.fetch(ctx)
             logger.info(
@@ -355,7 +375,12 @@ async def analyze_alerts(alerts: list[Alert]):
                 logs=logs,
                 container_name=container_name,
                 network=network,
+                rule=rule,
+                received_at=received_at,
+                log_meta=log_meta,
             )
+            if prompt.get("truncated"):
+                logger.warning(f"[Pipeline] 프롬프트 섹션 잘림: {prompt.get('sections')}")
 
             # 3. LLM 호출
             async with _llm_semaphore:
@@ -374,13 +399,13 @@ async def analyze_alerts(alerts: list[Alert]):
             # 5. Loki 푸시
             await push_to_loki(entry)
 
-            # [FIX] LLM 파싱 실패 fallback이면 remediation 스킵 → Slack 노이즈 차단
-            if result.confidence == 0.0 and result.action_type == "NONE":
+            # 분석 실패(invalid)도 전달한다 — action_type=NOTIFY 라 사람에게 "분석 실패" 로 알리고,
+            # 정책 엔진은 analysis_status=invalid 를 보고 자동 조치를 하지 않는다.
+            if result.analysis_status == "invalid":
                 logger.warning(
-                    f"[Pipeline] LLM 파싱 실패 fallback — remediation 스킵: "
+                    f"[Pipeline] LLM 분석 실패 {result.invalid_reasons} — NOTIFY 로 전달: "
                     f"{alert.labels.alertname} / {container_name}"
                 )
-                continue
 
             # 6. Remediation 전달 (여기서 Slack 전송됨)
             await forward_to_remediation(alert, result)
@@ -402,7 +427,7 @@ SCHEMA:
   "issues": ["<issue description>", ...],
   "affected_containers": ["<container name>", ...],
   "recommendation": "<one sentence action>",
-  "action_type": "<RESTART|ISOLATE|SCALE|NOTIFY|NONE>",
+  "action_type": "<""" + "|".join(ACTION_TYPES) + """>",
   "action_targets": ["<container name>", ...],
   "threat_level": "<low|medium|high|critical>",
   "confidence": <0.0-1.0>
@@ -684,8 +709,12 @@ def _llm_options() -> dict:
     return options
 
 
-async def _ollama_chat(client: httpx.AsyncClient, system: str, user: str) -> str:
-    """Ollama /api/chat 1회 호출 → message.content. 모델·options·사용량 로그를 여기서 한 번에 처리한다."""
+async def _ollama_chat(client: httpx.AsyncClient, system: str, user: str,
+                       fmt: str | dict = "json") -> dict:
+    """
+    Ollama /api/chat 1회 호출 → 응답 dict (message.content, done_reason, prompt_eval_count …).
+    모델·options·사용량 로그를 여기서 한 번에 처리한다. fmt 는 "json" 또는 JSON 스키마.
+    """
     options = _llm_options()
     response = await client.post(
         f"{settings.ollama_url}/api/chat",
@@ -695,7 +724,7 @@ async def _ollama_chat(client: httpx.AsyncClient, system: str, user: str) -> str
                 {"role": "system", "content": system},
                 {"role": "user",   "content": user},
             ],
-            "format": "json",
+            "format": fmt,
             "stream": False,
             "options": options,
         },
@@ -712,15 +741,15 @@ async def _ollama_chat(client: httpx.AsyncClient, system: str, user: str) -> str
         logger.warning(
             f"[LLM] 입력 토큰이 num_ctx 의 90% 이상 ({prompt_tokens}/{options['num_ctx']}) — 프롬프트 잘림 위험"
         )
-    return data["message"]["content"]
+    return data
 
 
 async def _call_llm_raw(prompt: dict) -> dict | None:
     """주기적 스캔 전용 LLM 호출 — 결과를 dict로 반환"""
     try:
         async with httpx.AsyncClient(timeout=settings.llm_timeout) as client:
-            raw = await _ollama_chat(client, prompt["system"], prompt["user"])
-            return json.loads(raw)
+            data = await _ollama_chat(client, prompt["system"], prompt["user"])
+            return json.loads(data["message"]["content"])
     except Exception as e:
         logger.error(f"[Periodic] LLM 호출 실패: {e}")
         return None
@@ -899,8 +928,15 @@ async def push_timeline_event(event: str, fields: dict) -> None:
 
 
 async def call_llm(prompt: dict) -> LLMAnalysisResult:
-    """Ollama API 호출 → JSON 파싱 (최대 2회 시도)"""
+    """
+    Ollama 호출 → 엄격 검증 (최대 2회 시도). format 에 JSON 스키마를 넘겨 형식을 강제한다.
+    두 번 다 실패하면 invalid 결과(NOTIFY, 분석 실패)를 돌려준다 — NONE 으로 메우지 않는다.
+    입력이 잘린 경우(truncated)는 같은 프롬프트로 다시 해도 같으므로 재시도하지 않는다.
+    """
+    evidence_ids = prompt.get("evidence_ids")   # legacy 프롬프트는 증거 ID 가 없다 (None)
+    fmt = output_schema(evidence_ids)
     last_raw: str | None = None
+    result = LLMAnalysisResult.invalid(["llm_call_failed"])
 
     for attempt in range(2):
         user_content = prompt["user"]
@@ -909,15 +945,22 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
 
         try:
             async with httpx.AsyncClient(timeout=settings.llm_timeout) as client:
-                last_raw = await _ollama_chat(client, prompt["system"], user_content)
-                raw = json.loads(last_raw)
-                return LLMAnalysisResult(**raw)
+                data = await _ollama_chat(client, prompt["system"], user_content, fmt=fmt)
+            last_raw = (data.get("message") or {}).get("content")
+            result = parse_analysis(
+                last_raw, evidence_ids=evidence_ids,
+                done_reason=data.get("done_reason"), prompt_eval_count=data.get("prompt_eval_count"),
+                num_ctx=settings.llm_num_ctx, num_predict=settings.llm_num_predict,
+            )
+            if result.analysis_status == "valid":
+                return result
+            logger.error(f"[Pipeline] LLM 응답 검증 실패 (시도 {attempt + 1}/2): "
+                         f"{result.invalid_reasons} | 원본: {last_raw!r}")
+            if "truncated" in result.invalid_reasons:
+                break
         except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
             logger.error(f"[Pipeline] LLM 호출 실패 (시도 {attempt + 1}/2): {e}")
-        except json.JSONDecodeError as e:
-            logger.error(f"[Pipeline] JSON 파싱 실패 (시도 {attempt + 1}/2): {e} | 원본: {last_raw!r}")
-        except ValidationError as e:
-            logger.error(f"[Pipeline] LLM 응답 스키마 불일치 (시도 {attempt + 1}/2): {e}")
+            result = LLMAnalysisResult.invalid(["llm_call_failed"])
 
         if attempt == 0:
             await asyncio.sleep(5)
@@ -930,7 +973,9 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
                 json={
                     "streams": [{
                         "stream": {"job": "aiops-llm-error"},
-                        "values": [[ts_ns, json.dumps({"raw_response": last_raw}, ensure_ascii=False)]],
+                        "values": [[ts_ns, json.dumps(
+                            {"raw_response": last_raw, "invalid_reasons": result.invalid_reasons},
+                            ensure_ascii=False)]],
                     }]
                 },
                 headers={"Content-Type": "application/json"},
@@ -938,15 +983,7 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
     except Exception as e:
         logger.warning(f"[Pipeline] LLM 에러 Loki 푸시 실패 (무시): {e}")
 
-    return LLMAnalysisResult(
-        root_cause="LLM 응답 파싱 실패 — 수동 확인 필요",
-        action_type="NONE",
-        action_targets=[],
-        action_description="manual investigation required",
-        threat_level="medium",
-        evidence=[],
-        confidence=0.0,
-    )
+    return result
 
 
 async def forward_to_remediation(alert: Alert, result: LLMAnalysisResult):
