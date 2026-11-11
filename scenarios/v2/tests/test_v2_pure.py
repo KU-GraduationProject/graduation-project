@@ -372,50 +372,20 @@ class TestF2c(unittest.TestCase):
         self.assertFalse(f2c.connections_recovered(after=40, baseline=10))
 
     def test_per_run_marker_distinguishes_rounds(self):
-        # (리뷰 3) 라운드별 표식 — 병렬 실행을 구분한다.
         self.assertEqual(f2c.run_mark("abc123"), "connhold-abc123")
         self.assertNotEqual(f2c.new_run_id(), f2c.new_run_id())
-        mark = f2c.run_mark("r1")
-        other = f2c.run_mark("r2")
-        inner = f2c.hold_inner_sh(120, mark)
-        self.assertIn("mark=" + mark, inner)
-        # 정리·watchdog 은 이 라운드 표식만 겨냥(다른 라운드 미포함).
-        self.assertIn("mark=" + mark, f2c.pkill_cleanup_sh(mark))
-        self.assertIn("mark=" + mark, f2c.watchdog_restore_sh(mark))
-        self.assertNotIn(other, f2c.watchdog_restore_sh(mark))
-        self.assertIn(mark, f2c.terminate_sql(mark))
+        self.assertLess(len(f2c.run_mark(f2c.new_run_id()) + "-probe"), 64)
 
-    def test_main_holds_before_cleanup(self):
-        # (리뷰 1) main 은 inject 직후 바로 cleanup 하지 않고 유지 시간만큼 점유를 유지한다.
-        self.assertGreater(f2c.hold_seconds_for("strong"), f2c.hold_seconds_for("weak"))
-        src = open(f2c.__file__, encoding="utf-8").read()
-        m = src[src.index("def main("):]
-        self.assertLess(m.index("inject("), m.index("time.sleep(hold_seconds_for"))
-        self.assertLess(m.index("time.sleep(hold_seconds_for"), m.index("cleanup("))
+    def test_pg17_reservations(self):
+        self.assertEqual(f2c.usable_slots(100, 3, 20, reserved_connections=5), 72)
+        self.assertTrue(f2c.reserved_untouched(92, 100, 3, 5))
+        self.assertFalse(f2c.reserved_untouched(93, 100, 3, 5))
 
-    def test_hold_uses_local_socket_no_credentials(self):
-        inner = f2c.hold_inner_sh(120, f2c.run_mark("x"))
-        self.assertIn("pg_sleep", inner)
-        self.assertIn("$POSTGRES_USER", inner)        # 컨테이너 env 로만 참조
-        self.assertNotIn("PGPASSWORD", inner)         # 자격증명 미사용
-        self.assertNotIn("leafy_secret", inner)
-        self.assertEqual(f2c.hold_session_argv(f2c.run_mark("x"))[:3], ["docker", "exec", "-d"])
-
-    def test_cleanup_and_watchdog_need_no_db_connection(self):
-        # 1차 정리·watchdog 은 psql(새 접속) 없이 pkill 로만 동작한다.
-        self.assertIn("pkill", f2c.pkill_cleanup_sh(f2c.run_mark("x")))
-        wd = f2c.watchdog_restore_sh(f2c.run_mark("x"))
-        self.assertIn("pkill", wd)
-        self.assertNotIn("psql", wd)
-
-    def test_no_backend_restart_path(self):
-        # backend 를 재시작하지 않는다(재시작하면 DB 재연결 실패로 악화).
-        wd = f2c.watchdog_restore_sh(f2c.run_mark("x"))
-        self.assertNotIn("restart", wd)
-        self.assertNotIn("leafy-backend", wd)
-        src = open(f2c.__file__, encoding="utf-8").read()
-        self.assertNotIn("docker restart", src)
-        self.assertNotIn("leafy-backend", src)
+    def test_dry_run_has_both_modes_and_no_restart(self):
+        d = f2c.dry_run()
+        self.assertEqual(len(d["modes"]), 2)
+        self.assertFalse(d["restart_backend"])
+        self.assertIn("reserved_connections", d["usable_formula"])
 
     def test_answer_labels(self):
         row = next(r for r in registry.SCENARIO_REGISTRY_V2 if r["id"] == "f2_c_db_pool_exhaustion")
@@ -690,7 +660,6 @@ class TestWatchdogRestore(unittest.TestCase):
         scripts = [
             supervisor.build_watchdog_script(f2a.watchdog_restore_sh(), 10, "/c", "/l"),
             supervisor.build_watchdog_script(s2a.watchdog_restore_sh(), 10, "/c", "/l"),
-            supervisor.build_watchdog_script(f2c.watchdog_restore_sh(f2c.run_mark("x")), 10, "/c", "/l"),
             supervisor.build_watchdog_script(f1b.watchdog_restore_sh(), 10, "/c", "/l"),
             supervisor.build_watchdog_script(f3a.watchdog_restore_sh(), 10, "/c", "/l"),
         ]

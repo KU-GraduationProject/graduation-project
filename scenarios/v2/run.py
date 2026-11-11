@@ -76,6 +76,12 @@ def run(scenario_id: str, dry_run: bool, variant_id: str | None = None,
             print("  (이 모듈은 dry_run() 미제공)")
         return 0
 
+    if scenario_id == "f2_c_db_pool_exhaustion":
+        # Both entry paths own the entire inject -> verified hold -> cleanup lifecycle.
+        kw = ({k: inst.params[k] for k in ("strength", "hold_seconds") if k in inst.params}
+              if inst is not None else {})
+        return mod.main(**kw)
+
     # 변형 파라미터 중 기존 주입기가 받는 축(strength/mode)만 전달. 나머지 축(타이밍 등)은
     # 측정 PC 런타임에서 처리한다(VARIANTS 참조).
     if inst is not None and hasattr(mod, "inject"):

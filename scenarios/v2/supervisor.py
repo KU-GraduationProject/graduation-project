@@ -14,7 +14,17 @@ from __future__ import annotations
 
 import os
 import shlex
+import sys
 import tempfile
+
+
+def detached_process_kwargs(platform: str | None = None) -> dict:
+    """Independent Python/traffic workers on POSIX and Windows (no host shell)."""
+    import subprocess
+    if (platform or os.name) == "nt":
+        return {"creationflags": (getattr(subprocess, "DETACHED_PROCESS", 0x8)
+                                  | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200))}
+    return {"start_new_session": True}
 
 
 # --------------------------------------------------------------------------- #
@@ -98,6 +108,13 @@ def cancel_watchdog(handle: dict | None) -> None:
     try:
         open(handle["cancel"], "w", encoding="utf-8").close()
         print(f"[watchdog] tag={handle.get('tag')} 취소(정상 cleanup 완료)", flush=True)
+        proc = handle.get("process")
+        if proc is not None:
+            import subprocess
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                pass  # It may be finishing a restore query; never kill recovery mid-query.
     except Exception as exc:  # noqa: BLE001
         print(f"[watchdog] 취소 파일 생성 실패(무시): {exc}", flush=True)
 
@@ -115,7 +132,8 @@ def build_traffic_command(traffic_gen_path: str, base_url: str, run_dir: str,
                           control: str = "none", duration: float | None = None) -> list[str]:
     """정상 모드 배경 트래픽 명령(tools/measurement/traffic_gen.py 인터페이스).
     요청·상태(API 실패 포함)는 traffic_gen 이 run_dir/requests.jsonl 에 기록한다."""
-    cmd = ["python3", "-I", traffic_gen_path, "--base", base_url, "--dir", run_dir,
+    python = sys.executable if os.name == "nt" else "python3"
+    cmd = [python, "-I", traffic_gen_path, "--base", base_url, "--dir", run_dir,
            "--control", control]
     if duration is not None:
         cmd += ["--duration", str(duration)]
@@ -137,10 +155,10 @@ def spawn_background_traffic(traffic_gen_path: str | None, base_url: str,
     run_dir = run_dir or os.path.join(resolve_work_dir(), "bg_traffic")
     os.makedirs(run_dir, exist_ok=True)
     cmd = build_traffic_command(traffic_gen_path, base_url, run_dir, control, duration)
-    proc = subprocess.Popen(cmd, start_new_session=True,
+    proc = subprocess.Popen(cmd, **detached_process_kwargs(),
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print(f"[bg] 배경 트래픽 시작 pid={proc.pid} base={base_url} dir={run_dir}", flush=True)
-    return {"pid": proc.pid, "cmd": cmd, "run_dir": run_dir}
+    return {"pid": proc.pid, "process": proc, "cmd": cmd, "run_dir": run_dir}
 
 
 def stop_background_traffic(handle: dict | None) -> None:
@@ -149,7 +167,20 @@ def stop_background_traffic(handle: dict | None) -> None:
         return
     try:
         import signal
-        os.killpg(os.getpgid(handle["pid"]), signal.SIGTERM)
+        import subprocess
+        proc = handle.get("process")
+        if proc is not None and proc.poll() is not None:
+            proc.wait()
+            return
+        if os.name == "nt":
+            # Windows has no killpg. Include traffic worker descendants in its shutdown.
+            subprocess.run(["taskkill", "/PID", str(handle["pid"]), "/T", "/F"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=5, check=False)
+        else:
+            os.killpg(os.getpgid(handle["pid"]), signal.SIGTERM)
+        if proc is not None:
+            proc.wait(timeout=5)
         print("[bg] 배경 트래픽 종료", flush=True)
     except Exception as exc:  # noqa: BLE001
         print(f"[bg] 배경 트래픽 종료 실패(무시): {exc}", flush=True)
