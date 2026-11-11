@@ -1,0 +1,50 @@
+{
+  "verified_at_utc": "2026-11-10T17:22:21.400871+00:00",
+  "branch": "test/m5b-runtime-acceptance",
+  "head": "92e70dbf8b9af14b9376df3fde3a7fb4db7e3e50",
+  "source_snapshot_file_count": 43,
+  "source_changed_files": [],
+  "protected_worktree_input_count": 40,
+  "protected_worktree_changed_files": [],
+  "tracked_changed_files": [],
+  "checks": {
+    "m5_bundle_check": "PASS",
+    "regression_counts": {
+      "PASS": 106,
+      "SKIP": 0,
+      "FAIL": 0
+    },
+    "matrix_consistency": "PASS",
+    "privacy_ipv4_or_url_credentials_files": [],
+    "broken_local_doc_links": [],
+    "trailing_whitespace_files": []
+  },
+  "owned_file_sha256": {
+    "docs/rulepack/M5_B_RUNTIME_ACCEPTANCE.md": "dfd754775bc2fe6722ad951f2d0be6af95bd39a6b120a8b3a815095816112b5a",
+    "tools/rulepack/acceptance_m5b.py": "ee8e0ac08b9d09d5663e4d8e4733c532a677b460cd1ed088fab3e1fa16c2e3ce",
+    "tools/rulepack/tests/test_acceptance_m5b.py": "317e6ca862e0d6ea134584cdd2de9841dacb237ff49710e8c0e1854ff39dc0c9"
+  },
+  "evidence_sha256": {
+    "docs/rulepack/m5b/PHASE_B_REVALIDATION.md": "e7dfde821713045c94487a3e688fc18aab6a78e1d4534516affe38edfbea566b",
+    "docs/rulepack/m5b/acceptance_matrix.json": "b0bfe119d0b2d635962ef8b874c6e354739f7592ad309a0653d00dcda353c72b",
+    "docs/rulepack/m5b/access_context.json": "f9a5fbe7574fee1ed558d7838a91babbc89056d8423f61c54d6d566564f60b60",
+    "docs/rulepack/m5b/existing_rca_metadata.json": "eee2ed4f18cc013c93701ba12df894184df3ec76f9ce069ae66178f8b273ac3a",
+    "docs/rulepack/m5b/regression.json": "5edca523ce2bd56a2524ce0e15a86363b35e52a8cb580fc30605e9964458916f",
+    "docs/rulepack/m5b/runtime.initial.json": "054460a12530d47467040b876d9b4f3e604e4c2974c652ed37ceb0674110d558",
+    "docs/rulepack/m5b/runtime.json": "78ce9fb07dd8f64e488764a1288f6330cc523697b788c50b8986c2ea776a81e4",
+    "docs/rulepack/m5b/runtime.network.json": "9aa3c906c446db7b170d4282c37150bc56c7f5a95eea25dc3c5d3eba3577e121",
+    "docs/rulepack/m5b/source_snapshot.json": "20953e1b163db14d06cc2f3e5ad35c1e53a694460f29011ca56ec728cf8004d7",
+    "docs/rulepack/m5b/static_contract.json": "f37f69ee626cc2e136126c1acffef24792a9de5910404810b04c63c126d1f420"
+  },
+  "a_b_integration_performed": false,
+  "deployment_performed": false,
+  "docker_invoked": false,
+  "alert_post_performed": false,
+  "scenario_injection_performed": false,
+  "heldout_read": false,
+  "git_commit_push_pr_performed": false,
+  "candidate_runtime_queries": 0,
+  "candidate_e2e_verified": 0,
+  "m5b_acceptance": "INCOMPLETE",
+  "normal_status": "NORMAL_UNCONFIRMED"
+}

@@ -1,0 +1,98 @@
+{
+  "recorded_at_utc": "2026-11-10T15:23:53.640451+00:00",
+  "git_head": "92e70dbf8b9af14b9376df3fde3a7fb4db7e3e50",
+  "normal_window": null,
+  "data_kind": "none",
+  "actual_measurement_series": 0,
+  "normal_status": "NORMAL_UNCONFIRMED",
+  "threshold_candidates": [],
+  "query_count": 22,
+  "raw_probe_count": 7,
+  "api_evidence_file": "availability.json",
+  "analysis_file": "current_run/analysis.json",
+  "rule_changes_applied": false,
+  "infra_changes_applied": false,
+  "test_data_used_for_baseline": false,
+  "tool_sha256": "02e30332fae4ddb6358714e3fd0bce6f763eec090578a9bb52671bd764464442",
+  "test_sha256": "f7c9f5c845506783514ef2071c0a3bb6c4b06946285d9825550ade4fda480fbf",
+  "config_sha256": "283ee09dabf2b50dc232a48085e40f3e1954ecdfe973625505af21e17b08fcd0",
+  "plan_sha256": "762acca02c6aaf78a605c9b42cc764ad8616523c2b78ae6eb9e3e31951fd8ff8",
+  "preserved_file_sha256": {
+    "aiops/pipeline/correlation.py": "fdea56fcc9624a8609e8a5036290ac44ac7441f5cd9ecc460664950b7233d1d9",
+    "aiops/pipeline/main.py": "965aa8491699236b5e524f19cafd5ac9347d829dfc5fd991b0cf725588e53e25",
+    "docker-compose.aiops.yml": "0cd74be9fc88ea0fcc89efce6ce6fa5688d07a40000546f8f1a83ee8ab6439de",
+    "docker-compose.yml": "5810e2a9840938fd693f2e0f3628839460fd11c7bb19a666071190af73a0dd19",
+    "docs/rulepack/M1_OBSERVABILITY_AUDIT.md": "6a6bc9dea1fa9c7531f3b9e4740653e9f78709cfce3dfc1e1c8fa304ebc5d7ba",
+    "docs/rulepack/M2_2_INFRA_GENERALIZATION.md": "d30ab0f821a522b59fe51876cfaac242e597d87f1f4f151204caaaf34cc56268",
+    "docs/rulepack/M2_3_RESOURCE_GENERALIZATION.md": "5a91d0fa98ea3576079b9301d3212ba61cbf64d133841c54c22e329bdad276c8",
+    "docs/rulepack/M2_STATIC_GENERALIZATION.md": "9549bbae42920577b878436366fcabdbe9e524e97dc3625fc4d17687bd3fb499",
+    "docs/rulepack/M3_NEW_DETECTION_RULES.md": "2e1921a9a9781c2ec22e6a3d39cf00879ee811db20ee80c7a1bca90e7355850d",
+    "docs/rulepack/OBSERVABILITY_INFRA_MILESTONE.md": "9026c770f80f4dfdf371123eda26de576852947229ee20dc8725fa41d2f6fe96",
+    "docs/rulepack/OI_01_RUNTIME_INVENTORY.md": "3b333b4708ef90791b5f1a70a8d9cfd16dbd382f7a67fd3e0dfd96c5677227a6",
+    "docs/rulepack/m2/generated/loki.rules.yml": "68d49782dc6a7aa95a50cb4748a6c69b811f5d8b238813c92645e5db8ab36f25",
+    "docs/rulepack/m2/generated/prometheus.infra.rules.yml": "02403acbd975eae750771d6d10858031511fc041f49de0bdf682e9770f6a5df4",
+    "docs/rulepack/m2/generated/prometheus.resources.rules.yml": "ed336d2a6b8081bdb35b0a4e4b9c64db5d38caa02f91b2ffd066c03451da55d6",
+    "docs/rulepack/m2/generated/prometheus.rules.yml": "670479fcaaf12e67464fe7587390c42f3aa17746a02f7ae529b4d7663eb9ec14",
+    "docs/rulepack/m2/infra_targets.yml": "7678abd5d46850955a985c8d38e7214def27a82213c88330f8220df37e1a7695",
+    "docs/rulepack/m2/resource_targets.yml": "8f1250d1f84168a574296bf84a7f5a20e1038a94fb4a3b80ef7a7a437ad4b115",
+    "docs/rulepack/m2/targets.yml": "d267ea429315fa37f99ba751b61b5736a4b189d014c8554279e1f87f31594672",
+    "docs/rulepack/m3/generated/loki.rules.yml": "01d88bce66f5df4828c85d5300a079170785d4cf0bc962083cef74f610f273c0",
+    "docs/rulepack/m3/targets.yml": "9266bbd3bd3016691135047eb044124e6747b88e927735a74aa57c95685ff181",
+    "leafy/fluentd/Dockerfile": "b999148b3005ec0ef191d77b1a8e6018832aee092d80d87b54e3f768c8b981b6",
+    "leafy/fluentd/fluent.conf": "dad618d301025aa34a72fef9f3d0bd541a4b8afbbe4cfd1b573cf66ed78f58be",
+    "leafy/fluentd/plugins/filter_leafy_docker_log.rb": "1cfe09ccec34a5ae70484e4a2f4e7f864deabafbfe556cd7276789be3c7f816e",
+    "leafy/fluentd/plugins/filter_leafy_postgres_log.rb": "177797eccb7021e00335958799ddab2b93b2e63e48f1f424cae86e992394e6c7",
+    "leafy/fluentd/plugins/leafy_log_size.rb": "492121d8c5331aaef7087e534cd027cc018fb3604ed47c0edc9416bbbbb28d16",
+    "leafy/fluentd/test/test_filter_leafy_log.rb": "55e8a29c141460aceb89c44b3858ab4313713c244cc06659a3401aa80662f1d4",
+    "monitoring/loki/loki-config.yml": "e9488d51cd9145522030358001e8699cf22d3f73002dfd1b06586a7f458d9a4f",
+    "monitoring/loki/rules/fake/network-allowlist.yml": "d693dd8bd02efdbe279bf34c8b7f3520160aa180803d8595af0149fc59baac43",
+    "monitoring/loki/rules/fake/security-rules.yml": "9d0b46a6f1843f3ab99778aefcfee4800729dfa5ba79215ee5c8a3f4a0e3d391",
+    "monitoring/prometheus/prometheus.aiops.yml": "b5f15232156b121b2882ab31fadef2e0bdaf3ea643b25fbeb08e8eb43ba55ecc",
+    "monitoring/prometheus/prometheus.yml": "b4fb6a660ddc38ff8ff56ed0ddee469db1beb07aee86d51e16e30e2de3b79d9f",
+    "monitoring/prometheus/rules/alert.rules.yml": "3e5e391abc161ec0d5d5f5261f216b5493c517f67d99d3c2f32cdeea59bc2e65",
+    "monitoring/prometheus/targets/README.md": "f8013c71089be740db0da28afb78a01d39900db5cfc198d97ffe1cd59bfda82b",
+    "monitoring/prometheus/targets/leafy-backend.yml.example": "e1fc0e7af5ded8086676d866844f2d8f6882483895a44a0e22c0ffc2f8506d1d",
+    "monitoring/prometheus/targets/nginx-exporter.yml.example": "6be28392250305d9d4008810f18ef9ce19f5c65b721573ee99d15fdc7c308539",
+    "monitoring/prometheus/targets/postgres-exporter.yml.example": "dd23ebc60abc53b077ad92d62760dc556f4c9cf637128008d7e1826db3181854",
+    "tools/rulepack/generate_m2.py": "4a028d7565c3d3bc638c5833b5a15655fc0e66e21255747c6a8488cb947bf77e",
+    "tools/rulepack/generate_m2_2.py": "dacf243757e5198233a2631d5586dd1268295dee7749f3aa01f07c9e856c4b6e",
+    "tools/rulepack/generate_m2_3.py": "4342fd74ea0847235fa540755e57b57c93515a1f82459c41f160ed681cc48228",
+    "tools/rulepack/generate_m3.py": "8a3e7eae1ebf9a84e90ef41e5c0c6535058c4df7bb573e3bdd00193d89ebba38",
+    "tools/rulepack/tests/test_generate_m2.py": "acd57ddab6b2bd5026c7a0a7d19b15c0bf00876369cd5dd5e1deaf5970d99642",
+    "tools/rulepack/tests/test_generate_m2_2.py": "9ced73230909e14b23b17ab2bbc2ce01acf3ab1e6c001be968e650941048fc37",
+    "tools/rulepack/tests/test_generate_m2_3.py": "935da54ef7a7f15e0dcb271efec0879d4a8c78b3d9d981240466ae1a43ffab1d",
+    "tools/rulepack/tests/test_generate_m3.py": "59f0eeedc1c4fc38d4bea038b80be7843dc91afa5710a9d562cc00b399ad9a91"
+  },
+  "tests": {
+    "m4": {
+      "passed": 28,
+      "skipped": 0
+    },
+    "all_rulepack": {
+      "passed": 77,
+      "skipped": 0
+    },
+    "validators": {
+      "logcli": "3.7.1",
+      "promtool": "3.7.3"
+    }
+  },
+  "commands": [
+    "python3 tools/rulepack/baseline_m4.py plan --output docs/rulepack/m4/query_plan.json",
+    "python3 tools/rulepack/baseline_m4.py analyze --output docs/rulepack/m4/current_run",
+    "python3 -m unittest discover -s tools/rulepack/tests -v (M2/M3/M4 native validator paths set; PYTHONDONTWRITEBYTECODE=1)"
+  ],
+  "m4_stage": "분석 도구 및 오프라인 검증 완료 / 실측 Baseline 수립 대기",
+  "followup": {
+    "client_date_kst": "2026-11-11",
+    "normal_window_and_evidence_unavailable_user_confirmed": true,
+    "gc_to_jh_observation_delivery": "USER_CONFIRMED",
+    "normal_window_inferred": false,
+    "unconfirmed_percentiles_published": false,
+    "cli_window_options": [
+      "--start",
+      "--end"
+    ],
+    "additional_access_checks": false
+  }
+}

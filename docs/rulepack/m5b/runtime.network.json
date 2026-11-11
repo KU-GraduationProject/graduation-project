@@ -1,0 +1,415 @@
+{
+  "version": 1,
+  "mode": "READ_ONLY_RUNTIME_PROBE",
+  "evaluated_at_utc": "2026-11-10T17:10:40.631100+00:00",
+  "candidate_sha256": {
+    "docs/rulepack/m5/generated/loki.rules.yml": "f96b927313e31492ef0f4daf228562f9bf2851301b022c6cc548e44087527aa6",
+    "docs/rulepack/m5/generated/prometheus.rules.yml": "a44cdf682e38a293595f2492a17f51371f88d88bca80e685ad70dd4a2c8ad96b"
+  },
+  "endpoints": {
+    "prometheus": {
+      "scope": "EXECUTION_HOST_LOOPBACK",
+      "address_redacted": true
+    },
+    "loki": {
+      "scope": "EXECUTION_HOST_LOOPBACK",
+      "address_redacted": true
+    },
+    "alertmanager": {
+      "scope": "EXECUTION_HOST_LOOPBACK",
+      "address_redacted": true
+    },
+    "pipeline": {
+      "scope": "EXECUTION_HOST_LOOPBACK",
+      "address_redacted": true
+    },
+    "ollama": {
+      "scope": "EXECUTION_HOST_LOOPBACK",
+      "address_redacted": true
+    }
+  },
+  "evidence": {
+    "prometheus_targets": {
+      "method": "GET",
+      "path": "/api/v1/targets",
+      "at_utc": "2026-11-10T17:10:40.690184+00:00",
+      "status": "CONNECTION_REFUSED"
+    },
+    "loki_labels": {
+      "method": "GET",
+      "path": "/loki/api/v1/labels",
+      "at_utc": "2026-11-10T17:10:40.692826+00:00",
+      "status": "CONNECTION_REFUSED"
+    },
+    "alertmanager_status": {
+      "method": "GET",
+      "path": "/api/v2/status",
+      "at_utc": "2026-11-10T17:10:40.692950+00:00",
+      "status": "CONNECTION_REFUSED"
+    },
+    "alertmanager_alerts": {
+      "method": "GET",
+      "path": "/api/v2/alerts",
+      "at_utc": "2026-11-10T17:10:40.693053+00:00",
+      "status": "CONNECTION_REFUSED"
+    },
+    "pipeline_health": {
+      "method": "GET",
+      "path": "/health",
+      "at_utc": "2026-11-10T17:10:40.693135+00:00",
+      "status": "HTTP_ERROR",
+      "http_status": 404
+    },
+    "pipeline_schema": {
+      "method": "GET",
+      "path": "/openapi.json",
+      "at_utc": "2026-11-10T17:10:40.706125+00:00",
+      "status": "UNEXPECTED_RESPONSE"
+    },
+    "ollama_tags": {
+      "method": "GET",
+      "path": "/api/tags",
+      "at_utc": "2026-11-10T17:10:40.708385+00:00",
+      "status": "CONNECTION_REFUSED"
+    }
+  },
+  "rules": [
+    {
+      "id": "loki:m5-legacy_security-security-log-alerts:0",
+      "engine": "loki",
+      "alert": "SecretDumpAttempt",
+      "target": "leafy-backend",
+      "static_labels": {
+        "severity": "critical",
+        "category": "security"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "loki:m5-legacy_security-security-log-alerts:1",
+      "engine": "loki",
+      "alert": "SuspiciousProcessExecution",
+      "target": "leafy-backend",
+      "static_labels": {
+        "severity": "critical",
+        "category": "security"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "loki:m5-legacy_security-security-log-alerts:2",
+      "engine": "loki",
+      "alert": "SuspiciousProcessExec",
+      "target": "leafy-backend",
+      "static_labels": {
+        "severity": "critical",
+        "category": "security"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "loki:m5-legacy_security-security-log-alerts:3",
+      "engine": "loki",
+      "alert": "PathTraversalAttempt",
+      "target": "leafy-frontend",
+      "static_labels": {
+        "severity": "critical",
+        "category": "security"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "loki:m5-legacy_security-security-log-alerts:4",
+      "engine": "loki",
+      "alert": "ContainerEscapeAttempt",
+      "target": "leafy-backend",
+      "static_labels": {
+        "severity": "critical",
+        "category": "security"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "loki:m5-legacy_network-network-allowlist-alerts:0",
+      "engine": "loki",
+      "alert": "UnauthorizedDataTransfer",
+      "target": "leafy-backend",
+      "static_labels": {
+        "severity": "critical",
+        "category": "security",
+        "detection": "cumulative"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "loki:m5-legacy_network-network-allowlist-alerts:1",
+      "engine": "loki",
+      "alert": "UnauthorizedTransferEarly",
+      "target": "leafy-backend",
+      "static_labels": {
+        "severity": "critical",
+        "category": "security",
+        "detection": "early"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "loki:m5-m2_logs-m2-static-loki:0",
+      "engine": "loki",
+      "alert": "HighNginxErrorRate",
+      "target": "leafy-frontend",
+      "static_labels": {
+        "severity": "warning",
+        "category": "infra",
+        "rulepack_target": "leafy-web"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "loki:m5-m2_logs-m2-static-loki:1",
+      "engine": "loki",
+      "alert": "VulnerabilityScanningDetected",
+      "target": "leafy-frontend",
+      "static_labels": {
+        "severity": "warning",
+        "category": "security",
+        "rulepack_target": "leafy-web"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "loki:m5-m2_logs-m2-static-loki:2",
+      "engine": "loki",
+      "alert": "UnauthorizedDBAccess",
+      "target": "leafy-db",
+      "static_labels": {
+        "severity": "critical",
+        "category": "security",
+        "rulepack_target": "leafy-postgres"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "loki:m5-m3_logs-m3-new-detection-static:0",
+      "engine": "loki",
+      "alert": "SQLInjection",
+      "target": "leafy-frontend",
+      "static_labels": {
+        "severity": "warning",
+        "category": "security",
+        "rulepack_target": "leafy-web-sqli"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "loki:m5-m3_logs-m3-new-detection-static:1",
+      "engine": "loki",
+      "alert": "DBConnectionLimit",
+      "target": "leafy-db",
+      "static_labels": {
+        "severity": "critical",
+        "category": "infra",
+        "rulepack_target": "leafy-host-postgres-limit"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "prometheus:m5-legacy_metrics-aiops-alerts:0",
+      "engine": "prometheus",
+      "alert": "HighPostgresConnections",
+      "target": "leafy-db",
+      "static_labels": {
+        "severity": "warning",
+        "category": "security"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "prometheus:m5-m2_metrics-m2-static-prometheus:0",
+      "engine": "prometheus",
+      "alert": "HighNginxRequestRate",
+      "target": "leafy-frontend",
+      "static_labels": {
+        "severity": "warning",
+        "category": "security",
+        "rulepack_target": "leafy-web"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "prometheus:m5-m2_infra-m2-2-static-infra:0",
+      "engine": "prometheus",
+      "alert": "HighCpuUsage",
+      "target": "leafy-frontend",
+      "static_labels": {
+        "severity": "warning",
+        "category": "infra",
+        "rulepack_target": "leafy-frontend"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "prometheus:m5-m2_infra-m2-2-static-infra:1",
+      "engine": "prometheus",
+      "alert": "HighCpuUsage",
+      "target": "leafy-backend",
+      "static_labels": {
+        "severity": "warning",
+        "category": "infra",
+        "rulepack_target": "leafy-backend"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "prometheus:m5-m2_infra-m2-2-static-infra:2",
+      "engine": "prometheus",
+      "alert": "ContainerRestarted",
+      "target": "leafy-backend",
+      "static_labels": {
+        "severity": "critical",
+        "category": "infra",
+        "rulepack_target": "leafy-backend"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "prometheus:m5-m2_infra-m2-2-static-infra:3",
+      "engine": "prometheus",
+      "alert": "HighCpuUsage",
+      "target": "leafy-db",
+      "static_labels": {
+        "severity": "warning",
+        "category": "infra",
+        "rulepack_target": "leafy-db"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "prometheus:m5-m2_infra-m2-2-static-infra:4",
+      "engine": "prometheus",
+      "alert": "HighCpuUsage",
+      "target": "leafy-minio",
+      "static_labels": {
+        "severity": "warning",
+        "category": "infra",
+        "rulepack_target": "leafy-minio"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "prometheus:m5-m2_resources-m2-3-static-resources:0",
+      "engine": "prometheus",
+      "alert": "HighMemoryUsage",
+      "target": "{{ $labels.name }}",
+      "static_labels": {
+        "severity": "warning",
+        "category": "infra",
+        "rulepack_source": "integrated"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    },
+    {
+      "id": "prometheus:m5-m2_resources-m2-3-static-resources:1",
+      "engine": "prometheus",
+      "alert": "HighNetworkReceive",
+      "target": "{{ if $labels.name }}{{ $labels.name }}{{ else }}unknown (host-level){{ end }}",
+      "static_labels": {
+        "severity": "warning",
+        "category": "security",
+        "rulepack_source": "integrated"
+      },
+      "scope_acceptance": "UNVERIFIED",
+      "pipeline_resolution": "UNVERIFIED",
+      "alert_e2e": "UNVERIFIED",
+      "inputs": "UNVERIFIED_API_UNAVAILABLE",
+      "evaluation": "UNVERIFIED_API_UNAVAILABLE"
+    }
+  ],
+  "deployment_performed": false,
+  "actual_alert_e2e_verified": false,
+  "normal_status": "NORMAL_UNCONFIRMED",
+  "limits": "Instant predicate evaluation and bounded input samples; no for/keep-firing, scope, delivery, or RCA certification",
+  "post_collection_redactions": [
+    "Endpoint origins replaced with execution-host-loopback role"
+  ]
+}

@@ -14,6 +14,11 @@ module Fluent::Plugin
     config_param :service, :string
     desc "Loki label runtime (host: 컨테이너가 아닌 호스트 프로세스)"
     config_param :runtime, :string
+    # Optional for compatibility; the release candidate requires all three and
+    # a dedicated authenticated GC sender on this receiver.
+    config_param :site, :string, default: nil
+    config_param :observation_source, :string, default: nil
+    config_param :target, :string, default: nil
     desc "Loki line 최대 bytes. 긴 statement 등은 줄이고 log_truncated를 남긴다 (Loki max_line_size보다 작게)"
     config_param :max_line_bytes, :size, default: 240 * 1024
 
@@ -35,6 +40,10 @@ module Fluent::Plugin
 
       out["_lbl_service"] = @service
       out["_lbl_runtime"] = @runtime
+      %w[_lbl_site _lbl_observation_source _lbl_target].each { |key| out.delete(key) }
+      out["_lbl_site"] = @site if @site
+      out["_lbl_observation_source"] = @observation_source if @observation_source
+      out["_lbl_target"] = @target if @target
       # Fluent Bit이 JSON 파싱에 실패하면 {"log": 원문}으로 온다
       out["_lbl_log_format"] = has_timestamp ? "json" : "text"
       [log_time || time, out]

@@ -1,0 +1,43 @@
+# Generated M2 static draft; not mounted by Compose. Do not edit.
+groups:
+- name: m2-static-loki
+  rules:
+  - alert: HighNginxErrorRate
+    expr: |
+      sum(count_over_time(
+        {log_format="json", service="frontend"} | json | status >= 500 | __error__="" [1m]
+      )) > 10
+    for: 0m
+    labels:
+      severity: warning
+      category: infra
+      rulepack_target: leafy-web
+    annotations:
+      summary: Nginx 5xx 에러 급증 (서비스 장애 신호)
+      container: leafy-frontend
+  - alert: VulnerabilityScanningDetected
+    expr: |
+      sum(count_over_time(
+        {log_format="json", service="frontend"} | json | status >= 400 and status < 500 | __error__="" [1m]
+      )) > 50
+    for: 0m
+    labels:
+      severity: warning
+      category: security
+      rulepack_target: leafy-web
+    annotations:
+      summary: 웹 서버 4xx 에러 급증 (자동화된 취약점 스캐닝/디렉토리 탐색 의심)
+      container: leafy-frontend
+  - alert: UnauthorizedDBAccess
+    expr: |
+      sum(count_over_time(
+        {service="db"} |= "authentication failed" [2m]
+      )) > 3
+    for: 0m
+    labels:
+      severity: critical
+      category: security
+      rulepack_target: leafy-postgres
+    annotations:
+      summary: 비인가 DB 직접 접속 시도 탐지
+      container: leafy-db

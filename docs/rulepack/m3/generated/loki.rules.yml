@@ -1,0 +1,50 @@
+# Generated M3 static draft; not mounted by Compose. Do not edit.
+groups:
+- name: m3-new-detection-static
+  interval: 5s
+  rules:
+  - alert: SQLInjection
+    expr: |-
+      sum(count_over_time(
+        {log_format="json", runtime="container", service="frontend"}
+        | label_format m3_json_ok=`{{ $o := fromJson (__line__) }}{{ if eq (printf "%T" $o) "map[string]interface {}" }}{{ if and (eq (printf "%T" (index $o "request_uri")) "string") }}true{{end}}{{end}}`
+        | m3_json_ok="true"
+        | json m3_uri="request_uri"
+        | __error__="" | m3_uri!=""
+        | label_format m3_decoded=`{{ .m3_uri | urldecode }}`
+        | __error__=""
+        | m3_decoded=~"(?is).*(?:\\bunion(?:\\s|/\\*[^*]*\\*/)+(?:all(?:\\s|/\\*[^*]*\\*/)+)?select\\b|\\b(?:or|and)\\s+(?:1\\s*=\\s*1\\b|'1'\\s*=\\s*'1'|\\\"1\\\"\\s*=\\s*\\\"1\\\")|\\b(?:pg_sleep|sleep|extractvalue|updatexml)\\s*\\(|\\binformation_schema\\b|;\\s*(?:drop|alter|truncate)\\s+table\\b).*"
+        | drop m3_json_ok, m3_uri, m3_decoded
+        [2m]
+      )) > 0
+    for: 0m
+    labels:
+      severity: warning
+      category: security
+      rulepack_target: leafy-web-sqli
+    annotations:
+      summary: Nginx 요청 URI의 SQL Injection 의심 패턴
+      description: 2분 내 1회 이상 URI 패턴 일치. SQL 실행·침해 성공의 증거는 아니다.
+      container: leafy-frontend
+  - alert: DBConnectionLimit
+    expr: |-
+      sum(count_over_time(
+        {log_format="json", runtime="host", service="db"}
+        | label_format m3_json_ok=`{{ $o := fromJson (__line__) }}{{ if eq (printf "%T" $o) "map[string]interface {}" }}{{ if and (eq (printf "%T" (index $o "error_severity")) "string") (eq (printf "%T" (index $o "state_code")) "string") (eq (printf "%T" (index $o "message")) "string") }}true{{end}}{{end}}`
+        | m3_json_ok="true"
+        | json m3_severity="error_severity", m3_code="state_code", m3_message="message"
+        | __error__=""
+        | m3_severity="FATAL" | m3_code="53300"
+        | m3_message=~"(?i)^(sorry, too many clients already|remaining connection slots are reserved for .+)$"
+        | drop m3_json_ok, m3_severity, m3_code, m3_message
+        [2m]
+      )) > 0
+    for: 0m
+    labels:
+      severity: critical
+      category: infra
+      rulepack_target: leafy-host-postgres-limit
+    annotations:
+      summary: PostgreSQL 서버 연결 슬롯 부족으로 접속 거부
+      description: 2분 내 1회 이상 FATAL/53300 서버 슬롯 거부. Hikari 풀 고갈·전체 연결 사용률은 판정하지 않는다.
+      container: leafy-db

@@ -1,7 +1,8 @@
 """
 Application Log / Network Event correlation identity (#9)
 
-canonical identity는 `service`다 (docs/network-observability/NETWORK_EVENT_SCHEMA.md §4).
+service는 canonical 업무 이름이다 (docs/network-observability/NETWORK_EVENT_SCHEMA.md §4).
+OI-09 RCA identity는 site/service/runtime/target/source이며 service만으로 조회하지 않는다.
   - Application Log (#6): Loki label `service`
   - Network Event  (#8): Loki label `src_service` / `dst_service`
 둘 다 Compose의 com.docker.compose.service 라벨에서 온 같은 이름(frontend/backend/db)을 쓴다.
@@ -14,6 +15,7 @@ container 이름(leafy-backend)은 runtime metadata일 뿐 Loki 조회 identity�
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from identity import ObservationIdentity, ObservationBinding
 
 import httpx
 
@@ -37,7 +39,7 @@ def _checked(service: str) -> str:
 
 
 def service_log_selector(service: str) -> str:
-    """canonical service의 Application Log 조회 selector."""
+    """Legacy selector helper; RCA collectors require explicit observation bindings."""
     return f'{{service="{_checked(service)}"}}'
 
 
@@ -91,7 +93,7 @@ async def resolve_service(
     컨테이너가 없거나 compose 라벨이 없으면 (None, None) — 호출 측은 app log 조회를 건너뛴다.
     잘못된 identity로 조회해 엉뚱한 로그를 얻는 것보다 빈 결과가 낫다.
     """
-    if not container_name:
+    if not container_name or container_name.lower() in ("unknown", "unknown (host-level)"):
         return None, None
     if target_map and container_name in target_map:
         return target_map[container_name]
@@ -156,6 +158,8 @@ class CorrelationContext:
     container_name: str | None = None
     runtime: str | None = None
     request_id: str | None = None
+    identity: ObservationIdentity | None = None
+    binding: ObservationBinding | None = None
 
     @classmethod
     def around(cls, service, anchor, window: timedelta, **meta) -> "CorrelationContext":

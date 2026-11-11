@@ -1,0 +1,174 @@
+{
+  "sources": {
+    "graduation-project": {
+      "files": 50,
+      "source_file_changes": [],
+      "archive_changes": [],
+      "git_status_unchanged": false
+    },
+    "oi09-source-identity": {
+      "files": 12,
+      "source_file_changes": [],
+      "archive_changes": [],
+      "git_status_unchanged": true
+    },
+    "oi02-04-telemetry": {
+      "files": 23,
+      "source_file_changes": [],
+      "archive_changes": [],
+      "git_status_unchanged": true
+    },
+    "m5b-runtime-acceptance": {
+      "files": 54,
+      "source_file_changes": [],
+      "archive_changes": [],
+      "git_status_unchanged": true
+    }
+  },
+  "integration_operating_files_equal_base": {
+    "docker-compose.yml": true,
+    "docker-compose.aiops.yml": true,
+    "monitoring/prometheus/prometheus.yml": true,
+    "monitoring/prometheus/prometheus.aiops.yml": true,
+    "monitoring/prometheus/rules/alert.rules.yml": true,
+    "monitoring/alertmanager/alertmanager.yml": true,
+    "monitoring/loki/loki-config.yml": true,
+    "monitoring/loki/rules/fake/security-rules.yml": true,
+    "monitoring/loki/rules/fake/network-allowlist.yml": true,
+    "leafy/fluentd/fluent.conf": true
+  },
+  "status": "PASS_INPUTS_PRESERVED_WITH_CONCURRENT_MAIN_CHANGES",
+  "concurrent_main_changes": {
+    "added_or_changed_status_entries": [
+      {
+        "path": ".gitignore",
+        "status": " M",
+        "sha256": "70dd8b0e6d948466e7e346489c4b59072ce07356b0cf72618904251cb12bd8c7"
+      },
+      {
+        "path": "claude.md",
+        "status": " M",
+        "sha256": "4a257fd9b4e0a1bbae7da972aa2a8a4569eb2d04af71dad686435e365e75db26"
+      },
+      {
+        "path": "AGENTS.md",
+        "status": "??",
+        "sha256": "cb4175cb3650893302afdd349eb2945605114329dd25eca09fb4332452978d40"
+      },
+      {
+        "path": "docs/agent-context/DECISIONS.md",
+        "status": "??",
+        "sha256": "baa2a6f0e15f99cb2ef9c1f67d92e2823e2dc2313583df753d6e6069bc0476fc"
+      },
+      {
+        "path": "docs/agent-context/HANDOFF.md",
+        "status": "??",
+        "sha256": "40d0e8522c62c9f1b4e95e86afe99ffe0f75b5a2f4c1e2ee7d6af6aaba4bdc5e"
+      },
+      {
+        "path": "docs/agent-context/README.md",
+        "status": "??",
+        "sha256": "ade1a72fb2e4c7b90909898b2a3a29305da66c012c439df6c35c11873776a2f9"
+      },
+      {
+        "path": "docs/agent-context/ROLLBACK.md",
+        "status": "??",
+        "sha256": "16188137ccc28e5a825e7c736309d8b5c46945762be3ff1855359da977c5f0b7"
+      },
+      {
+        "path": "docs/agent-context/SETUP.md",
+        "status": "??",
+        "sha256": "c40a08dcb2dbc1a9857220f975e8509e913631bf17d5dc11c73a1b55db9ae4ea"
+      },
+      {
+        "path": "docs/agent-context/STATUS.md",
+        "status": "??",
+        "sha256": "1956d889745ba7c6d3073e54f3794122ca09075f1fe8ef60939b37a0191c60fa"
+      },
+      {
+        "path": "docs/agent-context/VERIFICATION.md",
+        "status": "??",
+        "sha256": "73ae987f52ad58897c4c5aa477bd2c49f871e40c7ccfc7036d15593668e37e0f"
+      },
+      {
+        "path": "docs/agent-context/evidence/claude-preservation.json",
+        "status": "??",
+        "sha256": "a9f5206d277dcc426ce46a78c9b097ec87c546d21bbd4bacdad9f40cfa583abd"
+      },
+      {
+        "path": "docs/agent-context/evidence/claude-read-write-sanitized.json",
+        "status": "??",
+        "sha256": "25a93135f7919d8ff8c744263007384af786e7948f40bfa5c162bd19eae7c389"
+      },
+      {
+        "path": "docs/agent-context/evidence/codex-restart-read-sanitized.json",
+        "status": "??",
+        "sha256": "bba1fa2ccbb7ccbe69efcc31c111a083885748afe163df6ff21374a363593cc5"
+      },
+      {
+        "path": "docs/agent-context/evidence/codex-write-sanitized.json",
+        "status": "??",
+        "sha256": "e6a6d37318832a9f4072646cccac358e4e3d21f911658763190c40d5a21f4203"
+      },
+      {
+        "path": "docs/agent-context/evidence/git-exclusion.json",
+        "status": "??",
+        "sha256": "ea7df260f6337fb7fd6b6e5affafe086f6ab7964c7a5a08f46e9ee068a16e509"
+      },
+      {
+        "path": "docs/agent-context/evidence/hook-results.json",
+        "status": "??",
+        "sha256": "b9f0b743c95f2c6bc4910735bf8b64d53adfcbe147083ee7a3fa918f84dceb98"
+      },
+      {
+        "path": "docs/agent-context/evidence/hook-selector-results.json",
+        "status": "??",
+        "sha256": "297d4688eba5d2fce8bf6af50a5bedd323f4e8355698b55b218049084d380684"
+      },
+      {
+        "path": "docs/agent-context/evidence/launcher-native-sanitized.json",
+        "status": "??",
+        "sha256": "711a91aa20ea5af28a440c27d7176bae20435024c5ea4e463114e1ae453ea931"
+      },
+      {
+        "path": "docs/agent-context/evidence/mcp-discovery.json",
+        "status": "??",
+        "sha256": "05c8b65056eda3ee92ca3f0a6f77c6b00c9f4eae651f05feb6de71f235709cb5"
+      },
+      {
+        "path": "docs/agent-context/evidence/memory-cleanup.json",
+        "status": "??",
+        "sha256": "cb5f5f31a051a15fe0ffe905df225b817fcc04a88d3edeb85c2ed96cce026178"
+      },
+      {
+        "path": "docs/agent-context/evidence/preservation.json",
+        "status": "??",
+        "sha256": "6538141de5ef57fe2e75f2031a4b78a16be15ae0bb9dec6f54e5bceb69f1823d"
+      },
+      {
+        "path": "docs/agent-context/evidence/project-discovery-sanitized.json",
+        "status": "??",
+        "sha256": "3c697bd06aa8d322fbc92f991e2f050a22f08f8d1ea85193cf227dee1da2d73a"
+      },
+      {
+        "path": "docs/agent-context/evidence/validation.json",
+        "status": "??",
+        "sha256": "0fbed86c8cf73e76b7b75d315a393887244a2efce944cd807e549214c6270599"
+      },
+      {
+        "path": "docs/agent-context/evidence/worktree-config-transfer.json",
+        "status": "??",
+        "sha256": "f9326e5e08e2a8d5da8d59cd7f5fb8e5bec37fe39a4f9c66bb74c429727b23a2"
+      },
+      {
+        "path": "docs/agent-context/run-memory-session.py",
+        "status": "??",
+        "sha256": "22e11f673aa6404a2496daf8d6a235a35a7c821a1ad38f831d02ff2102e87bbf"
+      }
+    ],
+    "removed_initial_status_entries": [],
+    "imported_into_integration": false,
+    "backup": "/Users/kwonjunhui/Desktop/graduation/m5-integration-preservation-20261111/concurrent-main-changes",
+    "observation": "Main changed after initial snapshot; initial integration inputs remain byte-identical. These unrelated changes were not edited or reverted."
+  }
+}

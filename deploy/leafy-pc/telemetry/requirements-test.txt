@@ -1,0 +1,3 @@
+# Exporter and snapshot verifier use only Python standard library.
+# Optional native M2 expression tests additionally need promtool + PyYAML.
+PyYAML==6.0.3

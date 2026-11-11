@@ -1,0 +1,358 @@
+{
+  "read_at_utc": "2026-11-10T17:14:01.433540+00:00",
+  "file_sha256": "77b18c380d9bfc5a4fbe9e4a45265565bfb982d9982f13de0ef145660c2dbe04",
+  "metadata": {
+    "sample_rows": 15,
+    "sample_cap_reached": false,
+    "entries": [
+      {
+        "timestamp": "2026-06-02T05:16:33.102787+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": true,
+        "candidate_rca_verified": false,
+        "local_line_index": 1
+      },
+      {
+        "timestamp": "2026-06-02T05:17:01.140741+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": false,
+        "candidate_rca_verified": false,
+        "local_line_index": 2
+      },
+      {
+        "timestamp": "2026-06-02T05:24:33.344240+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": true,
+        "candidate_rca_verified": false,
+        "local_line_index": 3
+      },
+      {
+        "timestamp": "2026-06-02T05:25:13.165092+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": true,
+        "candidate_rca_verified": false,
+        "local_line_index": 4
+      },
+      {
+        "timestamp": "2026-06-02T05:30:44.401392+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": true,
+        "candidate_rca_verified": false,
+        "local_line_index": 5
+      },
+      {
+        "timestamp": "2026-06-02T05:31:26.366725+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": true,
+        "candidate_rca_verified": false,
+        "local_line_index": 6
+      },
+      {
+        "timestamp": "2026-06-02T11:44:27.936544+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": true,
+        "candidate_rca_verified": false,
+        "local_line_index": 7
+      },
+      {
+        "timestamp": "2026-06-02T11:44:48.025134+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": true,
+        "candidate_rca_verified": false,
+        "local_line_index": 8
+      },
+      {
+        "timestamp": "2026-06-02T11:45:27.976948+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": true,
+        "candidate_rca_verified": false,
+        "local_line_index": 9
+      },
+      {
+        "timestamp": "2026-06-05T07:51:40.660211+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": false,
+        "candidate_rca_verified": false,
+        "local_line_index": 10
+      },
+      {
+        "timestamp": "2026-06-05T07:52:35.210990+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": false,
+        "candidate_rca_verified": false,
+        "local_line_index": 11
+      },
+      {
+        "timestamp": "2026-06-05T08:05:23.020826+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": true,
+        "candidate_rca_verified": false,
+        "local_line_index": 12
+      },
+      {
+        "timestamp": "2026-06-05T08:08:18.287967+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": false,
+        "candidate_rca_verified": false,
+        "local_line_index": 13
+      },
+      {
+        "timestamp": "2026-06-05T08:08:27.914934+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": false,
+        "candidate_rca_verified": false,
+        "local_line_index": 14
+      },
+      {
+        "timestamp": "2026-06-05T08:11:38.695270+00:00",
+        "top_level_keys": [
+          "alert_name",
+          "container",
+          "result",
+          "timestamp"
+        ],
+        "result_keys": [
+          "action_description",
+          "action_risk",
+          "action_targets",
+          "action_type",
+          "confidence",
+          "evidence",
+          "root_cause",
+          "threat_level"
+        ],
+        "identity_keys": [],
+        "zero_confidence": false,
+        "candidate_rca_verified": false,
+        "local_line_index": 15
+      }
+    ],
+    "historical_metadata_only": true
+  },
+  "provenance": "Existing local file; deployment/source/generation mode unverified; not a natural M5 candidate incident",
+  "actual_ollama_inference_verified": false
+}

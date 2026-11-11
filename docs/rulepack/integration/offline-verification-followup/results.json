@@ -1,0 +1,29 @@
+{
+  "runtime_accepted": false,
+  "deployment_performed": false,
+  "suites": {
+    "rulepack": {
+      "tests": 122,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": 0,
+      "unexpected_successes": 0,
+      "passed": 122,
+      "status": "PASS",
+      "exit_code": 0
+    },
+    "remediation": {
+      "tests": 270,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": 0,
+      "unexpected_successes": 0,
+      "passed": 270,
+      "status": "PASS",
+      "exit_code": 0
+    }
+  },
+  "offline_status": "PASS"
+}

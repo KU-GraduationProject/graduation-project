@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "inventory_verified": false,
+  "gc": {
+    "site": "REPLACE_OBSERVED_GC_SITE",
+    "source": "REPLACE_VERIFIED_GC_DOCKER_SOURCE",
+    "project": "REPLACE_OBSERVED_PROJECT",
+    "targets": {
+      "frontend": {"name": "REPLACE_OBSERVED_NAME", "id": "REPLACE_FULL_64_HEX_ID"},
+      "backend": {"name": "REPLACE_OBSERVED_NAME", "id": "REPLACE_FULL_64_HEX_ID"},
+      "minio": {"name": "REPLACE_OBSERVED_NAME", "id": "REPLACE_FULL_64_HEX_ID"}
+    }
+  },
+  "telemetry": {"job": "REPLACE_VERIFIED_JOB", "instance": "REPLACE_PRIVATE_TRANSPORT_HOST:9108"},
+  "host_postgres": null
+}

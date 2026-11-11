@@ -1,0 +1,42 @@
+[
+  {
+    "path": "docs/rulepack/M1_OBSERVABILITY_AUDIT.md",
+    "sha256": "6a6bc9dea1fa9c7531f3b9e4740653e9f78709cfce3dfc1e1c8fa304ebc5d7ba"
+  },
+  {
+    "path": "docs/rulepack/M2_2_INFRA_GENERALIZATION.md",
+    "sha256": "d30ab0f821a522b59fe51876cfaac242e597d87f1f4f151204caaaf34cc56268"
+  },
+  {
+    "path": "docs/rulepack/M2_3_RESOURCE_GENERALIZATION.md",
+    "sha256": "5a91d0fa98ea3576079b9301d3212ba61cbf64d133841c54c22e329bdad276c8"
+  },
+  {
+    "path": "docs/rulepack/M5_A_RULEPACK_INTEGRATION.md",
+    "sha256": "97bdcde9e97d9722c6b9424d810b70019ebb4811a17aab166acb2fde577a45ce"
+  },
+  {
+    "path": "docs/rulepack/M5_B_RUNTIME_ACCEPTANCE.md",
+    "sha256": "3f17d97f57574af9639f9ae293e2195ea728042bd6a8ffbb73a3fb889647baf8"
+  },
+  {
+    "path": "docs/rulepack/OBSERVABILITY_INFRA_MILESTONE.md",
+    "sha256": "9026c770f80f4dfdf371123eda26de576852947229ee20dc8725fa41d2f6fe96"
+  },
+  {
+    "path": "docs/rulepack/m2/infra_targets.yml",
+    "sha256": "7678abd5d46850955a985c8d38e7214def27a82213c88330f8220df37e1a7695"
+  },
+  {
+    "path": "docs/rulepack/m2/resource_targets.yml",
+    "sha256": "8f1250d1f84168a574296bf84a7f5a20e1038a94fb4a3b80ef7a7a437ad4b115"
+  },
+  {
+    "path": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
+    "sha256": "02403acbd975eae750771d6d10858031511fc041f49de0bdf682e9770f6a5df4"
+  },
+  {
+    "path": "docs/rulepack/m2/generated/prometheus.resources.rules.yml",
+    "sha256": "ed336d2a6b8081bdb35b0a4e4b9c64db5d38caa02f91b2ffd066c03451da55d6"
+  }
+]

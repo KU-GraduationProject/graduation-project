@@ -19,5 +19,6 @@ class Settings:
     remediation_api_key: str = os.getenv("REMEDIATION_API_KEY", "")
     # 원격 대상 이름 -> canonical service. 형식은 correlation.parse_target_map 참고. 비우면 Docker metadata만 쓴다.
     target_service_map: str = os.getenv("TARGET_SERVICE_MAP", "")
+    observation_bindings: str = os.getenv("OBSERVATION_BINDINGS", "[]")
 settings = Settings()
 

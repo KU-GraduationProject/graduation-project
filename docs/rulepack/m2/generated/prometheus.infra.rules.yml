@@ -1,0 +1,88 @@
+# Generated M2-2 static draft; not mounted by Compose. Do not edit.
+groups:
+- name: m2-2-static-infra
+  rules:
+  - alert: HighCpuUsage
+    expr: |
+      sum by (name) (
+        irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total", instance="cadvisor:8080", job="cadvisor"}[30s])
+        * on(id) group_left(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata"}
+      ) > 0.5 and on(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata", name="leafy-frontend"}
+    for: 30s
+    labels:
+      severity: warning
+      category: infra
+      rulepack_target: leafy-frontend
+    annotations:
+      summary: 컨테이너 CPU 사용률 50% 초과
+      container: leafy-frontend
+  - alert: HighCpuUsage
+    expr: |
+      sum by (name) (
+        irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total", instance="cadvisor:8080", job="cadvisor"}[30s])
+        * on(id) group_left(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata"}
+      ) > 0.5 and on(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata", name="leafy-backend"}
+    for: 30s
+    labels:
+      severity: warning
+      category: infra
+      rulepack_target: leafy-backend
+    annotations:
+      summary: 컨테이너 CPU 사용률 50% 초과
+      container: leafy-backend
+  - alert: ContainerRestarted
+    expr: |
+      max by (name) (
+        sum_over_time(
+          (
+            (
+              last_over_time(aiops_docker_container_restarts_total{instance="pipeline:8000", job="pipeline-metadata", name="leafy-backend"}[10m])
+              - last_over_time(aiops_docker_container_restarts_total{instance="pipeline:8000", job="pipeline-metadata", name="leafy-backend"}[10m] offset 5s)
+            ) >= 0
+            or
+            (
+              last_over_time(aiops_docker_container_restarts_total{instance="pipeline:8000", job="pipeline-metadata", name="leafy-backend"}[10m])
+              < last_over_time(aiops_docker_container_restarts_total{instance="pipeline:8000", job="pipeline-metadata", name="leafy-backend"}[10m] offset 5s)
+            ) + 0
+          )[10m:5s]
+        )
+      ) >= 2 or max by (name) (
+        changes(aiops_docker_container_started_at_seconds{instance="pipeline:8000", job="pipeline-metadata", name="leafy-backend"}[10m])
+      ) >= 2
+    for: 0m
+    keep_firing_for: 2m
+    labels:
+      severity: critical
+      category: infra
+      rulepack_target: leafy-backend
+    annotations:
+      summary: 컨테이너 반복 재시작 감지 (10분 내 2회 이상, CrashLoop/OOM 가능성)
+      container: leafy-backend
+  - alert: HighCpuUsage
+    expr: |
+      sum by (name) (
+        irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total", instance="cadvisor:8080", job="cadvisor"}[30s])
+        * on(id) group_left(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata"}
+      ) > 0.5 and on(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata", name="leafy-db"}
+    for: 30s
+    labels:
+      severity: warning
+      category: infra
+      rulepack_target: leafy-db
+    annotations:
+      summary: 컨테이너 CPU 사용률 50% 초과
+      container: leafy-db
+  - alert: HighCpuUsage
+    expr: |
+      sum by (name) (
+        irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total", instance="cadvisor:8080", job="cadvisor"}[30s])
+        * on(id) group_left(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata"}
+      ) > 0.5 and on(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata", name="leafy-minio"}
+    for: 30s
+    labels:
+      severity: warning
+      category: infra
+      rulepack_target: leafy-minio
+    annotations:
+      summary: 컨테이너 CPU 사용률 50% 초과
+      container: leafy-minio

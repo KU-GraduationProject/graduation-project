@@ -1,0 +1,18 @@
+{
+  "checked_at_utc": "2026-11-10T14:44:58.423145+00:00",
+  "scope": "JH development Mac localhost only",
+  "checks": [
+    {
+      "check": "prometheus_targets",
+      "endpoint": "http://127.0.0.1:9090/api/v1/targets",
+      "result": "UNREACHABLE",
+      "error": "[Errno 61] Connection refused"
+    },
+    {
+      "check": "loki_labels",
+      "endpoint": "http://127.0.0.1:3100/loki/api/v1/labels",
+      "result": "UNREACHABLE",
+      "error": "[Errno 61] Connection refused"
+    }
+  ]
+}
