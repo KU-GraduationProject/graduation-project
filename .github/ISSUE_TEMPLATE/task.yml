@@ -1,0 +1,36 @@
+name: Task / Docs
+description: Task / Docs 작업을 정의하고 완료 기준을 합의합니다.
+title: '[chore] '
+body:
+- type: markdown
+  attributes:
+    value: 'Issue 1개 = 작업 Branch 1개 = PR 1개. 제목의 type을 작업에 맞게 선택하세요: feat, fix, docs,
+      test, refactor, chore, ci. 실제 비밀정보·운영 로그·비공개 평가 자료를 첨부하지 마세요.'
+- type: textarea
+  id: field-1
+  attributes:
+    label: 작업 목적
+    description: 실제 내용을 작성하세요. 미실행 또는 해당 없음이라면 이유를 설명하세요.
+  validations:
+    required: true
+- type: textarea
+  id: field-2
+  attributes:
+    label: 작업 항목
+    description: 실제 내용을 작성하세요. 미실행 또는 해당 없음이라면 이유를 설명하세요.
+  validations:
+    required: true
+- type: textarea
+  id: field-3
+  attributes:
+    label: 산출물
+    description: 실제 내용을 작성하세요. 미실행 또는 해당 없음이라면 이유를 설명하세요.
+  validations:
+    required: true
+- type: textarea
+  id: field-4
+  attributes:
+    label: 완료 조건
+    description: 검증 가능한 완료 조건을 작성하세요.
+  validations:
+    required: true
