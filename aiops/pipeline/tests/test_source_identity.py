@@ -323,7 +323,8 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         captured = []
         async def llm(prompt):
             captured.append(prompt)
-            return main.LLMAnalysisResult(root_cause="pg17 host evidence", action_type="NOTIFY", confidence=.7)
+            return main.LLMAnalysisResult(root_cause="pg17 host evidence", incident_class="failure", action_type="NOTIFY",
+                                         action_targets=[], threat_level="medium", evidence=[], confidence=.7)
         with patch.object(main, "_observation_bindings", (b,)), \
              patch.object(main, "metrics_collector", MetricsCollector("http://prom", transport)), \
              patch.object(main, "logs_collector", LogsCollector("http://loki", transport)), \
