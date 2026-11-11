@@ -1,0 +1,190 @@
+# M5-A offline candidate/reference only; not mounted or deployed. Do not edit.
+groups:
+- name: m5-legacy_security-security-log-alerts
+  rules:
+  - alert: SecretDumpAttempt
+    expr: |
+      sum(count_over_time(
+        {service="backend"} |= "printenv" |= "[ATTACK]" [2m]
+      )) > 0
+    for: 0m
+    labels:
+      severity: critical
+      category: security
+    annotations:
+      summary: 컨테이너 내부 환경변수 덤프 시도 탐지
+      container: leafy-backend
+  - alert: SuspiciousProcessExecution
+    expr: |
+      sum(count_over_time(
+        {service=~"backend|frontend"}
+        |~ "(?i)(wget http|wget -|curl http[^s]|curl -o |nc -|netcat|/bin/bash -i|/bin/sh -i)" [2m]
+      )) > 0
+    for: 0m
+    labels:
+      severity: critical
+      category: security
+    annotations:
+      summary: 컨테이너 내 비정상 프로세스 실행 탐지 (침해 후 공격자 행위)
+      container: leafy-backend
+  - alert: SuspiciousProcessExec
+    expr: |
+      sum(count_over_time(
+        {service="backend"} |~ "suspicious_outbound" [2m]
+      )) > 0
+    for: 0m
+    labels:
+      severity: critical
+      category: security
+    annotations:
+      summary: 컨테이너 내부 의심 프로세스 실행 탐지 (C2 연결 시도)
+      container: leafy-backend
+  - alert: PathTraversalAttempt
+    expr: |
+      sum(count_over_time(
+        {service="frontend"} |~ "(?i)(\\.\\.\\/|\\.\\.\\\\|/etc/passwd|\\.env|/\\.git/)" [2m]
+      )) > 0
+    for: 0m
+    labels:
+      severity: critical
+      category: security
+    annotations:
+      summary: 경로 탐색(Path Traversal) 및 민감 파일 접근 시도 탐지
+      container: leafy-frontend
+  - alert: ContainerEscapeAttempt
+    expr: |
+      sum(count_over_time(
+        {service="backend"} |~ "container_escape_attempt" [2m]
+      )) > 0
+    for: 0m
+    labels:
+      severity: critical
+      category: security
+    annotations:
+      summary: 컨테이너 탈출 시도 탐지 (host_fs/docker.sock 접근)
+      container: leafy-backend
+- name: m5-legacy_network-network-allowlist-alerts
+  rules:
+  - alert: UnauthorizedDataTransfer
+    expr: |-
+      sum by (dst_ip, dst_port) (
+        sum_over_time(
+          {log_type="network", event_type="connection", src_service="backend", dst_service!~"db|minio|frontend"} | json | __error__="" | (dst_ip!="10.210.0.30" or dst_port!=8080) | bytes_sent!="" | unwrap bytes_sent [5m]
+        )
+      ) > 1048576
+    for: 0m
+    labels:
+      severity: critical
+      category: security
+      detection: cumulative
+    annotations:
+      container: leafy-backend
+      summary: 비인가 목적지로의 대용량 데이터 전송 탐지
+      description: backend 가 Allowlist 에 없는 목적지로 임계 초과 전송 (dst {{ $labels.dst_ip }}:{{ $labels.dst_port }}, 누적 {{
+        $value }} bytes)
+  - alert: UnauthorizedTransferEarly
+    expr: |-
+      sum by (dst_ip, dst_port) (
+        count_over_time(
+          {log_type="network", event_type="connection_threshold", src_service="backend", dst_service!~"db|minio|frontend"} | json | __error__="" | (dst_ip!="10.210.0.30" or dst_port!=8080) [5m]
+        )
+      ) > 0
+    for: 0m
+    labels:
+      severity: critical
+      category: security
+      detection: early
+    annotations:
+      container: leafy-backend
+      summary: 비인가 목적지로의 전송 중 조기 탐지 (연결 종료 전)
+      description: backend 의 단일 연결이 Allowlist 에 없는 목적지로 바이트 임계값을 초과함 (dst {{ $labels.dst_ip }}:{{ $labels.dst_port
+        }})
+- name: m5-m2_logs-m2-static-loki
+  rules:
+  - alert: HighNginxErrorRate
+    expr: |
+      sum(count_over_time(
+        {log_format="json", service="frontend"} | json | status >= 500 | __error__="" [1m]
+      )) > 10
+    for: 0m
+    labels:
+      severity: warning
+      category: infra
+      rulepack_target: leafy-web
+    annotations:
+      summary: Nginx 5xx 에러 급증 (서비스 장애 신호)
+      container: leafy-frontend
+  - alert: VulnerabilityScanningDetected
+    expr: |
+      sum(count_over_time(
+        {log_format="json", service="frontend"} | json | status >= 400 and status < 500 | __error__="" [1m]
+      )) > 50
+    for: 0m
+    labels:
+      severity: warning
+      category: security
+      rulepack_target: leafy-web
+    annotations:
+      summary: 웹 서버 4xx 에러 급증 (자동화된 취약점 스캐닝/디렉토리 탐색 의심)
+      container: leafy-frontend
+  - alert: UnauthorizedDBAccess
+    expr: |
+      sum(count_over_time(
+        {service="db"} |= "authentication failed" [2m]
+      )) > 3
+    for: 0m
+    labels:
+      severity: critical
+      category: security
+      rulepack_target: leafy-postgres
+    annotations:
+      summary: 비인가 DB 직접 접속 시도 탐지
+      container: leafy-db
+- name: m5-m3_logs-m3-new-detection-static
+  interval: 5s
+  rules:
+  - alert: SQLInjection
+    expr: |-
+      sum(count_over_time(
+        {log_format="json", runtime="container", service="frontend"}
+        | label_format m3_json_ok=`{{ $o := fromJson (__line__) }}{{ if eq (printf "%T" $o) "map[string]interface {}" }}{{ if and (eq (printf "%T" (index $o "request_uri")) "string") }}true{{end}}{{end}}`
+        | m3_json_ok="true"
+        | json m3_uri="request_uri"
+        | __error__="" | m3_uri!=""
+        | label_format m3_decoded=`{{ .m3_uri | urldecode }}`
+        | __error__=""
+        | m3_decoded=~"(?is).*(?:\\bunion(?:\\s|/\\*[^*]*\\*/)+(?:all(?:\\s|/\\*[^*]*\\*/)+)?select\\b|\\b(?:or|and)\\s+(?:1\\s*=\\s*1\\b|'1'\\s*=\\s*'1'|\\\"1\\\"\\s*=\\s*\\\"1\\\")|\\b(?:pg_sleep|sleep|extractvalue|updatexml)\\s*\\(|\\binformation_schema\\b|;\\s*(?:drop|alter|truncate)\\s+table\\b).*"
+        | drop m3_json_ok, m3_uri, m3_decoded
+        [2m]
+      )) > 0
+    for: 0m
+    labels:
+      severity: warning
+      category: security
+      rulepack_target: leafy-web-sqli
+    annotations:
+      summary: Nginx 요청 URI의 SQL Injection 의심 패턴
+      description: 2분 내 1회 이상 URI 패턴 일치. SQL 실행·침해 성공의 증거는 아니다.
+      container: leafy-frontend
+  - alert: DBConnectionLimit
+    expr: |-
+      sum(count_over_time(
+        {log_format="json", runtime="host", service="db"}
+        | label_format m3_json_ok=`{{ $o := fromJson (__line__) }}{{ if eq (printf "%T" $o) "map[string]interface {}" }}{{ if and (eq (printf "%T" (index $o "error_severity")) "string") (eq (printf "%T" (index $o "state_code")) "string") (eq (printf "%T" (index $o "message")) "string") }}true{{end}}{{end}}`
+        | m3_json_ok="true"
+        | json m3_severity="error_severity", m3_code="state_code", m3_message="message"
+        | __error__=""
+        | m3_severity="FATAL" | m3_code="53300"
+        | m3_message=~"(?i)^(sorry, too many clients already|remaining connection slots are reserved for .+)$"
+        | drop m3_json_ok, m3_severity, m3_code, m3_message
+        [2m]
+      )) > 0
+    for: 0m
+    labels:
+      severity: critical
+      category: infra
+      rulepack_target: leafy-host-postgres-limit
+    annotations:
+      summary: PostgreSQL 서버 연결 슬롯 부족으로 접속 거부
+      description: 2분 내 1회 이상 FATAL/53300 서버 슬롯 거부. Hikari 풀 고갈·전체 연결 사용률은 판정하지 않는다.
+      container: leafy-db

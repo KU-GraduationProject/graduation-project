@@ -1,0 +1,15 @@
+# GC -> JH delivery is user-confirmed. These per-field contracts still need runtime acceptance.
+# No access details, new ingestion labels, or assumed exporter metric names are added here.
+version: 1
+web_targets:
+  - id: leafy-web-sqli
+    alert_target: leafy-frontend
+    log_selector:
+      service: frontend
+      runtime: container
+postgres_targets:
+  - id: leafy-host-postgres-limit
+    alert_target: leafy-db
+    log_selector:
+      service: db
+      runtime: host

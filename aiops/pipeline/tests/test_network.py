@@ -16,6 +16,7 @@ import httpx
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from identity import parse_bindings
 from collector.network import NetworkCollector  # noqa: E402
 from correlation import CorrelationContext, network_event_selectors, to_instant  # noqa: E402
 
@@ -26,7 +27,7 @@ WINDOW = timedelta(minutes=5)
 def event(src, dst, ts, cid, dst_port=8080, **overrides):
     """NETWORK_EVENT_SCHEMA.md v1.0 canonical event"""
     e = {
-        "schema_version": "1.0", "timestamp": ts, "event_type": "connection", "observer": "network-observer",
+        "schema_version": "1.0", "timestamp": ts, "event_type": "connection", "observer": "gc-observer",
         "src_service": src, "src_container": f"leafy-{src}", "src_runtime": "container",
         "src_ip": "10.0.0.1", "src_port": 40000,
         "dst_service": dst, "dst_container": f"leafy-{dst}", "dst_runtime": "container",
@@ -34,7 +35,7 @@ def event(src, dst, ts, cid, dst_port=8080, **overrides):
         "protocol": "tcp", "network": "leafy-net", "interface": "eth0", "app_protocol": None,
         "connection_state": "closed", "duration_ms": 1, "bytes_sent": 183, "bytes_received": 415,
         "direction": None, "connection_id": cid, "request_id": None,
-        "observer_instance": None, "observer_meta": {"zeek_uid": cid},
+        "observer_instance": "gc-agent-1", "observer_meta": {"zeek_uid": cid},
     }
     e.update(overrides)
     return e
@@ -63,13 +64,13 @@ class FakeLoki:
             return httpx.Response(500, text="loki error")
         if self.status != 200:
             return httpx.Response(self.status, text="loki error")
-        matchers = dict(re.findall(r'(\w+)="([^"]*)"', q))
+        matchers = dict(re.findall(r'(\w+)="([^"]*)"', q.split("}", 1)[0]))
         start, end = int(request.url.params["start"]), int(request.url.params["end"])
         streams = {}
         for labels, line, ts in self.entries:
             if all(labels.get(k) == v for k, v in matchers.items()) and start <= ts <= end:
                 streams.setdefault(json.dumps(labels, sort_keys=True), []).append([str(ts), line])
-        return httpx.Response(200, json={"data": {"result": [
+        return httpx.Response(200, json={"status": "success", "data": {"resultType": "streams", "result": [
             {"stream": json.loads(k), "values": v} for k, v in streams.items()]}})
 
     def collector(self):
@@ -77,7 +78,13 @@ class FakeLoki:
 
 
 def ctx_for(service):
-    return CorrelationContext.around(service, ANCHOR, WINDOW)
+    b = parse_bindings(json.dumps([{
+        "identity": {"site": "gc", "service": service, "runtime": "container",
+                     "target": f"leafy-{service}", "source": "gc-observer"},
+        "match": {"observer": "gc-observer", "observer_instance": "gc-agent-1"},
+        "network": {"observer": "gc-observer", "observer_instance": "gc-agent-1"},
+    }]))[0]
+    return CorrelationContext.around(service, ANCHOR, WINDOW, identity=b.identity, binding=b)
 
 
 FRONT_TO_BACK = event("frontend", "backend", "2026-10-04T04:58:00.000Z", "C1")
@@ -103,7 +110,9 @@ class ServiceScopeTest(unittest.IsolatedAsyncioTestCase):
         loki = FakeLoki.of(FRONT_TO_BACK, BACK_TO_DB, UNRELATED, OUTSIDE)
         nc = await loki.collector().fetch(ctx_for("backend"))
         self.assertEqual([e["connection_id"] for e in nc.events], ["C1", "C2"])  # 시간 오름차순
-        self.assertEqual(sorted(loki.queries), sorted(network_event_selectors("backend")))
+        self.assertEqual(sorted(loki.queries), sorted(
+            sel + ' | json | observer="gc-observer" and observer_instance="gc-agent-1"'
+            for sel in network_event_selectors("backend")))
         self.assertTrue(nc.query_complete)
         # canonical event를 재정의하지 않고 그대로 둔다
         self.assertEqual(nc.events[0], FRONT_TO_BACK)
@@ -121,7 +130,7 @@ class ServiceScopeTest(unittest.IsolatedAsyncioTestCase):
     async def test_unrelated_excluded_even_if_loki_returns_it(self):
         # Loki가 엉뚱한 stream을 돌려줘도 service가 관여하지 않으면 버린다
         rogue = FakeLoki.of(UNRELATED)
-        rogue.handler = lambda req: httpx.Response(200, json={"data": {"result": [
+        rogue.handler = lambda req: httpx.Response(200, json={"status": "success", "data": {"resultType": "streams", "result": [
             {"stream": {}, "values": [["1", json.dumps(UNRELATED)]]}]}})
         nc = await NetworkCollector("http://loki:3100", transport=httpx.MockTransport(rogue.handler)).fetch(ctx_for("backend"))
         self.assertEqual(nc.events, ())
@@ -134,7 +143,7 @@ class WindowTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_window_checked_on_instant_even_if_loki_returns_it(self):
         # Loki가 창 밖 event를 돌려줘도 canonical timestamp(instant)로 다시 거른다
-        rogue = lambda req: httpx.Response(200, json={"data": {"result": [
+        rogue = lambda req: httpx.Response(200, json={"status": "success", "data": {"resultType": "streams", "result": [
             {"stream": {}, "values": [["1", json.dumps(OUTSIDE)]]}]}})
         nc = await NetworkCollector("http://loki:3100", transport=httpx.MockTransport(rogue)).fetch(ctx_for("backend"))
         self.assertEqual(nc.events, ())
@@ -217,7 +226,7 @@ class MalformedTest(unittest.IsolatedAsyncioTestCase):
         ]
         ts = str(int(to_instant(FRONT_TO_BACK["timestamp"]).timestamp() * 1e9))
         values = [[ts, l] for l in bad_lines] + [[ts, json.dumps(BACK_TO_DB)]]
-        handler = lambda req: httpx.Response(200, json={"data": {"result": [{"stream": {}, "values": values}]}})
+        handler = lambda req: httpx.Response(200, json={"status": "success", "data": {"resultType": "streams", "result": [{"stream": {}, "values": values}]}})
         nc = await NetworkCollector("http://loki:3100", transport=httpx.MockTransport(handler)).fetch(ctx_for("backend"))
         self.assertEqual([e["connection_id"] for e in nc.events], ["C2"])
         self.assertEqual(nc.skipped, 2 * len(bad_lines))  # 두 query가 같은 응답을 받으므로 2배

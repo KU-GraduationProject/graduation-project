@@ -1,0 +1,62 @@
+{
+  "runtime_accepted": false,
+  "deployment_performed": false,
+  "suites": {
+    "pipeline": {
+      "tests": 135,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": 0,
+      "unexpected_successes": 0,
+      "passed": 135,
+      "status": "PASS",
+      "exit_code": 0
+    },
+    "producer": {
+      "tests": 28,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": 0,
+      "unexpected_successes": 0,
+      "passed": 28,
+      "status": "PASS",
+      "exit_code": 0
+    },
+    "rulepack": {
+      "tests": 121,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": 0,
+      "unexpected_successes": 0,
+      "passed": 121,
+      "status": "PASS",
+      "exit_code": 0
+    },
+    "remediation": {
+      "tests": 270,
+      "failures": 0,
+      "errors": 82,
+      "skipped": 0,
+      "expected_failures": 0,
+      "unexpected_successes": 0,
+      "passed": 188,
+      "status": "FAIL_OR_SKIP",
+      "exit_code": 1
+    },
+    "network-observer": {
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": 0,
+      "unexpected_successes": 0,
+      "passed": 12,
+      "status": "PASS",
+      "exit_code": 0
+    }
+  },
+  "offline_status": "FAIL_OR_SKIP"
+}

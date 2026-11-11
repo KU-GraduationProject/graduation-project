@@ -1,0 +1,374 @@
+{
+  "version": 1,
+  "window": {
+    "start": null,
+    "end": null
+  },
+  "step_seconds": 5,
+  "queries": [
+    {
+      "id": "integrated/cpu/leafy-frontend",
+      "engine": "prometheus",
+      "expression": "sum by (name) (\n  irate(container_cpu_usage_seconds_total{id=~\"/docker/.+\",cpu=\"total\", instance=\"cadvisor:8080\", job=\"cadvisor\"}[30s])\n  * on(id) group_left(name) container_name_info{instance=\"pipeline:8000\", job=\"pipeline-metadata\"}\n) and on(name) container_name_info{instance=\"pipeline:8000\", job=\"pipeline-metadata\", name=\"leafy-frontend\"}",
+      "source": "integrated",
+      "family": "cpu",
+      "unit": "CPU_core_equivalent",
+      "lookback_seconds": 30,
+      "threshold": 0.5,
+      "for_seconds": 30,
+      "evidence": [
+        "cpu_counter",
+        "metadata"
+      ]
+    },
+    {
+      "id": "integrated/cpu/leafy-backend",
+      "engine": "prometheus",
+      "expression": "sum by (name) (\n  irate(container_cpu_usage_seconds_total{id=~\"/docker/.+\",cpu=\"total\", instance=\"cadvisor:8080\", job=\"cadvisor\"}[30s])\n  * on(id) group_left(name) container_name_info{instance=\"pipeline:8000\", job=\"pipeline-metadata\"}\n) and on(name) container_name_info{instance=\"pipeline:8000\", job=\"pipeline-metadata\", name=\"leafy-backend\"}",
+      "source": "integrated",
+      "family": "cpu",
+      "unit": "CPU_core_equivalent",
+      "lookback_seconds": 30,
+      "threshold": 0.5,
+      "for_seconds": 30,
+      "evidence": [
+        "cpu_counter",
+        "metadata"
+      ]
+    },
+    {
+      "id": "integrated/cpu/leafy-db",
+      "engine": "prometheus",
+      "expression": "sum by (name) (\n  irate(container_cpu_usage_seconds_total{id=~\"/docker/.+\",cpu=\"total\", instance=\"cadvisor:8080\", job=\"cadvisor\"}[30s])\n  * on(id) group_left(name) container_name_info{instance=\"pipeline:8000\", job=\"pipeline-metadata\"}\n) and on(name) container_name_info{instance=\"pipeline:8000\", job=\"pipeline-metadata\", name=\"leafy-db\"}",
+      "source": "integrated",
+      "family": "cpu",
+      "unit": "CPU_core_equivalent",
+      "lookback_seconds": 30,
+      "threshold": 0.5,
+      "for_seconds": 30,
+      "evidence": [
+        "cpu_counter",
+        "metadata"
+      ]
+    },
+    {
+      "id": "integrated/cpu/leafy-minio",
+      "engine": "prometheus",
+      "expression": "sum by (name) (\n  irate(container_cpu_usage_seconds_total{id=~\"/docker/.+\",cpu=\"total\", instance=\"cadvisor:8080\", job=\"cadvisor\"}[30s])\n  * on(id) group_left(name) container_name_info{instance=\"pipeline:8000\", job=\"pipeline-metadata\"}\n) and on(name) container_name_info{instance=\"pipeline:8000\", job=\"pipeline-metadata\", name=\"leafy-minio\"}",
+      "source": "integrated",
+      "family": "cpu",
+      "unit": "CPU_core_equivalent",
+      "lookback_seconds": 30,
+      "threshold": 0.5,
+      "for_seconds": 30,
+      "evidence": [
+        "cpu_counter",
+        "metadata"
+      ]
+    },
+    {
+      "id": "integrated/memory",
+      "engine": "prometheus",
+      "expression": "max by (name) (\n  (\n    container_memory_working_set_bytes{id=~\"/docker/.+\", instance=\"cadvisor:8080\", job=\"cadvisor\"}\n    / (container_spec_memory_limit_bytes{id=~\"/docker/.+\", instance=\"cadvisor:8080\", job=\"cadvisor\"} > 0)\n  ) * on(id) group_left(name) container_name_info{instance=\"pipeline:8000\", job=\"pipeline-metadata\"}\n)",
+      "source": "integrated",
+      "family": "memory",
+      "unit": "working_set/limit",
+      "lookback_seconds": 0,
+      "threshold": 0.85,
+      "for_seconds": 300,
+      "evidence": [
+        "working_set",
+        "memory_limit",
+        "metadata"
+      ]
+    },
+    {
+      "id": "integrated/receive/container",
+      "engine": "prometheus",
+      "expression": "(\n  sum by (name) (\n    rate(container_network_receive_bytes_total{interface!=\"lo\", id=~\"/docker/.+\", name!=\"\", name=~\"leafy-frontend|leafy-backend|leafy-db|leafy-minio\", instance=\"cadvisor:8080\", job=\"cadvisor\"}[1m])\n  )\n)",
+      "source": "integrated",
+      "family": "network_container",
+      "unit": "bytes/second",
+      "lookback_seconds": 60,
+      "threshold": 10000000.0,
+      "for_seconds": 30,
+      "evidence": [
+        "network_counter"
+      ]
+    },
+    {
+      "id": "integrated/receive/host_fallback",
+      "engine": "prometheus",
+      "expression": "(\n  (\n    sum without (interface) (\n      rate(container_network_receive_bytes_total{interface!=\"lo\", id=\"/\", instance=\"cadvisor:8080\", job=\"cadvisor\"}[1m])\n    )\n  )\n  unless on ()\n  (count(container_network_receive_bytes_total{id=~\"/docker/.+\", instance=\"cadvisor:8080\", job=\"cadvisor\"}) > 0)\n)",
+      "source": "integrated",
+      "family": "network_host_fallback",
+      "unit": "bytes/second",
+      "lookback_seconds": 60,
+      "threshold": 10000000.0,
+      "for_seconds": 30,
+      "evidence": [
+        "network_counter"
+      ]
+    },
+    {
+      "id": "integrated/receive/presence_guard",
+      "engine": "prometheus",
+      "expression": "count(container_network_receive_bytes_total{id=~\"/docker/.+\",instance=\"cadvisor:8080\", job=\"cadvisor\"}) > 0",
+      "source": "integrated",
+      "family": "network_presence",
+      "unit": "series_count",
+      "lookback_seconds": 60,
+      "threshold": null,
+      "for_seconds": 0,
+      "evidence": []
+    },
+    {
+      "id": "integrated/receive/root_rate",
+      "engine": "prometheus",
+      "expression": "sum without (interface) (rate(container_network_receive_bytes_total{interface!=\"lo\",id=\"/\",instance=\"cadvisor:8080\", job=\"cadvisor\"}[1m]))",
+      "source": "integrated",
+      "family": "network_root_rate",
+      "unit": "bytes/second",
+      "lookback_seconds": 60,
+      "threshold": null,
+      "for_seconds": 0,
+      "evidence": []
+    },
+    {
+      "id": "leafy-web/request_rate",
+      "engine": "prometheus",
+      "expression": "rate(nginx_http_requests_total{instance=\"nginx-exporter:9113\", job=\"nginx-exporter\"}[1m])",
+      "source": "leafy-web",
+      "family": "http_rate",
+      "unit": "requests/second",
+      "lookback_seconds": 60,
+      "threshold": 30,
+      "for_seconds": 30,
+      "evidence": [
+        "nginx_counter"
+      ]
+    },
+    {
+      "id": "leafy-web/HighNginxErrorRate",
+      "engine": "loki",
+      "expression": "sum(count_over_time(\n  {log_format=\"json\", runtime=\"container\", service=\"frontend\"} | json | status >= 500 | __error__=\"\" [1m]\n))",
+      "source": "leafy-web",
+      "family": "http_status_count",
+      "unit": "events/minute",
+      "lookback_seconds": 60,
+      "threshold": 10,
+      "for_seconds": 0,
+      "evidence": []
+    },
+    {
+      "id": "leafy-web/VulnerabilityScanningDetected",
+      "engine": "loki",
+      "expression": "sum(count_over_time(\n  {log_format=\"json\", runtime=\"container\", service=\"frontend\"} | json | status >= 400 and status < 500 | __error__=\"\" [1m]\n))",
+      "source": "leafy-web",
+      "family": "http_status_count",
+      "unit": "events/minute",
+      "lookback_seconds": 60,
+      "threshold": 50,
+      "for_seconds": 0,
+      "evidence": []
+    },
+    {
+      "id": "leafy-web/requests/1m",
+      "engine": "loki",
+      "expression": "sum(count_over_time({log_format=\"json\", runtime=\"container\", service=\"frontend\"}[1m]))",
+      "source": "leafy-web",
+      "family": "http_requests",
+      "unit": "events/1m",
+      "lookback_seconds": 60,
+      "threshold": null,
+      "for_seconds": 0,
+      "evidence": []
+    },
+    {
+      "id": "leafy-web/requests/1h",
+      "engine": "loki",
+      "expression": "sum(count_over_time({log_format=\"json\", runtime=\"container\", service=\"frontend\"}[1h]))",
+      "source": "leafy-web",
+      "family": "http_requests",
+      "unit": "events/1h",
+      "lookback_seconds": 3600,
+      "threshold": null,
+      "for_seconds": 0,
+      "evidence": []
+    },
+    {
+      "id": "leafy-web/status/2xx",
+      "engine": "loki",
+      "expression": "sum(count_over_time({log_format=\"json\", runtime=\"container\", service=\"frontend\"} | json | status >= 200 and status < 300 | __error__=\"\" [1m]))",
+      "source": "leafy-web",
+      "family": "http_status_distribution",
+      "unit": "events/minute",
+      "lookback_seconds": 60,
+      "threshold": null,
+      "for_seconds": 0,
+      "evidence": []
+    },
+    {
+      "id": "leafy-web/status/3xx",
+      "engine": "loki",
+      "expression": "sum(count_over_time({log_format=\"json\", runtime=\"container\", service=\"frontend\"} | json | status >= 300 and status < 400 | __error__=\"\" [1m]))",
+      "source": "leafy-web",
+      "family": "http_status_distribution",
+      "unit": "events/minute",
+      "lookback_seconds": 60,
+      "threshold": null,
+      "for_seconds": 0,
+      "evidence": []
+    },
+    {
+      "id": "leafy-web/status/4xx",
+      "engine": "loki",
+      "expression": "sum(count_over_time({log_format=\"json\", runtime=\"container\", service=\"frontend\"} | json | status >= 400 and status < 500 | __error__=\"\" [1m]))",
+      "source": "leafy-web",
+      "family": "http_status_distribution",
+      "unit": "events/minute",
+      "lookback_seconds": 60,
+      "threshold": null,
+      "for_seconds": 0,
+      "evidence": []
+    },
+    {
+      "id": "leafy-web/status/5xx",
+      "engine": "loki",
+      "expression": "sum(count_over_time({log_format=\"json\", runtime=\"container\", service=\"frontend\"} | json | status >= 500 and status < 600 | __error__=\"\" [1m]))",
+      "source": "leafy-web",
+      "family": "http_status_distribution",
+      "unit": "events/minute",
+      "lookback_seconds": 60,
+      "threshold": null,
+      "for_seconds": 0,
+      "evidence": []
+    },
+    {
+      "id": "leafy-web/SQLInjection",
+      "engine": "loki",
+      "expression": "sum(count_over_time(\n  {log_format=\"json\", runtime=\"container\", service=\"frontend\"}\n  | label_format m3_json_ok=`{{ $o := fromJson (__line__) }}{{ if eq (printf \"%T\" $o) \"map[string]interface {}\" }}{{ if and (eq (printf \"%T\" (index $o \"request_uri\")) \"string\") }}true{{end}}{{end}}`\n  | m3_json_ok=\"true\"\n  | json m3_uri=\"request_uri\"\n  | __error__=\"\" | m3_uri!=\"\"\n  | label_format m3_decoded=`{{ .m3_uri | urldecode }}`\n  | __error__=\"\"\n  | m3_decoded=~\"(?is).*(?:\\\\bunion(?:\\\\s|/\\\\*[^*]*\\\\*/)+(?:all(?:\\\\s|/\\\\*[^*]*\\\\*/)+)?select\\\\b|\\\\b(?:or|and)\\\\s+(?:1\\\\s*=\\\\s*1\\\\b|'1'\\\\s*=\\\\s*'1'|\\\\\\\"1\\\\\\\"\\\\s*=\\\\s*\\\\\\\"1\\\\\\\")|\\\\b(?:pg_sleep|sleep|extractvalue|updatexml)\\\\s*\\\\(|\\\\binformation_schema\\\\b|;\\\\s*(?:drop|alter|truncate)\\\\s+table\\\\b).*\"\n  | drop m3_json_ok, m3_uri, m3_decoded\n  [2m]\n))",
+      "source": "leafy-web",
+      "family": "sql_new",
+      "unit": "events/2minutes",
+      "lookback_seconds": 120,
+      "threshold": 0,
+      "for_seconds": 0,
+      "evidence": []
+    },
+    {
+      "id": "leafy-web/SQLInjectionAttempt",
+      "engine": "loki",
+      "expression": "sum(count_over_time(\n  {runtime=\"container\", service=\"frontend\"} |~ \"(?i)(union.{0,3}select|or.{0,3}1=1|drop.{0,3}table|sleep\\\\(|extractvalue|information_schema|admin'--|and.{0,3}1=1)\" [2m]\n))",
+      "source": "leafy-web",
+      "family": "sql_existing",
+      "unit": "events/2minutes",
+      "lookback_seconds": 120,
+      "threshold": 5,
+      "for_seconds": 0,
+      "evidence": []
+    },
+    {
+      "id": "leafy-host-postgres/connections_per_series",
+      "engine": "prometheus",
+      "expression": "pg_stat_activity_count{instance=\"postgres-exporter:9187\", job=\"postgres-exporter\"}",
+      "source": "leafy-host-postgres",
+      "family": "postgres_per_series",
+      "unit": "sessions_per_labelset",
+      "lookback_seconds": 0,
+      "threshold": 40,
+      "for_seconds": 30,
+      "evidence": [
+        "pg_connections"
+      ]
+    },
+    {
+      "id": "leafy-host-postgres/DBConnectionLimit",
+      "engine": "loki",
+      "expression": "sum(count_over_time(\n  {log_format=\"json\", runtime=\"host\", service=\"db\"}\n  | label_format m3_json_ok=`{{ $o := fromJson (__line__) }}{{ if eq (printf \"%T\" $o) \"map[string]interface {}\" }}{{ if and (eq (printf \"%T\" (index $o \"error_severity\")) \"string\") (eq (printf \"%T\" (index $o \"state_code\")) \"string\") (eq (printf \"%T\" (index $o \"message\")) \"string\") }}true{{end}}{{end}}`\n  | m3_json_ok=\"true\"\n  | json m3_severity=\"error_severity\", m3_code=\"state_code\", m3_message=\"message\"\n  | __error__=\"\"\n  | m3_severity=\"FATAL\" | m3_code=\"53300\"\n  | m3_message=~\"(?i)^(sorry, too many clients already|remaining connection slots are reserved for .+)$\"\n  | drop m3_json_ok, m3_severity, m3_code, m3_message\n  [2m]\n))",
+      "source": "leafy-host-postgres",
+      "family": "postgres_refusal",
+      "unit": "events/2minutes",
+      "lookback_seconds": 120,
+      "threshold": 0,
+      "for_seconds": 0,
+      "evidence": []
+    }
+  ],
+  "raw_inputs": [
+    {
+      "id": "integrated/cpu_counter",
+      "expression": "container_cpu_usage_seconds_total{id=~\"/docker/.+\",cpu=\"total\",instance=\"cadvisor:8080\", job=\"cadvisor\"}",
+      "source": "integrated",
+      "family": "cpu_counter"
+    },
+    {
+      "id": "integrated/working_set",
+      "expression": "container_memory_working_set_bytes{id=~\"/docker/.+\",instance=\"cadvisor:8080\", job=\"cadvisor\"}",
+      "source": "integrated",
+      "family": "working_set"
+    },
+    {
+      "id": "integrated/memory_limit",
+      "expression": "container_spec_memory_limit_bytes{id=~\"/docker/.+\",instance=\"cadvisor:8080\", job=\"cadvisor\"}",
+      "source": "integrated",
+      "family": "memory_limit"
+    },
+    {
+      "id": "integrated/network_counter",
+      "expression": "container_network_receive_bytes_total{instance=\"cadvisor:8080\", job=\"cadvisor\"}",
+      "source": "integrated",
+      "family": "network_counter"
+    },
+    {
+      "id": "integrated/metadata",
+      "expression": "container_name_info{instance=\"pipeline:8000\", job=\"pipeline-metadata\"}",
+      "source": "integrated",
+      "family": "metadata"
+    },
+    {
+      "id": "leafy-web/nginx_counter",
+      "expression": "nginx_http_requests_total{instance=\"nginx-exporter:9113\", job=\"nginx-exporter\"}",
+      "source": "leafy-web",
+      "family": "nginx_counter"
+    },
+    {
+      "id": "leafy-host-postgres/pg_connections",
+      "expression": "pg_stat_activity_count{instance=\"postgres-exporter:9187\", job=\"postgres-exporter\"}",
+      "source": "leafy-host-postgres",
+      "family": "pg_connections"
+    }
+  ],
+  "network_policy": {
+    "allow": [
+      {
+        "service": "sink-a",
+        "match": "endpoint",
+        "ip": "10.210.0.30",
+        "port": 8080
+      },
+      {
+        "service": "db",
+        "match": "service"
+      },
+      {
+        "service": "minio",
+        "match": "service"
+      },
+      {
+        "service": "frontend",
+        "match": "service"
+      }
+    ],
+    "thresholds": {
+      "min_transfer_bytes": 1048576,
+      "window": "5m"
+    }
+  },
+  "normal": {
+    "confirmed": false,
+    "incident_and_injection_free": false,
+    "confirmed_by": null,
+    "evidence": null
+  }
+}

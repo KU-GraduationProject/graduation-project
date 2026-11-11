@@ -1,0 +1,53 @@
+# Configured scopes from M2/M3, not a claim of live targets or normal operation.
+version: 1
+window:
+  start: null
+  end: null
+normal:
+  confirmed: false
+  incident_and_injection_free: false
+  confirmed_by: null
+  evidence: null
+# Metadata only. Reserve a different interval for M6; do not load Heldout data.
+reserved_evaluation_windows: []
+step_seconds: 5
+quality:
+  minimum_duration_seconds: 3600
+  minimum_samples: 100
+  minimum_coverage: 0.95
+  maximum_raw_gap_steps: 2
+max_log_lines: 2000
+sources:
+  integrated:
+    scope_confirmed: false
+    memory_limit_semantics_confirmed: false
+    unlimited_limit_values: []
+    cadvisor: {job: cadvisor, instance: 'cadvisor:8080'}
+    pipeline: {job: pipeline-metadata, instance: 'pipeline:8000'}
+    names: [leafy-frontend, leafy-backend, leafy-db, leafy-minio]
+web_targets:
+  leafy-web:
+    scope_confirmed: false
+    log_continuity_confirmed: false
+    log_continuity_evidence: null
+    alert_target: leafy-frontend
+    metric_selector: {job: nginx-exporter, instance: 'nginx-exporter:9113'}
+    log_selector: {service: frontend, runtime: container}
+postgres_targets:
+  leafy-host-postgres:
+    scope_confirmed: false
+    log_continuity_confirmed: false
+    log_continuity_evidence: null
+    alert_target: leafy-db
+    metric_selector: {job: postgres-exporter, instance: 'postgres-exporter:9187'}
+    log_selector: {service: db, runtime: host}
+network_targets:
+  leafy-backend-network:
+    scope_confirmed: false
+    log_continuity_confirmed: false
+    log_continuity_evidence: null
+    policy_confirmed: false
+    log_selector: {log_type: network, src_service: backend}
+# Optional, reviewed absolute thresholds keyed by query id. Each requires
+# threshold, unit and rationale. No multiplier or candidate is invented here.
+candidates: {}

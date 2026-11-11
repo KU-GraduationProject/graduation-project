@@ -1,0 +1,10 @@
+{
+  "site": "REPLACE_GC_SITE",
+  "source": "REPLACE_GC_DOCKER_OBSERVER",
+  "project": "REPLACE_OBSERVED_COMPOSE_PROJECT",
+  "targets": {
+    "frontend": "REPLACE_OBSERVED_FRONTEND_NAME",
+    "backend": "REPLACE_OBSERVED_BACKEND_NAME",
+    "minio": "REPLACE_OBSERVED_MINIO_NAME"
+  }
+}

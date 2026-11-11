@@ -15,7 +15,9 @@ event는 NETWORK_EVENT_SCHEMA.md의 canonical dict를 그대로 둔다 (재정�
 
 import asyncio
 import json
-from dataclasses import dataclass
+
+from identity import matches
+from dataclasses import dataclass, field
 from datetime import datetime
 
 import httpx
@@ -44,6 +46,7 @@ class NetworkContext:
     errors: tuple[str, ...] = ()
     skipped: int = 0
     truncated: bool = False
+    provenance: dict = field(default_factory=dict)
 
     @property
     def query_complete(self) -> bool:
@@ -62,12 +65,19 @@ class NetworkCollector:
 
     async def fetch(self, ctx: CorrelationContext, limit: int = 500) -> NetworkContext:
         """ctx.service가 src 또는 dst인 Network Event를 [ctx.start, ctx.end]에서 조회. 예외를 던지지 않는다."""
-        empty = NetworkContext(service=ctx.service, start=ctx.start, end=ctx.end)
-        if not ctx.service:
-            return empty
+        scope = ctx.binding.network if ctx.binding else {}
+        provenance = {"backend": "loki-network", "identity": ctx.identity.to_dict() if ctx.identity else {},
+                      "observer": scope}
+        if not ctx.service or not ctx.identity or not ctx.identity.complete or not scope:
+            return NetworkContext(service=ctx.service, start=ctx.start, end=ctx.end,
+                                  errors=("scope_unavailable",),
+                                  provenance={**provenance, "status": "scope_unavailable"})
 
         try:
-            selectors = network_event_selectors(ctx.service)
+            base = network_event_selectors(ctx.service)
+            selectors = tuple(sel + " | json | " + " and ".join(
+                f"{k}={json.dumps(v)}" for k, v in scope.items()) for sel in base)
+            provenance["queries"] = selectors
             async with httpx.AsyncClient(timeout=10, transport=self._transport) as client:
                 results = await asyncio.gather(
                     *(self._query(client, sel, ctx, limit) for sel in selectors),
@@ -75,12 +85,12 @@ class NetworkCollector:
                 )
         except Exception as e:  # selector 검증 실패 등 — RCA를 막지 않는다
             return NetworkContext(service=ctx.service, start=ctx.start, end=ctx.end,
-                                  errors=(f"network context unavailable: {e!r}",))
+                                  errors=("api_error",), provenance={**provenance, "status": "api_error"})
 
         lines, errors, truncated = [], [], False
         for sel, res in zip(selectors, results):
             if isinstance(res, BaseException):
-                errors.append(f"{sel}: {res!r}")
+                errors.append("api_error")
                 continue
             lines.extend(res)
             truncated = truncated or len(res) >= limit
@@ -90,6 +100,8 @@ class NetworkCollector:
             service=ctx.service, start=ctx.start, end=ctx.end,
             events=tuple(events), errors=tuple(errors),
             skipped=skipped, truncated=truncated,
+            provenance={**provenance, "status": "partial" if errors or truncated or skipped else "ok" if events else "empty",
+                        "accepted_events": len(events), "skipped": skipped, "truncated": truncated},
         )
 
     async def _query(self, client, selector: str, ctx: CorrelationContext, limit: int) -> list[str]:
@@ -104,7 +116,10 @@ class NetworkCollector:
             },
         )
         resp.raise_for_status()
-        streams = resp.json()["data"]["result"]
+        data = resp.json()
+        if data.get("status") != "success" or data["data"]["resultType"] != "streams":
+            raise ValueError("invalid network response")
+        streams = data["data"]["result"]
         return [line for stream in streams for _, line in stream.get("values", [])]
 
     def _parse(self, lines: list[str], ctx: CorrelationContext) -> tuple[list[dict], int]:
@@ -126,7 +141,18 @@ class NetworkCollector:
             if ctx.service not in (src, dst) or not ctx.contains(instant):
                 continue
 
-            key = self._dedup_key(event)
+            if ctx.identity:
+                scope = ctx.binding.network if ctx.binding else {}
+                if not scope or not matches(event, scope):
+                    skipped += 1
+                    continue
+                sides = [side for side in ("src", "dst") if event.get(side + "_service") == ctx.service]
+                if not any(event.get(side + "_runtime") == ctx.identity.runtime
+                           and (event.get(side + "_target") or (event.get(side + "_container") if ctx.identity.runtime == "container" else None)) == ctx.identity.target for side in sides):
+                    skipped += 1
+                    continue
+
+            key = (event.get("observer"), event.get("observer_instance"), self._dedup_key(event))
             if key in seen:  # src==dst==service인 event는 두 query 모두에 나온다
                 continue
             seen.add(key)

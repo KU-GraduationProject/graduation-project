@@ -71,6 +71,17 @@ class LeafyDockerLogFilterTest < Test::Unit::TestCase
     assert_equal "frontend", rec["_lbl_service"]
   end
 
+  test "observation identity uses driver metadata and keeps stdout separately" do
+    _, rec = filter([docker('{"site":"spoof","source":"spoof","target":"spoof"}',
+                            "aiops.site" => "fixture-gc", "aiops.source" => "fixture-docker")]).first
+    assert_equal "fixture-gc", rec["_lbl_site"]
+    assert_equal "fixture-docker", rec["_lbl_observation_source"]
+    assert_equal "leafy-backend", rec["_lbl_target"]
+    assert_equal "stdout", rec["_lbl_source"]
+    _, untrusted = filter([docker('{"aiops.site":"spoof","aiops.source":"spoof","_lbl_site":"spoof","_lbl_observation_source":"spoof"}')]).first
+    assert_false untrusted.key?("_lbl_site")
+  end
+
   test "텍스트 로그는 원문을 message에 담는다 (앞 공백 유지, 끝 개행 제거)" do
     _, rec = filter([docker("\tat com.leafy.A.b(A.java:1)\r\n")]).first
     assert_equal "\tat com.leafy.A.b(A.java:1)", rec["message"]
@@ -147,6 +158,20 @@ class LeafyPostgresLogFilterTest < Test::Unit::TestCase
     d = Fluent::Test::Driver::Filter.new(Fluent::Plugin::LeafyPostgresLogFilter).configure(CONF)
     d.run(default_tag: "postgresql.jsonlog") { d.feed(event_time("2026-10-24 00:00:00 UTC"), record) }
     d.filtered.first
+  end
+
+  test "host identity comes from dedicated receiver config rather than jsonlog" do
+    d = Fluent::Test::Driver::Filter.new(Fluent::Plugin::LeafyPostgresLogFilter).configure(
+      CONF + "\nsite fixture-gc\nobservation_source fixture-host-pg\ntarget fixture-pg17\n")
+    d.run(default_tag: "postgresql.jsonlog") do
+      d.feed(event_time("2026-10-23 05:01:02 UTC"), {"timestamp" => "2026-10-23 14:01:02 KST",
+             "site" => "spoof", "_lbl_target" => "spoof"})
+    end
+    rec = d.filtered.first[1]
+    assert_equal "fixture-gc", rec["_lbl_site"]
+    assert_equal "fixture-host-pg", rec["_lbl_observation_source"]
+    assert_equal "fixture-pg17", rec["_lbl_target"]
+    assert_equal "host", rec["_lbl_runtime"]
   end
 
   PG = {

@@ -1,0 +1,15 @@
+# M1에서 확인한 설정 기준이며 런타임 검증 대기인 대상 매핑이다.
+# 이 파일은 수집 라벨을 생성하지 않으며 Pipeline TARGET_SERVICE_MAP도 변경하지 않는다.
+version: 1
+web_targets:
+  - id: leafy-web
+    alert_target: leafy-frontend
+    log_selector:
+      service: frontend
+    metric_selector:
+      job: nginx-exporter
+postgres_targets:
+  - id: leafy-postgres
+    alert_target: leafy-db
+    log_selector:
+      service: db

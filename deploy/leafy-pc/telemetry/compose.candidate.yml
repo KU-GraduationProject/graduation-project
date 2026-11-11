@@ -1,0 +1,32 @@
+# NOT applied. Standalone collector project; do not merge into back/deploy.
+# No Windows ports are published. Remote access/tunnel is a separate approval.
+name: leafy-gc-telemetry-candidate
+services:
+  cadvisor:
+    image: ${CADVISOR_IMAGE:?Supply reviewed cAdvisor image digest}
+    privileged: true
+    command:
+      - --housekeeping_interval=5s
+      - --allow_dynamic_housekeeping=false
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    networks: [telemetry]
+  collector:
+    build:
+      context: .
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:?Supply reviewed Python image digest}
+    command: ["--config", "/config/config.json", "--listen", "0.0.0.0"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${TELEMETRY_CONFIG:?Supply validated absolute config path}:/config/config.json:ro
+    networks: [telemetry]
+networks:
+  telemetry:
+    internal: true

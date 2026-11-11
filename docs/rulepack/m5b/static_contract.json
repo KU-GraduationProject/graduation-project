@@ -1,0 +1,45 @@
+{
+  "basis": "HEAD 92e70db; static configuration only, A/B unintegrated",
+  "original_rule_definition_counts": {
+    "loki": 11,
+    "prometheus": 6
+  },
+  "candidate_counts": {
+    "loki": 12,
+    "prometheus": 9
+  },
+  "webhook_schema_fields": {
+    "AlertLabel": [
+      "alertname",
+      "severity",
+      "instance",
+      "container"
+    ],
+    "Alert": [
+      "status",
+      "labels",
+      "startsAt",
+      "endsAt",
+      "annotations"
+    ],
+    "AlertManagerWebhook": [
+      "version",
+      "groupKey",
+      "status",
+      "alerts"
+    ]
+  },
+  "alertmanager_route_timing": {
+    "group_wait": "10s",
+    "group_interval": "10s",
+    "repeat_interval": "240s"
+  },
+  "source_files_sha256": {
+    "aiops/pipeline/main.py": "965aa8491699236b5e524f19cafd5ac9347d829dfc5fd991b0cf725588e53e25",
+    "aiops/pipeline/collector/logs.py": "1f56ae0eff3b2f5d11895b9bc03ac95feff639c37fb0ee54600d9420921bc8dd",
+    "aiops/pipeline/collector/metrics.py": "0b4698efc7f87c5101a68c1fbe0d90f190b4b550e85afaaca60d20054e830af9",
+    "monitoring/alertmanager/alertmanager.yml": "82288464773b906b8b7954462d24cb63ab7f6949d18ed1d6c8825c9dd5c0d4bf",
+    "monitoring/prometheus/prometheus.aiops.yml": "b5f15232156b121b2882ab31fadef2e0bdaf3ea643b25fbeb08e8eb43ba55ecc"
+  },
+  "runtime_verified": false
+}
