@@ -251,3 +251,5 @@ scenarios/v2/heldout/
 
 # 런타임 픽스처 출력(경보 컨텍스트)
 scenarios/v2/fixtures_data/
+# pipeline CONTEXT_CAPTURE_DIR 기본 위치(실측 로그 포함, 커밋 금지)
+aiops/pipeline/results/context/

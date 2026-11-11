@@ -22,5 +22,7 @@ class Settings:
     # 프롬프트 조립 방식. v2 = 룰 기준 조회 구간·증거 ID·섹션별 예산, legacy = 1학기 방식(전후 비교용).
     prompt_builder: str = os.getenv("PROMPT_BUILDER", "v2")
     observation_bindings: str = os.getenv("OBSERVATION_BINDINGS", "[]")
+    # 경보별 입력 컨텍스트 저장 위치(평가 픽스처용). 비우면 저장하지 않는다. 예: /app/results/context
+    context_capture_dir: str = os.getenv("CONTEXT_CAPTURE_DIR", "")
 settings = Settings()
 

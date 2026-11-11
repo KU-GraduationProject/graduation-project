@@ -25,6 +25,7 @@ from collector.metrics import MetricsCollector
 from collector.logs import LogsCollector
 from collector.network import NetworkCollector
 from collector.rules import RulesCollector
+from capture import build_context, save_context
 from correlation import CorrelationContext, MONITORED_SERVICES, parse_target_map, to_instant
 from identity import parse_bindings, resolve_identity, dedup_key
 from prompt.builder import make_builder
@@ -318,6 +319,14 @@ async def analyze_alerts(alerts: list[Alert], received_at: datetime | None = Non
             evidence_sources = {
                 "metrics": metrics.report, "logs": logs.report, "network": network.provenance,
             }
+            if settings.context_capture_dir:
+                try:
+                    path = save_context(settings.context_capture_dir, build_context(
+                        alert, received_at, identity.target, rule, metrics, logs, log_meta, network,
+                        settings.prompt_builder, identity_status))
+                    logger.info(f"[Pipeline] context saved: {path}")
+                except Exception as e:  # 평가용 저장 실패가 분석을 막지 않는다
+                    logger.warning(f"[Pipeline] context 저장 실패: {e}")
             if not binding or not (any(metrics.values()) or logs or network.events):
                 # LLM 판단이 아니므로 NONE 으로 메우지 않는다 — 분석 실패(NOTIFY)로 남긴다
                 result = LLMAnalysisResult.invalid(

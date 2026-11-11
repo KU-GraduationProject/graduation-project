@@ -102,9 +102,94 @@ def save_fixture(fixture: dict, out_dir: str = DEFAULT_FIXTURE_DIR) -> str:
 # --------------------------------------------------------------------------- #
 
 def capture_on_alert(scenario_id, alert, observations, out_dir=DEFAULT_FIXTURE_DIR,
-                     variant_id=None, seed=None) -> str:
+                     variant_id=None, seed=None, captured_at=None) -> str:
     """경보 수신 시 호출 — 컨텍스트를 픽스처로 저장하고 경로를 돌려준다."""
-    fx = build_fixture(scenario_id, alert, observations, variant_id, seed)
+    fx = build_fixture(scenario_id, alert, observations, variant_id, seed, captured_at)
     path = save_fixture(fx, out_dir)
     print(f"[fixture] saved {path}", flush=True)
     return path
+
+
+# --------------------------------------------------------------------------- #
+# 실행 기록 + pipeline 컨텍스트 짝짓기
+#   pipeline(CONTEXT_CAPTURE_DIR)은 경보별 입력 컨텍스트만 저장한다(시나리오를 모른다).
+#   run.py 가 남긴 실행 기록과 수신 시각으로 짝지어 픽스처를 만든다.
+# --------------------------------------------------------------------------- #
+
+DEFAULT_RUN_LOG = os.getenv("V2_RUN_LOG", os.path.join(DEFAULT_FIXTURE_DIR, "runs.jsonl"))
+# 하네스(aiops/eval/harness.py)가 읽는 observations 키
+OBSERVATION_KEYS = ("received_at", "container", "rule", "metrics", "logs", "log_query", "network")
+
+
+def _ts(value: str) -> float:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+
+
+def append_run_record(scenario_id, variant_id, seed, started_at: datetime, ended_at: datetime,
+                      status: str, path: str = DEFAULT_RUN_LOG) -> dict:
+    rec = {"scenario_id": scenario_id, "variant_id": variant_id, "seed": seed,
+           "started_at": started_at.isoformat(), "ended_at": ended_at.isoformat(), "status": status}
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return rec
+
+
+def pair_context(runs: list[dict], received_at: str, grace_seconds: float = 300):
+    """수신 시각이 [시작, 끝 + 여유] 안인 실행 기록 하나. 없거나 여럿이면 (None, 사유)."""
+    t = _ts(received_at)
+    hits = [r for r in runs if r.get("status") == "ok"
+            and _ts(r["started_at"]) <= t <= _ts(r["ended_at"]) + grace_seconds]
+    if len(hits) == 1:
+        return hits[0], None
+    return None, "no_run" if not hits else "ambiguous_run"
+
+
+def observations_from_context(ctx: dict) -> tuple[dict, dict]:
+    return ctx["alert"], {k: ctx[k] for k in OBSERVATION_KEYS if k in ctx}
+
+
+def build_fixtures_from_contexts(context_dir: str, run_log: str = DEFAULT_RUN_LOG,
+                                 out_dir: str = DEFAULT_FIXTURE_DIR, grace_seconds: float = 300) -> list[dict]:
+    """컨텍스트 폴더의 JSON 을 실행 기록과 짝지어 픽스처로 저장한다. 파일별 결과 목록을 돌려준다."""
+    with open(run_log, encoding="utf-8") as fh:
+        runs = [json.loads(line) for line in fh if line.strip()]
+    report = []
+    for name in sorted(os.listdir(context_dir)):
+        if not name.endswith(".json"):
+            continue
+        with open(os.path.join(context_dir, name), encoding="utf-8") as fh:
+            ctx = json.load(fh)
+        run, reason = pair_context(runs, ctx["received_at"], grace_seconds)
+        row = {"context": name, "fixture": None, "reason": reason}
+        if run:
+            alert, obs = observations_from_context(ctx)
+            try:
+                row["fixture"] = save_fixture(build_fixture(run["scenario_id"], alert, obs, run.get("variant_id"),
+                                                            run.get("seed"), ctx["received_at"]), out_dir)
+                row["scenario_id"] = run["scenario_id"]
+            except ValueError as e:   # 정답 레이블 키가 섞인 컨텍스트는 저장하지 않는다
+                row["reason"] = f"rejected: {e}"
+        report.append(row)
+    return report
+
+
+def main(argv=None) -> int:
+    import argparse
+    p = argparse.ArgumentParser(prog="v2.fixtures", description="pipeline 컨텍스트 → 평가 픽스처")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    pp = sub.add_parser("pair", help="실행 기록과 컨텍스트를 시각으로 짝지어 픽스처 저장")
+    pp.add_argument("--contexts", required=True, help="CONTEXT_CAPTURE_DIR 에 해당하는 호스트 폴더")
+    pp.add_argument("--runs", default=DEFAULT_RUN_LOG)
+    pp.add_argument("--out", default=DEFAULT_FIXTURE_DIR)
+    pp.add_argument("--grace", type=float, default=300, help="실행 종료 후 경보를 받아 줄 여유(초)")
+    args = p.parse_args(argv)
+    rows = build_fixtures_from_contexts(args.contexts, args.runs, args.out, args.grace)
+    for r in rows:
+        print(f"{r['context']}: {r['fixture'] or r['reason']}")
+    print(f"saved {sum(1 for r in rows if r['fixture'])}/{len(rows)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
