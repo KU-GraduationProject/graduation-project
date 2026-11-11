@@ -1,0 +1,635 @@
+{
+ "_note": "테스트용 가짜 픽스처 — 하네스 흐름 검증용. 실측이 아니며 지표 보고에 쓰지 않는다.",
+ "scenario_id": "s1_c_login_bruteforce",
+ "variant_id": "single-account",
+ "seed": 1,
+ "captured_at": "2026-11-01T05:10:20Z",
+ "alert": {
+  "status": "firing",
+  "labels": {
+   "alertname": "LoginFailureBurst",
+   "severity": "warning",
+   "category": "security"
+  },
+  "annotations": {
+   "summary": "로그인 실패 급증",
+   "container": "leafy-frontend"
+  },
+  "startsAt": "2026-11-01T05:10:00Z"
+ },
+ "observations": {
+  "received_at": "2026-11-01T05:10:20Z",
+  "container": "leafy-frontend",
+  "rule": {
+   "name": "LoginFailureBurst",
+   "source": "loki",
+   "expr": "sum(count_over_time({service=\"frontend\", log_format=\"json\"} | json | status = 401 [2m])) > 10",
+   "for_seconds": 0,
+   "range_seconds": 120,
+   "op": ">",
+   "threshold": 10.0,
+   "value": 30.0,
+   "error": null
+  },
+  "metrics": {
+   "cpu_usage": [
+    {
+     "labels": {},
+     "values": [
+      {
+       "t": 1793509740.0,
+       "v": 0.05
+      },
+      {
+       "t": 1793509755.0,
+       "v": 0.05
+      },
+      {
+       "t": 1793509770.0,
+       "v": 0.05
+      },
+      {
+       "t": 1793509785.0,
+       "v": 0.05
+      },
+      {
+       "t": 1793509800.0,
+       "v": 0.05
+      },
+      {
+       "t": 1793509815.0,
+       "v": 0.05
+      }
+     ]
+    }
+   ]
+  },
+  "logs": [
+   {
+    "ts": 1793509650.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:30+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/0\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a0\"}"
+   },
+   {
+    "ts": 1793509651.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:31+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/1\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a1\"}"
+   },
+   {
+    "ts": 1793509652.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:32+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/2\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a2\"}"
+   },
+   {
+    "ts": 1793509653.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:33+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/3\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a3\"}"
+   },
+   {
+    "ts": 1793509654.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:34+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/4\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a4\"}"
+   },
+   {
+    "ts": 1793509655.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:35+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/5\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a5\"}"
+   },
+   {
+    "ts": 1793509656.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:36+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/6\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a6\"}"
+   },
+   {
+    "ts": 1793509657.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:37+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/7\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a7\"}"
+   },
+   {
+    "ts": 1793509658.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:38+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/8\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a8\"}"
+   },
+   {
+    "ts": 1793509659.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:39+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/9\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a9\"}"
+   },
+   {
+    "ts": 1793509660.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:40+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/10\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a10\"}"
+   },
+   {
+    "ts": 1793509661.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:41+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/11\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a11\"}"
+   },
+   {
+    "ts": 1793509662.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:42+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/12\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a12\"}"
+   },
+   {
+    "ts": 1793509663.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:43+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/13\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a13\"}"
+   },
+   {
+    "ts": 1793509664.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:44+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/14\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a14\"}"
+   },
+   {
+    "ts": 1793509665.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:45+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/15\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a15\"}"
+   },
+   {
+    "ts": 1793509666.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:46+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/16\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a16\"}"
+   },
+   {
+    "ts": 1793509667.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:47+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/17\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a17\"}"
+   },
+   {
+    "ts": 1793509668.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:48+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/18\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a18\"}"
+   },
+   {
+    "ts": 1793509669.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:49+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/19\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a19\"}"
+   },
+   {
+    "ts": 1793509670.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:50+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/20\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a20\"}"
+   },
+   {
+    "ts": 1793509671.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:51+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/21\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a21\"}"
+   },
+   {
+    "ts": 1793509672.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:52+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/22\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a22\"}"
+   },
+   {
+    "ts": 1793509673.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:53+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/23\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a23\"}"
+   },
+   {
+    "ts": 1793509674.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:54+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/24\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a24\"}"
+   },
+   {
+    "ts": 1793509675.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:55+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/25\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a25\"}"
+   },
+   {
+    "ts": 1793509676.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:56+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/26\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a26\"}"
+   },
+   {
+    "ts": 1793509677.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:57+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/27\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a27\"}"
+   },
+   {
+    "ts": 1793509678.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:58+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/28\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a28\"}"
+   },
+   {
+    "ts": 1793509679.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:07:59+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/29\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a29\"}"
+   },
+   {
+    "ts": 1793509680.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:00+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/30\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a30\"}"
+   },
+   {
+    "ts": 1793509681.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:01+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/31\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a31\"}"
+   },
+   {
+    "ts": 1793509682.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:02+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/32\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a32\"}"
+   },
+   {
+    "ts": 1793509683.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:03+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/33\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a33\"}"
+   },
+   {
+    "ts": 1793509684.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:04+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/34\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a34\"}"
+   },
+   {
+    "ts": 1793509685.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:05+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/35\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a35\"}"
+   },
+   {
+    "ts": 1793509686.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:06+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/36\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a36\"}"
+   },
+   {
+    "ts": 1793509687.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:07+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/37\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a37\"}"
+   },
+   {
+    "ts": 1793509688.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:08+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/38\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a38\"}"
+   },
+   {
+    "ts": 1793509689.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:09+09:00\", \"request_method\": \"GET\", \"request_uri\": \"/api/plants/39\", \"status\": \"200\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.5\", \"request_id\": \"a39\"}"
+   },
+   {
+    "ts": 1793509710.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:30+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b0\"}"
+   },
+   {
+    "ts": 1793509713.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:33+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b1\"}"
+   },
+   {
+    "ts": 1793509716.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:36+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b2\"}"
+   },
+   {
+    "ts": 1793509719.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:39+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b3\"}"
+   },
+   {
+    "ts": 1793509722.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:42+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b4\"}"
+   },
+   {
+    "ts": 1793509725.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:45+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b5\"}"
+   },
+   {
+    "ts": 1793509728.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:48+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b6\"}"
+   },
+   {
+    "ts": 1793509731.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:51+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b7\"}"
+   },
+   {
+    "ts": 1793509734.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:54+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b8\"}"
+   },
+   {
+    "ts": 1793509737.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:08:57+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b9\"}"
+   },
+   {
+    "ts": 1793509740.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:00+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b10\"}"
+   },
+   {
+    "ts": 1793509743.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:03+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b11\"}"
+   },
+   {
+    "ts": 1793509746.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:06+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b12\"}"
+   },
+   {
+    "ts": 1793509749.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:09+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b13\"}"
+   },
+   {
+    "ts": 1793509752.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:12+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b14\"}"
+   },
+   {
+    "ts": 1793509755.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:15+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b15\"}"
+   },
+   {
+    "ts": 1793509758.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:18+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b16\"}"
+   },
+   {
+    "ts": 1793509761.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:21+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b17\"}"
+   },
+   {
+    "ts": 1793509764.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:24+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b18\"}"
+   },
+   {
+    "ts": 1793509767.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:27+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b19\"}"
+   },
+   {
+    "ts": 1793509770.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:30+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b20\"}"
+   },
+   {
+    "ts": 1793509773.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:33+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b21\"}"
+   },
+   {
+    "ts": 1793509776.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:36+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b22\"}"
+   },
+   {
+    "ts": 1793509779.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:39+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b23\"}"
+   },
+   {
+    "ts": 1793509782.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:42+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b24\"}"
+   },
+   {
+    "ts": 1793509785.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:45+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b25\"}"
+   },
+   {
+    "ts": 1793509788.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:48+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b26\"}"
+   },
+   {
+    "ts": 1793509791.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:51+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b27\"}"
+   },
+   {
+    "ts": 1793509794.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:54+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b28\"}"
+   },
+   {
+    "ts": 1793509797.0,
+    "labels": {
+     "service": "frontend",
+     "log_format": "json"
+    },
+    "line": "{\"timestamp\": \"2026-11-01T14:09:57+09:00\", \"request_method\": \"POST\", \"request_uri\": \"/api/auth/login\", \"status\": \"401\", \"request_time\": \"0.011\", \"http_user_agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36\", \"remote_addr\": \"10.0.0.66\", \"request_id\": \"b29\"}"
+   }
+  ],
+  "log_query": {
+   "start": "2026-11-01T05:07:00Z",
+   "end": "2026-11-01T05:10:20Z",
+   "limit": 200
+  }
+ }
+}

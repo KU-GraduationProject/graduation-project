@@ -1,0 +1,38 @@
+{
+ "_note": "테스트용 가짜 픽스처 — 하네스 흐름 검증용. 실측이 아니며 지표 보고에 쓰지 않는다.",
+ "scenario_id": "c_g_jvm_normal_memory",
+ "variant_id": "unlisted-variant",
+ "seed": 4,
+ "captured_at": "2026-11-01T08:00:10Z",
+ "alert": {
+  "status": "firing",
+  "labels": {
+   "alertname": "HighMemoryUsage",
+   "severity": "warning",
+   "name": "leafy-backend"
+  },
+  "annotations": {
+   "summary": "메모리 사용률 85% 초과",
+   "container": "leafy-backend"
+  },
+  "startsAt": "2026-11-01T08:00:00Z"
+ },
+ "observations": {
+  "received_at": "2026-11-01T08:00:10Z",
+  "container": "leafy-backend",
+  "metrics": {
+   "memory_usage": [
+    {
+     "labels": {},
+     "values": [
+      {
+       "t": 1793520000.0,
+       "v": 461373440
+      }
+     ]
+    }
+   ]
+  },
+  "logs": []
+ }
+}
