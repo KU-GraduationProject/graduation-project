@@ -43,21 +43,29 @@ def without_comments(body):
     return re.sub(r"<!--[\s\S]*?(?:-->|$)", "", body or "")
 
 
+def markdown_lines(body):
+    """Yield content and prose flags using the same fence rules everywhere."""
+    fence = None
+    for line in without_comments(body).splitlines():
+        if fence is None:
+            opening = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+            if opening and (opening[1][0] != "`" or "`" not in opening[2]):
+                fence = opening[1]
+                continue
+        else:
+            closing = re.fullmatch(r" {0,3}(`{3,}|~{3,})[ \t]*", line)
+            if closing and closing[1][0] == fence[0] and len(closing[1]) >= len(fence):
+                fence = None
+                continue
+        yield line, fence is None
+
+
 def sections(body):
     """Ignore commented/fenced headings; keep code blocks as section content."""
     result = {}
     current = None
-    fence = None
-    for line in without_comments(body).splitlines():
-        marker = re.match(r"^\s*(`{3,}|~{3,})", line)
-        if marker:
-            token = marker[1]
-            if fence is None:
-                fence = token
-            elif token[0] == fence[0] and len(token) >= len(fence):
-                fence = None
-            continue
-        heading = re.fullmatch(r"#{2,3}\s+(.+?)\s*#*\s*", line) if fence is None else None
+    for line, prose in markdown_lines(body):
+        heading = re.fullmatch(r"#{2,3}\s+(.+?)\s*#*\s*", line) if prose else None
         if heading:
             current = heading[1]
             if current in result:
@@ -105,7 +113,7 @@ def validate_pr(pr, default_branch):
     if not re.fullmatch(rf"Closes #{issue}\.?", related, re.IGNORECASE):
         raise ValueError("관련 이슈에는 PR 제목과 같은 번호의 Closes #숫자 한 줄을 작성하세요.")
     # Closing keywords in examples/code/comments do not create an Issue link.
-    prose = re.sub(r"(?ms)^\s*(`{3,}|~{3,}).*?^\s*\1\s*$", "", without_comments(pr.get("body")))
+    prose = "\n".join(line for line, is_prose in markdown_lines(pr.get("body")) if is_prose)
     links = re.findall(r"\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\s+(?:#[1-9][0-9]*|https?://\S+)", prose, re.I)
     if len(links) != 1 or re.fullmatch(rf"Closes #{issue}", links[0], re.I) is None:
         raise ValueError("1 Issue = 1 PR: 실제 Closes #숫자 연결을 정확히 하나 작성하세요.")

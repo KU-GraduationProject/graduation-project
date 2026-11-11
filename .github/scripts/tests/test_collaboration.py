@@ -81,6 +81,17 @@ class PolicyTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 policy.validate_pr({**valid_pr(), "body": valid_pr()["body"] + suffix}, "main")
 
+    def test_fence_closers_are_consistent_for_sections_and_links(self):
+        for opener, inner, closer in (("```md", "```python", "````"),
+                                      ("~~~~", "~~~", "~~~~~"),
+                                      ("```", "~~~", "```"),
+                                      ("```", "``` trailing text", "```")):
+            with self.subTest(opener=opener, inner=inner):
+                # Fake headings and closing references remain code even after an
+                # info-string marker, short marker or different marker character.
+                code = f"\n{opener}\n{inner}\n## 개요\nCloses #13\n{closer}\n"
+                policy.validate_pr({**valid_pr(), "body": valid_pr()["body"] + code}, "main")
+
     def test_bad_branch_title_or_base(self):
         for branch in ("ci/13-collaboration", "ci/collaboration", "main", "feature/12-policy", "ci/12-TASK"):
             pr = valid_pr()

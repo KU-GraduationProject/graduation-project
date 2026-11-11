@@ -5,6 +5,14 @@
 이 문서는 커밋 전 검증 기록이며 실제 커밋·푸시·PR·원격 CI 상태는 연결된 GitHub PR 기록을 확인한다.
 Merge·관리자 설정 변경·Hook 상시 활성화는 이번 승인 범위에 포함하지 않는다.
 
+후속 원격 검증: PR #26을 생성하고 `gicks04`에게 사람 리뷰를 요청했다.
+첫 원격 실행에서 기존 격리 테스트 4개 묶음과 Ubuntu/macOS 정책 검사는 통과했다.
+Windows 정책 검사는 cp1252 stdout에서 한국어 로그를 인코딩하지 못해 실패했다.
+Workflow와 Git Bash Hook에 `PYTHONUTF8=1`을 설정했으며 후속 커밋의 실제 결과는 PR Checks에서 확인한다.
+메타데이터 검사기로 실제 Issue #25·PR #26·전체 커밋을 읽기 전용 API 대조해 통과를 확인했다.
+CodeRabbit 첫 실제 리뷰는 기본 설정으로 실행되어 영문으로 제공됐다. 한국어 설정의 적용은 기본 브랜치 반영 후 별도 확인한다.
+코드블록 종료 규칙 지적도 재현해 제목/Closes 검사에 동일한 파서를 사용하고 회귀 테스트를 추가했다.
+
 ## 저장소 분석
 
 | 항목 | 실제 확인 결과 |
@@ -83,7 +91,7 @@ Merge·관리자 설정 변경·Hook 상시 활성화는 이번 승인 범위에
 | 전체 커밋 페이지·수량 대조, 250개 초과/누락·API 403 | 실패 시 검사 차단 | PASS (로컬 모의 검증) |
 | Issue 위반 라벨 지정/수정 후 제거 | API mock | PASS (로컬 모의 검증) |
 | 실제 commit-msg 실행, 위조 Merge 거부/실제 merge context 허용 | 임시 Git 저장소, 실제 Hook 프로세스 | PASS |
-| 정책 테스트 합계 | 23 tests, OK | PASS |
+| 정책 테스트 합계 | 24 tests, OK (CodeRabbit 코드블록 경계 회귀 포함) | PASS |
 | Pipeline 기존 격리 테스트 | 100 tests, OK | PASS |
 | Remediation 기존 격리 테스트 | 270 tests, OK | PASS |
 | Network 기존 격리 테스트 | 100 tests, OK | PASS |

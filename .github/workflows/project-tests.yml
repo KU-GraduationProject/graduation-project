@@ -6,6 +6,9 @@ on:
     branches: [main]
 permissions:
   contents: read
+env:
+  # Windows redirected stdout otherwise uses cp1252 and cannot print Korean.
+  PYTHONUTF8: '1'
 concurrency:
   group: project-tests-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
