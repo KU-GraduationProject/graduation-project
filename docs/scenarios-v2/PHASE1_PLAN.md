@@ -97,7 +97,7 @@ RunOutcome) → `ConfusionMatrix` → `write_results`(JSONL/CSV/summary). V2(hel
 | id | 주입 방법 | 남는 증거 | 탐지 신호(채널) | 정답 | 정리(원복) |
 |---|---|---|---|---|---|
 | **S2-a** 자원 탈취(채굴형 CPU) | backend 내부에서 **지속 CPU 점유 루프**(서비스 생존). **자기신고 문자열 없음** | Prometheus CPU 사용률 상승 + 서비스 200 유지 | metric, app_log | high / **THROTTLE**(생존→스로틀) / *RECREATE* / backend | 점유 프로세스 종료(지정 시간 후 자동 종료), 재시작 안 함 |
-| **F2-c** DB 커넥션 풀 고갈 | DB에 **다수 연결 보유**(데이터 조작 없이 연결만) | Prometheus postgres 연결 수 상승 + backend 커넥션 타임아웃 로그 | metric, app_log | high / **RESTART**(backend) / *KILL_SESSIONS* / backend | 보유 연결 종료→풀 회복. DB 실데이터 불변 |
+| **F2-c** DB 연결 한도 고갈 | DB **연결 한도(max_connections)** 소진 — 로컬 소켓 세션으로 슬롯 점유(점유 수 런타임 계산, 예약 연결 미점유) | DB 로그 too many clients + 연결 수 한도 포화 + 익스포터 수집 실패(backend 는 한동안 정상) | metric, app_log | high / **NOTIFY**(점유 세션 종료가 조치) / *KILL_SESSIONS* / 점유 DB 세션 | psql 클라이언트 kill(**DB 접속 없이**)→연결 복귀. **backend 재시작 안 함**, DB 설정 불변 |
 | **F3-a** 잘못된 이미지 배포 | 대상 서비스를 **깨진 이미지/태그로 재배포**(crashloop/헬스 실패 유발) | 컨테이너 재시작 증가 또는 기동 실패 로그 | metric, app_log | high / **NOTIFY**(롤백 조치 없음) / *ROLLBACK* / 배포 서비스 | **원본 이미지/태그로 재배포** 복구(완전 가역). 데이터 손상 금지 |
 
 ### B.3 배치 ③ — 대조 5개 등록 (재사용)
@@ -150,7 +150,7 @@ RunOutcome) → `ConfusionMatrix` → `write_results`(JSONL/CSV/summary). V2(hel
 실행 설정(주소·대상은 **인자·환경변수**로 받는다 — Tailscale IP 등 주소를 코드에 하드코딩하지 않는다. `--dry-run` 출력에 설정·env 가 나온다):
 - S1-a `S1A_BASE_URL`/`S1A_PATH`/`S1A_PARAM` — **확정**: 공개 2xx 경로 `/api/v1/auth/check-login-id`(파라미터 `login_id`).
 - S1-c `S1C_BASE_URL`/`S1C_LOGIN_PATH`/`S1C_LOGIN_ID` — **확정**: 로그인 필드 `login_id`(auth_api.js 일치). 경로/테스트 계정은 env.
-- F2-c `F2C_DB_CONTAINER`/`F2C_DB_NAME` — **접속 방식 변경**: 호스트 비밀번호 접속 대신 **DB 컨테이너 로컬 소켓**(`docker exec … psql … pg_sleep`)으로 세션 점유(자격증명 미사용). 정리 때 표시된 세션 종료 + `numbackends` 복귀 확인.
+- F2-c `F2C_DB_CONTAINER`/`F2C_DB_NAME` — **DB 연결 한도 고갈**: DB 컨테이너 로컬 소켓(`docker exec … psql … pg_sleep`, 자격증명 미사용)으로 슬롯 점유. 점유 수 = `max_connections − superuser_reserved_connections − 현재 − 여유`(런타임 계산, 하드코딩·예약 연결 침범 금지, 초과 시 중단). 정리/watchdog 은 **DB 접속 없이** 점유 psql 클라이언트를 표식(`mark=`)으로 kill(보조로 `pg_terminate_backend`), 연결 수 복귀 확인. backend 재시작 안 함.
 - 자동 복구 watchdog(`V2_WORK_DIR`) — 장애 시나리오(F3-a·F2-a·F2-c·F1-b·S2-a)는 주입 시 `max_seconds` 를 받고, 세션이 멈춰도 그 시간 뒤 **분리 프로세스**가 스스로 복구한다. 정상 cleanup 이 먼저 되면 조용히 종료, 복구 실패는 로그로 남긴다.
 - 배경 트래픽(`V2_TRAFFIC_GEN` = traffic_gen 경로, PR #22 미머지라 **인자로 전달**) — 시나리오 실행 중 정상 트래픽(정상 모드)을 함께 돌리는 옵션. **F2-a·F2-c·F3-a 는 기본 ON**, 나머지는 OFF. 경로가 없으면 조용히 건너뛴다.
 - F3-a `F3A_BACKUP_DIR`(저장소 밖)/`V2_COMPOSE_DIR` — 실행 전 DB 백업 필수, 원본 이미지 고정(태그 변경 금지). watchdog 복구 = compose `--force-recreate`.
@@ -169,6 +169,7 @@ RunOutcome) → `ConfusionMatrix` → `write_results`(JSONL/CSV/summary). V2(hel
 - **F2-a 메트릭 네트워크 분리** — minio 메트릭을 전용 internal 망으로.
 - **역할 분리 정리 (현재)** — 탐지 룰·메트릭 수집 설정을 되돌리고 `RULES_HANDOFF.md` 로 이관.
   시나리오에서 룰 이름·임계 의존 제거(강도 파라미터화). `THREAT_SPEC.md`·`VARIANTS.md` 추가.
+- **F2-c 재정의 (현재)** — "DB 커넥션 풀" → **"DB 연결 한도 고갈"**. 조치 `RESTART`→`NOTIFY`(이상 `KILL_SESSIONS`), 대상=점유 DB 세션. 점유 수는 런타임에 `max_connections−예약−현재−여유`로 계산(하드코딩 제거), 예약 연결 미점유·주입 후 확인. 정리·watchdog 은 DB 접속 없이 psql 클라이언트 kill, backend 재시작 경로 제거.
 - **측정 PC 결과 반영 (현재)** — S1-c 로그인 필드 `login_id`(auth_api.js), S1-a 공개 2xx 경로 `/api/v1/auth/check-login-id`, F2-c 로컬 소켓 세션 점유(자격증명 미사용)·`numbackends` 복귀 확인. 장애 시나리오 자동 복구 watchdog(분리 프로세스) + 배경 트래픽 옵션(F2-a·F2-c·F3-a 기본 ON) 추가. 주소·대상은 인자·env, Tailscale IP 비하드코딩.
 - **평가용 격리·F1-b 재정의** — 평가용 설계·분할 규칙을 `.gitignore` 대상 heldout 폴더로 분리(`HELDOUT_POLICY.md`),
   레지스트리는 heldout 이 있으면 선택적으로 로드. F1-b 강도를 목표 비율 → 누수 속도×지속으로 재정의.

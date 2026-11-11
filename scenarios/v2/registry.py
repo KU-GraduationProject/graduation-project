@@ -114,12 +114,12 @@ SCENARIO_REGISTRY_V2 = [
     },
     {
         "id": "f2_c_db_pool_exhaustion",
-        "label": "DB 커넥션 풀 고갈",
+        "label": "DB 연결 한도 고갈",
         "incident_class": "failure",
         "threat_level": "high",
-        "expected_action": "RESTART",        # backend 재기동
+        "expected_action": "NOTIFY",          # 점유 세션 종료가 이상 조치(backend 재시작 아님)
         "expected_action_ideal": "KILL_SESSIONS",
-        "targets": ["leafy-backend"],
+        "targets": ["점유 중인 DB 세션"],
         "module": "v2.f2c_db_pool_exhaustion",
         "external_tool": None,
         "evidence": ["metric", "app_log"],

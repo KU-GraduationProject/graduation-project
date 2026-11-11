@@ -335,49 +335,107 @@ class TestS2a(unittest.TestCase):
 
 
 class TestF2c(unittest.TestCase):
-    def test_plan_connections(self):
-        p = f2c.plan_connections("weak")
-        self.assertEqual(p["connections"], f2c.STRENGTH_CONNECTIONS["weak"])
+    def test_usable_excludes_reserved(self):
+        # 비예약 자유 슬롯 = max - 예약 - 현재 (여유 margin 없음: medium/strong 이 전부 소진).
+        self.assertEqual(f2c.usable_slots(100, 3, 20), 77)
+        self.assertEqual(f2c.usable_slots(100, 3, 0), 97)
+        # 예약을 늘리면 그만큼 줄어든다(예약은 반드시 제외).
+        self.assertEqual(f2c.usable_slots(100, 3, 20) - f2c.usable_slots(100, 5, 20), 2)
 
-    def test_hold_sql_is_readonly(self):
-        self.assertTrue(f2c.is_readonly_statement(f2c.hold_sql(120)))
-        self.assertIn("pg_sleep", f2c.hold_sql(120))
-        self.assertFalse(f2c.is_readonly_statement("DELETE FROM t"))
-        self.assertFalse(f2c.is_readonly_statement("update t set x=1"))
+    def test_abort_when_no_headroom(self):
+        self.assertTrue(f2c.should_abort(0))
+        self.assertTrue(f2c.should_abort(-5))
+        self.assertFalse(f2c.should_abort(1))
 
-    def test_hold_uses_local_socket_no_credentials(self):
-        # 로컬 소켓·컨테이너 env 참조만 — 비밀번호 값이 명령에 들어가지 않는다.
-        inner = f2c.hold_inner_sh(120)
-        self.assertIn("pg_sleep", inner)
-        self.assertIn("$POSTGRES_USER", inner)       # 컨테이너 env 로만 참조
-        self.assertIn(f2c.HOLD_APPNAME, inner)
-        self.assertNotIn("PGPASSWORD", inner)         # 자격증명 미사용
-        self.assertNotIn("leafy_secret", inner)
-        argv = f2c.hold_session_argv()
-        self.assertEqual(argv[:3], ["docker", "exec", "-d"])
+    def test_target_never_exceeds_usable(self):
+        # 어떤 강도·usable 에서도 목표 점유 수는 usable 을 넘지 않는다(예약 침범 금지).
+        for usable in (1, 10, 77, 200):
+            for strength in f2c.STRENGTH_PROFILE:
+                self.assertLessEqual(f2c.target_for_strength(usable, strength), usable)
 
-    def test_terminate_targets_only_marked_sessions(self):
-        sql = f2c.terminate_sql()
-        self.assertIn("pg_terminate_backend", sql)
-        self.assertIn(f2c.HOLD_APPNAME, sql)
-        self.assertIn("pg_backend_pid()", sql)        # 자기 자신 제외
+    def test_target_per_strength_consumes_margin(self):
+        # (리뷰 2) medium/strong 은 비예약 슬롯을 전부 소진 → 새 연결 거부. weak 만 여유를 남긴다.
+        self.assertEqual(f2c.target_for_strength(100, "weak"), 90)     # ~90%, 거부 없음
+        self.assertEqual(f2c.target_for_strength(100, "medium"), 100)  # 전부 소진
+        self.assertEqual(f2c.target_for_strength(100, "strong"), 100)  # 전부 소진
+        prof = f2c.STRENGTH_PROFILE
+        self.assertLess(prof["strong"]["open_interval_s"], prof["medium"]["open_interval_s"])
+        self.assertLess(prof["medium"]["open_interval_s"], prof["weak"]["open_interval_s"])
+        self.assertGreater(prof["strong"]["hold_seconds"], prof["medium"]["hold_seconds"])
 
-    def test_numbackends_recovered(self):
-        self.assertTrue(f2c.numbackends_recovered(after=12, baseline=10))   # +2 이내
-        self.assertFalse(f2c.numbackends_recovered(after=40, baseline=10))
-
-    def test_watchdog_restore_terminates_sessions(self):
-        sh = f2c.watchdog_restore_sh()
-        self.assertIn("docker exec", sh)
-        self.assertIn("pg_terminate_backend", sh)
-        self.assertNotIn("leafy_secret", sh)
-
-    def test_background_default_on(self):
-        self.assertTrue(f2c.BACKGROUND_DEFAULT)
+    def test_rejection_expected(self):
+        # 성공기준: weak 은 압박만, medium/strong 은 새 연결 거부를 노린다.
+        self.assertFalse(f2c.rejection_expected("weak"))
+        self.assertTrue(f2c.rejection_expected("medium"))
+        self.assertTrue(f2c.rejection_expected("strong"))
 
     def test_unknown_strength(self):
         with self.assertRaises(ValueError):
-            f2c.plan_connections("nope")
+            f2c.target_for_strength(100, "nope")
+
+    def test_reserved_untouched(self):
+        self.assertTrue(f2c.reserved_untouched(97, 100, 3))    # 예약 3 비어 있음
+        self.assertFalse(f2c.reserved_untouched(99, 100, 3))   # 예약 침범
+
+    def test_connections_recovered(self):
+        self.assertTrue(f2c.connections_recovered(after=12, baseline=10))
+        self.assertFalse(f2c.connections_recovered(after=40, baseline=10))
+
+    def test_per_run_marker_distinguishes_rounds(self):
+        # (리뷰 3) 라운드별 표식 — 병렬 실행을 구분한다.
+        self.assertEqual(f2c.run_mark("abc123"), "connhold-abc123")
+        self.assertNotEqual(f2c.new_run_id(), f2c.new_run_id())
+        mark = f2c.run_mark("r1")
+        other = f2c.run_mark("r2")
+        inner = f2c.hold_inner_sh(120, mark)
+        self.assertIn("mark=" + mark, inner)
+        # 정리·watchdog 은 이 라운드 표식만 겨냥(다른 라운드 미포함).
+        self.assertIn("mark=" + mark, f2c.pkill_cleanup_sh(mark))
+        self.assertIn("mark=" + mark, f2c.watchdog_restore_sh(mark))
+        self.assertNotIn(other, f2c.watchdog_restore_sh(mark))
+        self.assertIn(mark, f2c.terminate_sql(mark))
+
+    def test_main_holds_before_cleanup(self):
+        # (리뷰 1) main 은 inject 직후 바로 cleanup 하지 않고 유지 시간만큼 점유를 유지한다.
+        self.assertGreater(f2c.hold_seconds_for("strong"), f2c.hold_seconds_for("weak"))
+        src = open(f2c.__file__, encoding="utf-8").read()
+        m = src[src.index("def main("):]
+        self.assertLess(m.index("inject("), m.index("time.sleep(hold_seconds_for"))
+        self.assertLess(m.index("time.sleep(hold_seconds_for"), m.index("cleanup("))
+
+    def test_hold_uses_local_socket_no_credentials(self):
+        inner = f2c.hold_inner_sh(120, f2c.run_mark("x"))
+        self.assertIn("pg_sleep", inner)
+        self.assertIn("$POSTGRES_USER", inner)        # 컨테이너 env 로만 참조
+        self.assertNotIn("PGPASSWORD", inner)         # 자격증명 미사용
+        self.assertNotIn("leafy_secret", inner)
+        self.assertEqual(f2c.hold_session_argv(f2c.run_mark("x"))[:3], ["docker", "exec", "-d"])
+
+    def test_cleanup_and_watchdog_need_no_db_connection(self):
+        # 1차 정리·watchdog 은 psql(새 접속) 없이 pkill 로만 동작한다.
+        self.assertIn("pkill", f2c.pkill_cleanup_sh(f2c.run_mark("x")))
+        wd = f2c.watchdog_restore_sh(f2c.run_mark("x"))
+        self.assertIn("pkill", wd)
+        self.assertNotIn("psql", wd)
+
+    def test_no_backend_restart_path(self):
+        # backend 를 재시작하지 않는다(재시작하면 DB 재연결 실패로 악화).
+        wd = f2c.watchdog_restore_sh(f2c.run_mark("x"))
+        self.assertNotIn("restart", wd)
+        self.assertNotIn("leafy-backend", wd)
+        src = open(f2c.__file__, encoding="utf-8").read()
+        self.assertNotIn("docker restart", src)
+        self.assertNotIn("leafy-backend", src)
+
+    def test_answer_labels(self):
+        row = next(r for r in registry.SCENARIO_REGISTRY_V2 if r["id"] == "f2_c_db_pool_exhaustion")
+        self.assertEqual(row["threat_level"], "high")
+        self.assertEqual(row["expected_action"], "NOTIFY")
+        self.assertEqual(row["expected_action_ideal"], "KILL_SESSIONS")
+        self.assertNotIn("leafy-backend", row["targets"])   # 대상은 점유 DB 세션
+
+    def test_background_default_on(self):
+        self.assertTrue(f2c.BACKGROUND_DEFAULT)
 
 
 class TestF3a(unittest.TestCase):
@@ -605,10 +663,10 @@ class TestSupervisor(unittest.TestCase):
         self.assertTrue(supervisor.background_enabled(True, None))
 
     def test_build_traffic_command_normal_mode(self):
-        cmd = supervisor.build_traffic_command("/tools/traffic_gen.py", "http://fe:80")
-        self.assertIn("--control", cmd)
+        cmd = supervisor.build_traffic_command("/tools/traffic_gen.py", "http://fe:80", "/run")
         self.assertEqual(cmd[cmd.index("--control") + 1], "none")   # 정상 모드
-        self.assertIn("http://fe:80", cmd)
+        self.assertEqual(cmd[cmd.index("--base") + 1], "http://fe:80")
+        self.assertEqual(cmd[cmd.index("--dir") + 1], "/run")       # 요청·API 실패 기록 위치
 
     def test_background_skips_when_path_missing(self):
         # PR #22 미머지 — 경로가 없으면 조용히 건너뛴다(None).
@@ -642,7 +700,7 @@ class TestWatchdogRestore(unittest.TestCase):
         scripts = [
             supervisor.build_watchdog_script(f2a.watchdog_restore_sh(), 10, "/c", "/l"),
             supervisor.build_watchdog_script(s2a.watchdog_restore_sh(), 10, "/c", "/l"),
-            supervisor.build_watchdog_script(f2c.watchdog_restore_sh(), 10, "/c", "/l"),
+            supervisor.build_watchdog_script(f2c.watchdog_restore_sh(f2c.run_mark("x")), 10, "/c", "/l"),
             supervisor.build_watchdog_script(f1b.watchdog_restore_sh(), 10, "/c", "/l"),
             supervisor.build_watchdog_script(f3a.watchdog_restore_sh(), 10, "/c", "/l"),
         ]
