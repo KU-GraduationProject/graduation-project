@@ -63,7 +63,7 @@ def load_main(mode):
     Phase 2 조치 레코드는 테스트마다 격리된 임시 디렉터리에 둔다 (공용 경로를 쓰면
     멱등성 기록이 테스트끼리 공유돼 간섭한다). TTL 스캐너는 끈다.
     """
-    env = {"SLACK_WEBHOOK_URL": "",
+    env = {"SLACK_WEBHOOK_URL": "", "SLACK_TRANSPORT": "http",
            "SLACK_SIGNING_SECRET": SLACK_SECRET,
            "REMEDIATION_API_KEY": API_KEY,
            "REMEDIATION_STATE_DIR": tempfile.mkdtemp(prefix="remstate_"),

@@ -402,6 +402,7 @@ services:
   remediation:
     build: ./aiops/remediation
     container_name: aiops-remediation
+    stop_grace_period: 60s
     environment:
       REMEDIATION_MODE: ${REMEDIATION_MODE:-disabled}
       PIPELINE_URL: http://pipeline:8000
@@ -411,6 +412,12 @@ services:
       #   SLACK_SIGNING_SECRET : Slack app 설정의 Signing Secret
       #   REMEDIATION_API_KEY  : Pipeline 과 공유하는 HMAC 키 (openssl rand -hex 32)
       SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      # Outbound Socket Mode; no public Slack callback/tunnel is required.
+      SLACK_TRANSPORT: ${SLACK_TRANSPORT:-socket_mode}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      SLACK_TEAM_ID: ${SLACK_TEAM_ID:-}
+      SLACK_ALLOWED_USER_IDS: ${SLACK_ALLOWED_USER_IDS:-}
+      SLACK_APPROVAL_TTL_SEC: ${SLACK_APPROVAL_TTL_SEC:-900}
       REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
       # Phase 1: 조치 위험도·실행 정책의 단일 소스 (아래 volumes 로 마운트)
       REMEDIATION_POLICY_PATH: /app/config/remediation_policy.yml
@@ -422,9 +429,8 @@ services:
     ports:
       # 조치 실행 경로이므로 호스트 루프백에만 공개한다. Pipeline 은 mgmt-net 으로
       # http://remediation:8001 로 접근하므로 publish 가 필요하지 않다.
-      # Slack Interactivity 를 쓰려면 리버스 프록시나 터널을 앞에 두고,
-      # 0.0.0.0 publish 로 되돌리지 않는다 (Windows/Docker Desktop 에서는
-      # Docker Desktop Backend 방화벽 규칙 때문에 LAN 에 노출된다 — docs/remote 실측).
+      # Slack 승인 버튼은 outbound Socket Mode로 수신한다. ngrok 불필요.
+      # 로컬 health/관리용 포트이므로 0.0.0.0 publish 로 되돌리지 않는다.
       - "127.0.0.1:8001:8001"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
