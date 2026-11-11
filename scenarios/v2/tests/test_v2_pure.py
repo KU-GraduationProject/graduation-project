@@ -325,33 +325,39 @@ class TestS2a(unittest.TestCase):
 
 
 class TestF2c(unittest.TestCase):
-    def test_holdable_excludes_reserved_and_margin(self):
-        # 점유 가능 수 = max - 예약 - 현재 - 여유. 예약은 반드시 제외된다.
-        self.assertEqual(f2c.holdable_count(100, 3, 20, 2), 75)
-        self.assertEqual(f2c.holdable_count(100, 3, 0, 0), 97)
-        # 예약을 바꾸면 그만큼 줄어든다(예약 제외 확인).
-        self.assertEqual(f2c.holdable_count(100, 3, 20, 2) - f2c.holdable_count(100, 5, 20, 2), 2)
+    def test_usable_excludes_reserved(self):
+        # 비예약 자유 슬롯 = max - 예약 - 현재 (여유 margin 없음: medium/strong 이 전부 소진).
+        self.assertEqual(f2c.usable_slots(100, 3, 20), 77)
+        self.assertEqual(f2c.usable_slots(100, 3, 0), 97)
+        # 예약을 늘리면 그만큼 줄어든다(예약은 반드시 제외).
+        self.assertEqual(f2c.usable_slots(100, 3, 20) - f2c.usable_slots(100, 5, 20), 2)
 
     def test_abort_when_no_headroom(self):
         self.assertTrue(f2c.should_abort(0))
         self.assertTrue(f2c.should_abort(-5))
         self.assertFalse(f2c.should_abort(1))
 
-    def test_target_never_exceeds_holdable(self):
-        # 어떤 강도·holdable 에서도 목표 점유 수는 계산값(holdable)을 넘지 않는다.
-        for holdable in (1, 10, 75, 200):
+    def test_target_never_exceeds_usable(self):
+        # 어떤 강도·usable 에서도 목표 점유 수는 usable 을 넘지 않는다(예약 침범 금지).
+        for usable in (1, 10, 77, 200):
             for strength in f2c.STRENGTH_PROFILE:
-                self.assertLessEqual(f2c.target_for_strength(holdable, strength), holdable)
+                self.assertLessEqual(f2c.target_for_strength(usable, strength), usable)
 
-    def test_target_per_strength(self):
-        self.assertEqual(f2c.target_for_strength(100, "weak"), 90)    # ~90%, 거부 없음
-        self.assertEqual(f2c.target_for_strength(100, "medium"), 100) # 한도까지
-        self.assertEqual(f2c.target_for_strength(100, "strong"), 100) # 한도까지
-        # strong 은 더 빠르게 채우고 더 오래 유지한다.
+    def test_target_per_strength_consumes_margin(self):
+        # (리뷰 2) medium/strong 은 비예약 슬롯을 전부 소진 → 새 연결 거부. weak 만 여유를 남긴다.
+        self.assertEqual(f2c.target_for_strength(100, "weak"), 90)     # ~90%, 거부 없음
+        self.assertEqual(f2c.target_for_strength(100, "medium"), 100)  # 전부 소진
+        self.assertEqual(f2c.target_for_strength(100, "strong"), 100)  # 전부 소진
         prof = f2c.STRENGTH_PROFILE
         self.assertLess(prof["strong"]["open_interval_s"], prof["medium"]["open_interval_s"])
         self.assertLess(prof["medium"]["open_interval_s"], prof["weak"]["open_interval_s"])
         self.assertGreater(prof["strong"]["hold_seconds"], prof["medium"]["hold_seconds"])
+
+    def test_rejection_expected(self):
+        # 성공기준: weak 은 압박만, medium/strong 은 새 연결 거부를 노린다.
+        self.assertFalse(f2c.rejection_expected("weak"))
+        self.assertTrue(f2c.rejection_expected("medium"))
+        self.assertTrue(f2c.rejection_expected("strong"))
 
     def test_unknown_strength(self):
         with self.assertRaises(ValueError):
@@ -365,26 +371,46 @@ class TestF2c(unittest.TestCase):
         self.assertTrue(f2c.connections_recovered(after=12, baseline=10))
         self.assertFalse(f2c.connections_recovered(after=40, baseline=10))
 
+    def test_per_run_marker_distinguishes_rounds(self):
+        # (리뷰 3) 라운드별 표식 — 병렬 실행을 구분한다.
+        self.assertEqual(f2c.run_mark("abc123"), "connhold-abc123")
+        self.assertNotEqual(f2c.new_run_id(), f2c.new_run_id())
+        mark = f2c.run_mark("r1")
+        other = f2c.run_mark("r2")
+        inner = f2c.hold_inner_sh(120, mark)
+        self.assertIn("mark=" + mark, inner)
+        # 정리·watchdog 은 이 라운드 표식만 겨냥(다른 라운드 미포함).
+        self.assertIn("mark=" + mark, f2c.pkill_cleanup_sh(mark))
+        self.assertIn("mark=" + mark, f2c.watchdog_restore_sh(mark))
+        self.assertNotIn(other, f2c.watchdog_restore_sh(mark))
+        self.assertIn(mark, f2c.terminate_sql(mark))
+
+    def test_main_holds_before_cleanup(self):
+        # (리뷰 1) main 은 inject 직후 바로 cleanup 하지 않고 유지 시간만큼 점유를 유지한다.
+        self.assertGreater(f2c.hold_seconds_for("strong"), f2c.hold_seconds_for("weak"))
+        src = open(f2c.__file__, encoding="utf-8").read()
+        m = src[src.index("def main("):]
+        self.assertLess(m.index("inject("), m.index("time.sleep(hold_seconds_for"))
+        self.assertLess(m.index("time.sleep(hold_seconds_for"), m.index("cleanup("))
+
     def test_hold_uses_local_socket_no_credentials(self):
-        inner = f2c.hold_inner_sh(120)
+        inner = f2c.hold_inner_sh(120, f2c.run_mark("x"))
         self.assertIn("pg_sleep", inner)
         self.assertIn("$POSTGRES_USER", inner)        # 컨테이너 env 로만 참조
-        self.assertIn("mark=" + f2c.CONN_HOLD_MARK, inner)  # pkill 용 argv 표식
         self.assertNotIn("PGPASSWORD", inner)         # 자격증명 미사용
         self.assertNotIn("leafy_secret", inner)
-        self.assertEqual(f2c.hold_session_argv()[:3], ["docker", "exec", "-d"])
+        self.assertEqual(f2c.hold_session_argv(f2c.run_mark("x"))[:3], ["docker", "exec", "-d"])
 
     def test_cleanup_and_watchdog_need_no_db_connection(self):
         # 1차 정리·watchdog 은 psql(새 접속) 없이 pkill 로만 동작한다.
-        self.assertIn("pkill", f2c.pkill_cleanup_sh())
-        wd = f2c.watchdog_restore_sh()
+        self.assertIn("pkill", f2c.pkill_cleanup_sh(f2c.run_mark("x")))
+        wd = f2c.watchdog_restore_sh(f2c.run_mark("x"))
         self.assertIn("pkill", wd)
         self.assertNotIn("psql", wd)
-        self.assertIn("mark=" + f2c.CONN_HOLD_MARK, wd)
 
     def test_no_backend_restart_path(self):
         # backend 를 재시작하지 않는다(재시작하면 DB 재연결 실패로 악화).
-        wd = f2c.watchdog_restore_sh()
+        wd = f2c.watchdog_restore_sh(f2c.run_mark("x"))
         self.assertNotIn("restart", wd)
         self.assertNotIn("leafy-backend", wd)
         src = open(f2c.__file__, encoding="utf-8").read()
@@ -664,7 +690,7 @@ class TestWatchdogRestore(unittest.TestCase):
         scripts = [
             supervisor.build_watchdog_script(f2a.watchdog_restore_sh(), 10, "/c", "/l"),
             supervisor.build_watchdog_script(s2a.watchdog_restore_sh(), 10, "/c", "/l"),
-            supervisor.build_watchdog_script(f2c.watchdog_restore_sh(), 10, "/c", "/l"),
+            supervisor.build_watchdog_script(f2c.watchdog_restore_sh(f2c.run_mark("x")), 10, "/c", "/l"),
             supervisor.build_watchdog_script(f1b.watchdog_restore_sh(), 10, "/c", "/l"),
             supervisor.build_watchdog_script(f3a.watchdog_restore_sh(), 10, "/c", "/l"),
         ]
