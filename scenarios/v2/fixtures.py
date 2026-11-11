@@ -116,7 +116,9 @@ def capture_on_alert(scenario_id, alert, observations, out_dir=DEFAULT_FIXTURE_D
 #   run.py 가 남긴 실행 기록과 수신 시각으로 짝지어 픽스처를 만든다.
 # --------------------------------------------------------------------------- #
 
-DEFAULT_RUN_LOG = os.getenv("V2_RUN_LOG", os.path.join(DEFAULT_FIXTURE_DIR, "runs.jsonl"))
+# 실행 위치(저장소 루트/scenarios)와 무관하게 gitignore 대상인 scenarios/v2/fixtures_data 를 쓴다
+_DATA_DIR = os.getenv("V2_FIXTURE_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures_data"))
+DEFAULT_RUN_LOG = os.getenv("V2_RUN_LOG", os.path.join(_DATA_DIR, "runs.jsonl"))
 # 하네스(aiops/eval/harness.py)가 읽는 observations 키
 OBSERVATION_KEYS = ("received_at", "container", "rule", "metrics", "logs", "log_query", "network")
 
@@ -150,7 +152,7 @@ def observations_from_context(ctx: dict) -> tuple[dict, dict]:
 
 
 def build_fixtures_from_contexts(context_dir: str, run_log: str = DEFAULT_RUN_LOG,
-                                 out_dir: str = DEFAULT_FIXTURE_DIR, grace_seconds: float = 300) -> list[dict]:
+                                 out_dir: str = _DATA_DIR, grace_seconds: float = 300) -> list[dict]:
     """컨텍스트 폴더의 JSON 을 실행 기록과 짝지어 픽스처로 저장한다. 파일별 결과 목록을 돌려준다."""
     with open(run_log, encoding="utf-8") as fh:
         runs = [json.loads(line) for line in fh if line.strip()]
@@ -181,7 +183,7 @@ def main(argv=None) -> int:
     pp = sub.add_parser("pair", help="실행 기록과 컨텍스트를 시각으로 짝지어 픽스처 저장")
     pp.add_argument("--contexts", required=True, help="CONTEXT_CAPTURE_DIR 에 해당하는 호스트 폴더")
     pp.add_argument("--runs", default=DEFAULT_RUN_LOG)
-    pp.add_argument("--out", default=DEFAULT_FIXTURE_DIR)
+    pp.add_argument("--out", default=_DATA_DIR)
     pp.add_argument("--grace", type=float, default=300, help="실행 종료 후 경보를 받아 줄 여유(초)")
     args = p.parse_args(argv)
     rows = build_fixtures_from_contexts(args.contexts, args.runs, args.out, args.grace)
