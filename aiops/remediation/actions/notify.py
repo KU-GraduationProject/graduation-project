@@ -77,7 +77,12 @@ class Notifier:
         return {
             "alertname":      alert.get("labels", {}).get("alertname", "unknown"),
             "threat_level":   analysis.get("threat_level", "unknown"),
-            "action":         analysis.get("action_description", "N/A"),
+            # action_description 은 출력 형식에서 빠졌다 (root_cause 로 흡수). 과거 결과에만 있다.
+            "action":         analysis.get("action_description") or (
+                f"{analysis.get('action_type', 'NONE')} → "
+                + (", ".join(analysis.get("action_targets") or []) or "대상 없음")),
+            "analysis_invalid": str(analysis.get("analysis_status", "")).lower() == "invalid",
+            "invalid_reasons":  analysis.get("invalid_reasons") or [],
             "action_type":    analysis.get("action_type", "NONE"),       # [추가]
             "action_targets": analysis.get("action_targets", []),        # [추가]
             "root_cause":     analysis.get("root_cause", "N/A"),
@@ -199,7 +204,11 @@ class Notifier:
             "blocks": [
                 {
                     "type": "section",
-                    "text": {"type": "mrkdwn", "text": f":warning: *[ALERT ONLY]* `{data['alertname']}`"}
+                    "text": {"type": "mrkdwn", "text": (
+                        f":x: *[분석 실패 — 수동 확인 필요]* `{data['alertname']}`\n"
+                        f"사유: {', '.join(data['invalid_reasons']) or 'unknown'} (자동 조치 없음)"
+                        if data["analysis_invalid"] else
+                        f":warning: *[ALERT ONLY]* `{data['alertname']}`")}
                 },
                 {
                     "type": "section",
