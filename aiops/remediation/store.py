@@ -100,9 +100,12 @@ class RemediationRecord:
     ttl_seconds: int | None = None
     recovery_mode: str | None = None       # auto | require_approval | none
     approved_by: str | None = None
+    rejected_by: str | None = None
+    rejected_at: str | None = None
     source: str | None = None
     executor_name: str | None = None
     recovery_approved_by: str | None = None
+    recovery_approval_requested_at: str | None = None
     evidence: dict = field(default_factory=dict)
     results: list = field(default_factory=list)
     recovery_results: list = field(default_factory=list)
@@ -327,6 +330,8 @@ class RecordStore:
             record = self._records.get(remediation_id)
             if record is None:
                 return None
+            if record.state not in (PROPOSED, AWAITING_APPROVAL, APPROVED):
+                return record
             record.approved_by = record.approved_by or approved_by
             record.approved_at = record.approved_at or utcnow()
             if record.state in (PROPOSED, AWAITING_APPROVAL):
@@ -343,6 +348,17 @@ class RecordStore:
             if record is None or record.state != expected_state:
                 return record
             return self.update(remediation_id, **fields)
+
+    def mark_rejected(self, remediation_id: str, rejected_by: str) -> bool:
+        """Rejection wins only while approval is pending; never undo execution."""
+        with self._lock:
+            self._ensure_loaded()
+            record = self._records.get(remediation_id)
+            if record is None or record.state not in (PROPOSED, AWAITING_APPROVAL):
+                return False
+            self.update(remediation_id, state=REJECTED, rejected_by=rejected_by,
+                        rejected_at=utcnow())
+            return self._writable
 
     # ── 멱등성 ────────────────────────────────────────────────────────────────
     def claim_execution(self, remediation_id: str) -> tuple[bool, str]:

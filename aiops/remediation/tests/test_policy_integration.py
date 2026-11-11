@@ -286,7 +286,7 @@ class PolicyUnavailableTest(unittest.TestCase):
     """정책을 로드하지 못하면 모든 조치가 차단된다 (fail closed)."""
 
     def setUp(self):
-        env = {"SLACK_WEBHOOK_URL": "", "REMEDIATION_MODE": "docker",
+        env = {"SLACK_WEBHOOK_URL": "", "SLACK_TRANSPORT": "http", "REMEDIATION_MODE": "docker",
                "SLACK_SIGNING_SECRET": SLACK_SECRET, "REMEDIATION_API_KEY": API_KEY,
                "REMEDIATION_POLICY_PATH": "/definitely/not/here.yml"}
         import importlib

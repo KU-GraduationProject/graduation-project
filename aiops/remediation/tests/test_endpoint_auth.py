@@ -55,7 +55,7 @@ def load_main(mode="docker", slack_secret=SLACK_SECRET, api_key=API_KEY,
     TTL 스캐너는 끄고(REMEDIATION_TTL_SCAN_SEC=0) 필요한 테스트가 직접 호출한다.
     """
     env = {
-        "SLACK_WEBHOOK_URL": "",
+        "SLACK_WEBHOOK_URL": "", "SLACK_TRANSPORT": "http",
         "REMEDIATION_MODE": mode,
         "SLACK_SIGNING_SECRET": slack_secret,
         "REMEDIATION_API_KEY": api_key,
