@@ -26,62 +26,78 @@ STRENGTH_PROFILE = {
 
 def usable_slots(max_conn: int, reserved: int, current: int,
                  reserved_connections: int = 0) -> int:
+    """Return ordinary slots left after both reserves and the observer-free count."""
     return max_conn - reserved - reserved_connections - current
 
 
 def target_for_strength(usable: int, strength: str = DEFAULT_STRENGTH) -> int:
+    """Choose a nonnegative fill target within usable slots; reject unknown strengths."""
     if strength not in STRENGTH_PROFILE:
         raise ValueError("unknown strength")
     return max(0, int(usable * STRENGTH_PROFILE[strength]["fill_fraction"]))
 
 
 def rejection_expected(strength: str = DEFAULT_STRENGTH) -> bool:
+    """Return whether the strength requires rejection rather than pressure alone."""
     if strength not in STRENGTH_PROFILE:
         raise ValueError("unknown strength")
     return STRENGTH_PROFILE[strength]["fill_fraction"] >= 1.0
 
 
 def should_abort(usable: int, min_slots: int = 1) -> bool:
+    """Report whether too few ordinary slots remain to start the injection."""
     return usable < min_slots
 
 
 def reserved_untouched(total_now: int, max_conn: int, reserved: int,
                        reserved_connections: int = 0) -> bool:
+    """Check an observer-free session count against the ordinary connection limit."""
     return total_now <= max_conn - reserved - reserved_connections
 
 
 def connections_recovered(after: int, baseline: int, slack: int = RECOVER_SLACK) -> bool:
+    """Compare counts with a baseline; this check alone does not prove recovery."""
     return after <= baseline + slack
 
 
 def hold_seconds_for(strength: str = DEFAULT_STRENGTH) -> int:
+    """Return the strength's default hold duration or reject an unknown strength."""
     if strength not in STRENGTH_PROFILE:
         raise ValueError("unknown strength")
     return STRENGTH_PROFILE[strength]["hold_seconds"]
 
 
 def new_run_id() -> str:
+    """Generate a random 128-bit ID to distinguish this run's sessions and worker."""
     return secrets.token_hex(16)
 
 
 def run_mark(run_id: str) -> str:
+    """Prefix a run ID for session marking and reject unsafe identifier characters."""
     from v2.f2c_runtime import identifier
     return identifier(f"connhold-{run_id}")
 
 
 def _budget(meta: dict) -> None:
+    """Require a live worker and enough remaining time for a full hold and recovery."""
     _watchdog_alive(meta)
     if time.monotonic() + meta["hold_seconds"] + RECOVERY_BUDGET >= meta["deadline"]:
         raise RuntimeFailure("insufficient watchdog budget for the complete hold interval")
 
 
 def _watchdog_alive(meta: dict) -> None:
+    """Fail if the tracked recovery worker exits before normal cleanup."""
     proc = (meta.get("watchdog") or {}).get("process")
     if proc is not None and proc.poll() is not None:
         raise RuntimeFailure("recovery worker exited before cleanup")
 
 
 def _verified(meta: dict) -> dict:
+    """Return the occupancy snapshot only if owned counts and login outcome match.
+
+    Medium/strong also require the global ordinary limit to be reached; a login
+    error alone cannot establish cluster exhaustion. Weak requires acceptance.
+    """
     _watchdog_alive(meta)
     snapshot = meta["db"].snapshot(meta["mark"])
     if snapshot["owned"] != meta["held"] or snapshot["total"] > meta["ordinary_limit"]:
@@ -100,6 +116,13 @@ def inject(strength: str = DEFAULT_STRENGTH, hold_seconds: int | None = None,
            background: bool | None = None, traffic_gen_path: str | None = None,
            traffic_target: str | None = None, traffic_run_dir: str | None = None,
            target: Target | None = None):
+    """Open and verify run-owned sessions on the explicitly confirmed test target.
+
+    Start an independent recovery worker before opening any holder. Return the
+    metadata needed by hold and cleanup; this function does not wait through the
+    hold interval. On any exception, attempt cleanup of partially opened sessions
+    and retain the worker if recovery cannot be verified.
+    """
     if strength not in STRENGTH_PROFILE:
         raise ValueError("unknown strength")
     if max_seconds is None:
@@ -170,6 +193,11 @@ def inject(strength: str = DEFAULT_STRENGTH, hold_seconds: int | None = None,
 
 
 def hold(meta: dict) -> None:
+    """Maintain and periodically recheck the fault for the full verified hold time.
+
+    Raise RuntimeFailure if occupancy, the ordinary login outcome, or recovery
+    readiness changes. Record elapsed time only after the entire hold completes.
+    """
     until = meta["hold_started_at"] + meta["hold_seconds"]
     while time.monotonic() < until:
         if time.monotonic() + RECOVERY_BUDGET >= meta["deadline"]:
@@ -181,6 +209,12 @@ def hold(meta: dict) -> None:
 
 
 def cleanup(meta: dict | None = None) -> bool:
+    """Attempt run-scoped recovery, stop tracked clients, and report verification.
+
+    Return True only when restore confirms no owned sessions and a successful
+    ordinary login. Cancel the watchdog only on that verified recovery; otherwise
+    leave it available to retry. Missing metadata authorizes no session cleanup.
+    """
     if not meta:
         return False  # No run ID means no termination is authorized.
     recovered = False
@@ -204,6 +238,7 @@ def cleanup(meta: dict | None = None) -> bool:
 
 
 def dry_run() -> dict:
+    """Describe transport choices and success criteria without opening connections."""
     return {"modes": ["docker (local socket)", "host (TCP, Windows supported)"],
             "usable_formula": "max_connections - reserved_connections - superuser_reserved_connections - current_without_observer",
             "strength_profile": STRENGTH_PROFILE, "restart_backend": False,
@@ -212,6 +247,11 @@ def dry_run() -> dict:
 
 
 def main(**kwargs) -> int:
+    """Run injection, the full hold, and cleanup while returning a meaningful code.
+
+    Return 0 for verified exhaustion and recovery, 3 for weak pressure only, 130
+    for interruption, or 1 for failed validation/recovery. Print only safe errors.
+    """
     meta = None
     recovered = False
     try:

@@ -51,6 +51,12 @@ def _print_list() -> None:
 
 def run(scenario_id: str, dry_run: bool, variant_id: str | None = None,
         seed: int | None = None) -> int:
+    """Dispatch a scenario or dry-run plan and optionally apply a seeded variant.
+
+    F2-c always uses its complete lifecycle and propagates its exit code, with
+    variant strength/hold duration forwarded. Other scenarios keep their existing
+    main/inject dispatch behavior. Unknown or unsupported IDs return 2.
+    """
     row = _row(scenario_id)
     if row is None or scenario_id not in _MODULES:
         print(f"알 수 없거나 미구현 id: {scenario_id}\n")

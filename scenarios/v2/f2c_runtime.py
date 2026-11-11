@@ -21,6 +21,7 @@ class RuntimeFailure(RuntimeError):
 
 
 def identifier(value: str) -> str:
+    """Accept only the identifier characters used in SQL filters and run markers."""
     if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", value):
         raise RuntimeFailure("invalid F2-c identifier")
     return value
@@ -28,6 +29,8 @@ def identifier(value: str) -> str:
 
 @dataclass(frozen=True)
 class Target:
+    """Immutable, explicitly selected test endpoint and its expected cluster ID."""
+
     mode: str
     database: str
     admin: str
@@ -40,6 +43,7 @@ class Target:
     passfile: str = ""
 
     def __post_init__(self):
+        """Reject ambiguous endpoints, unsafe names, and identical admin/holder roles."""
         if self.mode not in ("docker", "host"):
             raise RuntimeFailure("F2C_DB_MODE must explicitly be docker or host")
         for value in (self.database, self.admin, self.user):
@@ -57,11 +61,17 @@ class Target:
 
     @property
     def confirmation(self) -> str:
+        """Return the mode/endpoint/database/cluster token required for injection."""
         endpoint = self.container if self.mode == "docker" else f"{self.host}:{self.port}"
         return f"{self.mode}:{endpoint}:{self.database}:{self.system_id}"
 
     @classmethod
     def from_env(cls, *, allow_injection: bool = True):
+        """Load an explicit target and, by default, require its confirmation token.
+
+        Missing or invalid configuration raises a safe RuntimeFailure. Disabling
+        confirmation here is for inspection; inject still enforces confirmation.
+        """
         env = os.environ
         required = ("F2C_DB_MODE", "F2C_DB_NAME", "F2C_ADMIN_USER", "F2C_DB_USER",
                     "F2C_EXPECTED_SYSTEM_ID", "F2C_DB_HOST", "F2C_DB_PORT")
@@ -85,10 +95,18 @@ _PG_ROUTING = ("PGHOST", "PGHOSTADDR", "PGPORT", "PGDATABASE", "PGUSER", "PGSERV
 
 
 class Psql:
+    """Bounded psql operations for a Host TCP or Docker socket test endpoint."""
+
     def __init__(self, target: Target):
+        """Bind operations to the validated target without opening a connection."""
         self.target = target
 
     def command(self, sql: str, user: str, app: str) -> list[str]:
+        """Build shell-free argv with explicit routing, user, and run application name.
+
+        Docker runs env/psql inside the named container. Neither transport enables
+        startup files or password prompts, and password values never enter argv.
+        """
         t = self.target
         args = [t.psql, "-X", "-w", "-A", "-t", "-v", "ON_ERROR_STOP=1",
                 "-v", "VERBOSITY=verbose", "-h", t.host, "-p", str(t.port),
@@ -103,6 +121,7 @@ class Psql:
         return args
 
     def environment(self, app: str) -> dict:
+        """Remove selected ambient libpq defaults and set the run name and timeout."""
         env = {k: v for k, v in os.environ.items() if k not in _PG_ROUTING}
         env.update(PGAPPNAME=app, PGCONNECT_TIMEOUT="5")
         if self.target.mode == "host" and self.target.passfile:
@@ -110,6 +129,11 @@ class Psql:
         return env
 
     def execute(self, sql: str, *, user: str | None = None, app: str = "f2c-check"):
+        """Return a bounded command's captured result without logging diagnostics.
+
+        Nonzero psql exits are returned for the caller to interpret. OS failures
+        and subprocess timeouts become RuntimeFailure without raw error details.
+        """
         try:
             return subprocess.run(self.command(sql, user or self.target.admin, app),
                                   env=self.environment(app), stdin=subprocess.DEVNULL,
@@ -119,6 +143,7 @@ class Psql:
             raise RuntimeFailure("psql execution failed or timed out") from None
 
     def query(self, sql: str, *, user: str | None = None, app: str = "f2c-check") -> dict:
+        """Read one JSON object, rejecting failed queries or malformed output safely."""
         result = self.execute(sql, user=user, app=app)
         if result.returncode:
             raise RuntimeFailure("DB query failed (details suppressed)")
@@ -131,6 +156,12 @@ class Psql:
             raise RuntimeFailure("invalid DB query result") from None
 
     def preflight(self, mark: str) -> dict:
+        """Validate cluster identity, recovery access, reserves, and the ordinary role.
+
+        Return server connection settings only after an administrator and a real
+        ordinary login both pass their checks. Reject privileged holders and
+        role/database connection limits without changing roles or DB settings.
+        """
         t = self.target
         info = self.query("SELECT json_build_object("
             "'system_id', (pg_control_system()).system_identifier::text, "
@@ -161,6 +192,7 @@ class Psql:
         return info
 
     def snapshot(self, mark: str) -> dict:
+        """Count cluster clients and exact run-owned sessions, excluding this observer."""
         identifier(mark)
         return self.query("SELECT json_build_object('total', count(*), 'owned', "
             f"count(*) FILTER (WHERE application_name='{mark}' "
@@ -169,6 +201,12 @@ class Psql:
             "AND pid <> pg_backend_pid()", app=mark + "-ctl")
 
     def probe(self, mark: str) -> str:
+        """Classify a new ordinary login as accepted, rejected, or unknown.
+
+        Recognize only known global exhaustion messages as rejection. Other
+        failures, including authentication and localized errors, remain unknown;
+        the caller must also verify global occupancy before claiming exhaustion.
+        """
         result = self.execute("SELECT 1", user=self.target.user, app=mark + "-probe")
         if not result.returncode:
             return "accepted" if result.stdout.strip() == "1" else "unknown"
@@ -181,6 +219,11 @@ class Psql:
         return "unknown"
 
     def start_holder(self, mark: str, lifetime: int):
+        """Start a tracked ordinary psql client with a finite server-side sleep.
+
+        Return its Popen handle; process startup alone does not prove that a DB
+        session exists. The caller must confirm it through the run's snapshot.
+        """
         try:
             return subprocess.Popen(self.command(f"SELECT pg_sleep({int(lifetime)})",
                                                   self.target.user, mark),
@@ -191,6 +234,11 @@ class Psql:
             raise RuntimeFailure("could not start a session client") from None
 
     def restore(self, mark: str) -> bool:
+        """Recheck cluster identity, terminate exact run-owned sessions, and verify recovery.
+
+        Termination matches the run mark, ordinary user, and database. Recovery
+        requires zero matching sessions and a successful fresh ordinary login.
+        """
         identifier(mark)
         # Recheck identity on every retry, including after a DNS/container replacement.
         identity = self.query("SELECT json_build_object('system_id', "
@@ -206,6 +254,7 @@ class Psql:
 
 
 def stop_clients(clients) -> None:
+    """Best-effort terminate and reap only supplied clients, escalating after timeout."""
     for proc in clients:
         try:
             if proc.poll() is None:
@@ -222,6 +271,11 @@ def stop_clients(clients) -> None:
 
 
 def spawn_watchdog(target: Target, mark: str, timeout: int, work_dir=None) -> dict:
+    """Start independent recovery and return its handle only after the ready signal.
+
+    Send target metadata over a pipe and use unique run paths. If readiness fails
+    or startup is interrupted, stop this worker before the caller opens holders.
+    """
     directory = Path(supervisor.resolve_work_dir(work_dir))
     directory.mkdir(parents=True, exist_ok=True)
     paths = {k: str(directory / f"wd_{mark}.{k}") for k in ("cancel", "ready", "log")}
@@ -250,6 +304,12 @@ def spawn_watchdog(target: Target, mark: str, timeout: int, work_dir=None) -> di
 
 
 def watchdog_worker(payload: dict) -> None:
+    """Validate recovery access, wait for cancellation/deadline, then retry recovery.
+
+    Signal readiness before any holders may open. After the deadline, recover
+    only the specified run until verification succeeds or cleanup cancels this
+    worker; log status words without raw database errors or credentials.
+    """
     db = Psql(Target(**payload["target"]))
     mark, paths = payload["mark"], payload["paths"]
     identifier(mark)

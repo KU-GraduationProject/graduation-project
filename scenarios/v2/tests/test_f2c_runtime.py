@@ -19,24 +19,31 @@ from v2 import supervisor, variants
 
 
 def target(mode="host"):
+    """Build a synthetic explicit Host or Docker target for isolated tests."""
     return rt.Target(mode, "leafy", "admin", "app", "123456",
                      "127.0.0.1" if mode == "host" else "/var/run/postgresql",
                      container="leafy-db" if mode == "docker" else "")
 
 
 class Clock:
+    """Advance a deterministic monotonic clock without real hold delays."""
     def __init__(self):
+        """Start simulated time at zero."""
         self.now = 0
 
     def monotonic(self):
+        """Return the current simulated monotonic time."""
         return self.now
 
     def sleep(self, seconds):
+        """Advance simulated time by the requested sleep interval."""
         self.now += seconds
 
 
 class FakeDB:
+    """Model run-owned sessions, external clients, login outcomes, and recovery."""
     def __init__(self, clock):
+        """Initialize ordinary capacity, client tracking, and failure controls."""
         self.clock = clock
         self.owned = 0
         self.other = 2
@@ -48,12 +55,15 @@ class FakeDB:
         self.restored_marks = []
 
     def preflight(self, mark):
+        """Expose synthetic server settings with both types of reserved slots."""
         return dict(max_conn=10, super_reserved=2, reserved=1)
 
     def snapshot(self, mark):
+        """Return observed total and run-owned counts without a query backend."""
         return dict(total=self.other + self.owned, owned=self.owned)
 
     def start_holder(self, mark, lifetime):
+        """Simulate a confirmed session startup or an injected partial failure."""
         if self.failure_at == self.owned:
             raise rt.RuntimeFailure("simulated partial failure")
         proc = Mock()
@@ -64,9 +74,11 @@ class FakeDB:
         return proc
 
     def probe(self, mark):
+        """Return the forced outcome or derive it from ordinary slot capacity."""
         return self.forced_probe or ("rejected" if self.other + self.owned >= self.limit else "accepted")
 
     def restore(self, mark):
+        """Simulate run-only cleanup while preserving external sessions."""
         self.restored_marks.append(mark)
         if not self.restore_ok:
             raise rt.RuntimeFailure("simulated recovery failure")
@@ -75,7 +87,9 @@ class FakeDB:
 
 
 class LifecycleTests(unittest.TestCase):
+    """Exercise F2-c injection, full hold, failure handling, and recovery."""
     def setUp(self):
+        """Replace live I/O, worker creation, and wall time with isolated fakes."""
         self.clock = Clock()
         self.db = FakeDB(self.clock)
         self.t = target()
@@ -91,9 +105,11 @@ class LifecycleTests(unittest.TestCase):
         self.stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
 
     def inject(self, **kwargs):
+        """Inject against the fake target with a short deterministic hold budget."""
         return f2c.inject(target=self.t, hold_seconds=10, max_seconds=60, background=False, **kwargs)
 
     def test_verified_hold_starts_after_last_open_and_rejection(self):
+        """Require the full verified hold and preserve external sessions during recovery."""
         meta = self.inject()
         self.assertEqual(meta["held"], 5)
         self.assertTrue(meta["rejection_confirmed"])
@@ -107,6 +123,7 @@ class LifecycleTests(unittest.TestCase):
         self.cancel.assert_called_once()
 
     def test_same_lifecycle_for_docker(self):
+        """Apply the same verified injection, hold, and cleanup to a fake Docker target."""
         self.t = target("docker")
         with patch.dict(os.environ, F2C_CONFIRM_TARGET=self.t.confirmation):
             meta = self.inject()
@@ -114,14 +131,17 @@ class LifecycleTests(unittest.TestCase):
             self.assertTrue(f2c.cleanup(meta))
 
     def test_watchdog_is_ready_before_first_session(self):
+        """Ensure recovery readiness precedes every holder startup."""
         original = self.db.start_holder
         def start(*args):
+            """Require worker readiness before simulating the first holder startup."""
             self.wd.assert_called_once()
             return original(*args)
         self.db.start_holder = start
         self.inject()
 
     def test_no_capacity_rejection_is_not_injection_success(self):
+        """Reject pre-existing exhaustion before any worker or holder is started."""
         self.db.other = 7
         with self.assertRaises(rt.RuntimeFailure):
             self.inject()
@@ -129,6 +149,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertFalse(self.db.clients)
 
     def test_unconfirmed_rejection_never_returns_success(self):
+        """Clean up and fail when a fresh login is accepted or its outcome is unknown."""
         for outcome in ("accepted", "unknown"):
             with self.subTest(outcome=outcome):
                 self.db.forced_probe = outcome
@@ -137,6 +158,7 @@ class LifecycleTests(unittest.TestCase):
                 self.assertEqual(self.db.owned, 0)
 
     def test_role_or_database_limit_cannot_fake_cluster_exhaustion(self):
+        """Reject a claimed login refusal when global ordinary slots remain free."""
         meta = self.inject()
         self.db.other = 1  # Claimed rejection, but global ordinary slots remain.
         self.db.forced_probe = "rejected"
@@ -145,12 +167,14 @@ class LifecycleTests(unittest.TestCase):
         self.assertFalse(meta.get("hold_completed"))
 
     def test_early_session_exit_fails_the_hold(self):
+        """Fail the hold if a previously confirmed owned session disappears."""
         meta = self.inject()
         self.db.owned -= 1
         with self.assertRaises(rt.RuntimeFailure):
             f2c.hold(meta)
 
     def test_partial_open_exception_recovers(self):
+        """Recover already opened sessions when a later holder startup raises."""
         self.db.failure_at = 2
         with self.assertRaises(rt.RuntimeFailure):
             self.inject()
@@ -161,6 +185,7 @@ class LifecycleTests(unittest.TestCase):
             proc.terminate.assert_called_once()
 
     def test_process_launch_without_db_session_is_not_counted(self):
+        """Require an observed DB session rather than counting a launched process."""
         proc = Mock()
         proc.poll.return_value = 2
         self.db.start_holder = Mock(return_value=proc)
@@ -171,8 +196,10 @@ class LifecycleTests(unittest.TestCase):
         self.cancel.assert_called_once()
 
     def test_ctrl_c_during_open_recovers(self):
+        """Recover the partial run when injection is interrupted during startup."""
         original = self.db.start_holder
         def interrupted(mark, lifetime):
+            """Interrupt after one confirmed holder to exercise partial cleanup."""
             if self.db.owned:
                 raise KeyboardInterrupt
             return original(mark, lifetime)
@@ -183,6 +210,7 @@ class LifecycleTests(unittest.TestCase):
         self.cancel.assert_called_once()
 
     def test_cleanup_failure_keeps_watchdog_and_stops_own_clients(self):
+        """Retain recovery on failed cleanup while stopping only tracked local clients."""
         meta = self.inject()
         self.db.restore_ok = False
         self.assertFalse(f2c.cleanup(meta))
@@ -191,35 +219,41 @@ class LifecycleTests(unittest.TestCase):
         self.bgstop.assert_called_once()
 
     def test_missing_meta_does_not_terminate_anything(self):
+        """Authorize no session termination when run metadata is absent."""
         self.assertFalse(f2c.cleanup(None))
         self.assertFalse(self.db.restored_marks)
         self.cancel.assert_not_called()
 
     def test_slow_fill_aborts_instead_of_shortening_hold(self):
+        """Abort and recover when charging consumes the complete-hold time budget."""
         self.wd.side_effect = lambda *a: self.clock.sleep(35) or {"tag": "slow"}
         with self.assertRaises(rt.RuntimeFailure):
             self.inject()
         self.assertEqual(self.db.owned, 0)
 
     def test_partial_start_before_watchdog_readiness_is_forbidden(self):
+        """Open no holders if the recovery worker cannot become ready."""
         self.wd.side_effect = rt.RuntimeFailure("not ready")
         with self.assertRaises(rt.RuntimeFailure):
             self.inject()
         self.assertFalse(self.db.clients)
 
     def test_explicit_environment_watchdog_budget_is_honored(self):
+        """Use the configured watchdog budget for both recovery and holder lifetimes."""
         with patch.dict(os.environ, F2C_MAX_SECONDS="80"):
             meta = f2c.inject(target=self.t, hold_seconds=10, background=False)
         self.wd.assert_called_once_with(self.t, meta["mark"], 80, None)
         self.assertTrue(all(lifetime == 80 for _, _, lifetime in self.db.clients))
 
     def test_unknown_hold_probe_after_verification_fails(self):
+        """Fail a verified run if a later ordinary login outcome becomes unknown."""
         meta = self.inject()
         self.db.forced_probe = "unknown"
         with self.assertRaises(rt.RuntimeFailure):
             f2c.hold(meta)
 
     def test_dead_watchdog_during_hold_causes_failure_and_cleanup(self):
+        """Fail and recover when the tracked worker exits during the hold."""
         meta = self.inject()
         worker = Mock()
         worker.poll.return_value = 1
@@ -229,6 +263,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(f2c.cleanup(meta))
 
     def test_main_returns_failure_without_printing_credentials(self):
+        """Suppress raw exception secrets and return failure without printing PASS."""
         output = io.StringIO()
         with patch.object(f2c, "inject", side_effect=RuntimeError("password=SECRET")), contextlib.redirect_stdout(output):
             self.assertEqual(f2c.main(), 1)
@@ -236,8 +271,10 @@ class LifecycleTests(unittest.TestCase):
         self.assertNotIn("PASS", output.getvalue())
 
     def test_main_handles_both_completion_and_hold_failure(self):
+        """Propagate success or hold failure while cleaning up in both cases."""
         original = f2c.inject
         def inject(**kwargs):
+            """Invoke the real injector with the isolated target and fixed time budget."""
             return original(target=self.t, hold_seconds=10, max_seconds=60, background=False)
         with patch.object(f2c, "inject", side_effect=inject):
             self.assertEqual(f2c.main(), 0)
@@ -247,12 +284,14 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.db.owned, 0)
 
     def test_weak_never_claims_exhaustion_pass(self):
+        """Return the pressure-only code when no ordinary connection rejection is required."""
         meta = self.inject(strength="weak")
         self.assertFalse(meta["rejection_confirmed"])
         with patch.object(f2c, "inject", return_value=meta):
             self.assertEqual(f2c.main(), 3)
 
     def test_failed_recovery_cannot_produce_pass(self):
+        """Return failure and retain the watchdog when recovery cannot be verified."""
         meta = self.inject()
         self.db.restore_ok = False
         output = io.StringIO()
@@ -263,7 +302,9 @@ class LifecycleTests(unittest.TestCase):
 
 
 class TransportTests(unittest.TestCase):
+    """Validate endpoint guards and psql behavior through mocked subprocess I/O."""
     def test_explicit_target_and_exact_confirmation_required(self):
+        """Require explicit configuration and the exact target token before any DB call."""
         with patch.dict(os.environ, {}, clear=True), patch.object(subprocess, "run") as execute:
             with self.assertRaises(rt.RuntimeFailure):
                 f2c.inject()
@@ -273,12 +314,14 @@ class TransportTests(unittest.TestCase):
                 f2c.inject(target=target())
 
     def test_no_connection_string_or_multi_host_target(self):
+        """Reject ambiguous routing, unsafe names, and a shared admin/holder account."""
         for change in ({"database": "postgresql://secret@prod/db"}, {"host": "test,prod"},
                        {"database": "leafy; drop database leafy"}, {"user": "admin"}):
             with self.subTest(change=change), self.assertRaises(rt.RuntimeFailure):
                 rt.Target(**{**rt.asdict(target()), **change})
 
     def test_windows_and_docker_commands_have_no_shell_or_password(self):
+        """Build explicit noninteractive argv without a host shell or password value."""
         for mode in ("host", "docker"):
             with self.subTest(mode=mode):
                 db = rt.Psql(target(mode))
@@ -296,12 +339,14 @@ class TransportTests(unittest.TestCase):
                     self.assertEqual(cmd[0], "psql")
 
     def test_ambient_routing_and_password_are_scrubbed(self):
+        """Prevent inherited libpq routing, role options, and passwords from overriding the target."""
         with patch.dict(os.environ, PGHOSTADDR="production", PGSERVICE="prod", PGPASSWORD="SECRET", PGOPTIONS="-c role=admin"):
             env = rt.Psql(target()).environment("connhold-a")
         for key in ("PGHOSTADDR", "PGSERVICE", "PGPASSWORD", "PGOPTIONS"):
             self.assertNotIn(key, env)
 
     def test_snapshot_excludes_observer_and_scopes_owned_sessions(self):
+        """Exclude the query backend and match owned sessions by mark, role, and DB."""
         db = rt.Psql(target())
         with patch.object(db, "query", return_value={"total": 7, "owned": 5}) as query:
             self.assertEqual(db.snapshot("connhold-a")["total"], 7)
@@ -310,6 +355,7 @@ class TransportTests(unittest.TestCase):
             self.assertIn(token, sql)
 
     def test_preflight_rejects_wrong_identity_or_privileged_holder(self):
+        """Reject cluster, privilege, reservation, and connection-limit mismatches."""
         info = dict(system_id="123456", database="leafy", admin="admin", superuser=True,
                     version=170000, max_conn=100, reserved=5, super_reserved=3)
         role = dict(user="app", superuser=False, reserved_role=False, role_limit=-1, db_limit=-1)
@@ -325,6 +371,7 @@ class TransportTests(unittest.TestCase):
             self.assertEqual(db.preflight("connhold-a")["reserved"], 5)
 
     def test_probe_fails_closed_on_auth_network_and_localized_errors(self):
+        """Recognize known exhaustion messages and leave other login errors unknown."""
         db = rt.Psql(target())
         for message, expected in (("FATAL: remaining connection slots are reserved for roles with privileges", "rejected"),
                                   ("FATAL: sorry, too many clients already", "rejected"),
@@ -336,6 +383,7 @@ class TransportTests(unittest.TestCase):
                 self.assertEqual(db.probe("connhold-a"), expected)
 
     def test_ordinary_and_admin_connections_share_explicit_endpoint(self):
+        """Pass the explicit endpoint, run name, and timeout to mocked psql execution."""
         for mode in ("host", "docker"):
             db = rt.Psql(target(mode))
             with patch.object(subprocess, "run", return_value=Mock(returncode=0, stdout='{"ok":true}')) as run:
@@ -347,6 +395,7 @@ class TransportTests(unittest.TestCase):
             self.assertEqual(run.call_args.kwargs["timeout"], 10)
 
     def test_failed_query_output_and_timeout_are_not_exposed(self):
+        """Convert query failures and timeouts into errors that omit raw secret text."""
         db = rt.Psql(target())
         with patch.object(db, "execute", return_value=Mock(returncode=1, stderr="password=SECRET")):
             with self.assertRaises(rt.RuntimeFailure) as caught:
@@ -358,6 +407,7 @@ class TransportTests(unittest.TestCase):
         self.assertNotIn("SECRET", str(caught.exception))
 
     def test_restore_only_terminates_exact_mark_role_and_database(self):
+        """Scope termination to the exact owned mark, ordinary role, and database."""
         db = rt.Psql(target())
         with patch.object(db, "query", side_effect=[{"system_id": "123456"}, {"terminated": True}, {"owned": 0}]) as query, patch.object(db, "probe", return_value="accepted"):
             self.assertTrue(db.restore("connhold-a"))
@@ -367,12 +417,14 @@ class TransportTests(unittest.TestCase):
         self.assertNotIn("connhold-b", sql)
 
     def test_restore_requires_zero_owned_and_new_ordinary_connection(self):
+        """Reject recovery if owned sessions remain or a fresh ordinary login fails."""
         for owned, outcome in ((1, "accepted"), (0, "unknown"), (0, "rejected")):
             db = rt.Psql(target())
             with self.subTest(owned=owned, outcome=outcome), patch.object(db, "query", side_effect=[{"system_id": "123456"}, {}, {"owned": owned}]), patch.object(db, "probe", return_value=outcome):
                 self.assertFalse(db.restore("connhold-a"))
 
     def test_recovery_does_not_touch_replaced_cluster(self):
+        """Stop before termination when the recovery endpoint has a different cluster ID."""
         db = rt.Psql(target())
         with patch.object(db, "query", return_value={"system_id": "other"}) as query:
             with self.assertRaises(rt.RuntimeFailure):
@@ -381,17 +433,21 @@ class TransportTests(unittest.TestCase):
 
 
 class PlatformAndWorkerTests(unittest.TestCase):
+    """Check platform branches and independent Python workers with fake DB access."""
     def test_platform_creation_flags(self):
+        """Choose independent-process options for Windows and POSIX."""
         self.assertEqual(supervisor.detached_process_kwargs("posix"), {"start_new_session": True})
         self.assertEqual(supervisor.detached_process_kwargs("nt"), {"creationflags": 0x208})
 
     def test_traffic_interpreter_preserves_posix_and_supports_windows(self):
+        """Preserve the POSIX traffic interpreter and use the active Python on Windows."""
         for platform, expected in (("nt", sys.executable), ("posix", "python3")):
             with self.subTest(platform=platform), patch.object(supervisor.os, "name", platform):
                 cmd = supervisor.build_traffic_command("traffic.py", "http://test", "run")
                 self.assertEqual(cmd[0], expected)
 
     def test_windows_background_stop_uses_taskkill_without_killpg(self):
+        """Stop the Windows traffic tree through taskkill without calling Unix killpg."""
         proc = Mock()
         proc.poll.return_value = None
         with patch.object(supervisor.os, "name", "nt"), patch.object(subprocess, "run") as run, patch.object(os, "killpg", create=True) as killpg:
@@ -400,6 +456,7 @@ class PlatformAndWorkerTests(unittest.TestCase):
         killpg.assert_not_called()
 
     def test_posix_background_stop_and_exited_pid_safety(self):
+        """Stop a live POSIX group while avoiding a stale PID after the tracked process exits."""
         proc = Mock()
         proc.poll.return_value = None
         with patch.object(supervisor.os, "name", "posix"), patch.object(os, "getpgid", return_value=1234, create=True), patch.object(os, "killpg", create=True) as killpg:
@@ -410,6 +467,7 @@ class PlatformAndWorkerTests(unittest.TestCase):
             self.assertEqual(killpg.call_count, 1)
 
     def test_client_termination_escalates_only_own_process(self):
+        """Escalate a timed-out client termination only through its retained Popen handle."""
         proc = Mock()
         proc.poll.return_value = None
         proc.wait.side_effect = [subprocess.TimeoutExpired("psql", 2), 0]
@@ -418,6 +476,7 @@ class PlatformAndWorkerTests(unittest.TestCase):
         proc.kill.assert_called_once()
 
     def test_worker_launch_uses_pipe_and_platform_flags(self):
+        """Send worker metadata by pipe and pass platform-specific creation options."""
         proc = Mock(pid=1234)
         data = io.StringIO()
         proc.stdin = Mock()
@@ -432,6 +491,7 @@ class PlatformAndWorkerTests(unittest.TestCase):
         proc.stdin.close.assert_called_once()
 
     def test_failed_watchdog_start_stops_worker_before_any_session(self):
+        """Stop a worker that exits without readiness before any holder can start."""
         proc = Mock(pid=1234)
         proc.poll.return_value = 1
         with tempfile.TemporaryDirectory() as td, patch.object(subprocess, "Popen", return_value=proc), patch.object(rt, "stop_clients") as stop:
@@ -440,6 +500,7 @@ class PlatformAndWorkerTests(unittest.TestCase):
             stop.assert_called_once_with([proc])
 
     def test_watchdog_retries_failed_restore_and_stops_after_success(self):
+        """Retry exceptions and unverified recovery, logging only safe status text."""
         clock = Clock()
         db = Mock()
         db.restore.side_effect = [rt.RuntimeFailure("failed"), False, True]
@@ -452,6 +513,7 @@ class PlatformAndWorkerTests(unittest.TestCase):
             self.assertEqual(Path(paths["log"]).read_text().splitlines(), ["RESTORE FAILED; retrying", "RESTORE FAILED; retrying", "restored"])
 
     def test_cancelled_watchdog_does_not_restore(self):
+        """Honor the normal-cleanup cancellation file without attempting restoration."""
         db = Mock()
         with tempfile.TemporaryDirectory() as td:
             paths = {k: str(Path(td) / k) for k in ("cancel", "ready", "log")}
@@ -462,6 +524,7 @@ class PlatformAndWorkerTests(unittest.TestCase):
 
     def test_real_independent_worker_survives_parent_exit_with_fake_db(self):
         # The only real subprocesses are Python workers; DB operations are a stub.
+        """Verify independent recovery after normal parent exit using only a fake DB."""
         with tempfile.TemporaryDirectory() as td:
             paths = {k: str(Path(td) / k) for k in ("cancel", "ready", "log")}
             payload = dict(target=rt.asdict(target()), mark="connhold-a", timeout=0.3, paths=paths)
@@ -482,6 +545,7 @@ class PlatformAndWorkerTests(unittest.TestCase):
             self.assertEqual(Path(paths["log"]).read_text(), "restored\n")
 
     def test_real_worker_recovers_after_parent_is_killed_with_fake_db(self):
+        """Verify fake-DB recovery after forcibly terminating the real parent process."""
         with tempfile.TemporaryDirectory() as td:
             paths = {k: str(Path(td) / k) for k in ("cancel", "ready", "log")}
             payload = dict(target=rt.asdict(target()), mark="connhold-a", timeout=0.5, paths=paths)
@@ -510,7 +574,9 @@ class PlatformAndWorkerTests(unittest.TestCase):
 
 
 class EntryPointTests(unittest.TestCase):
+    """Check F2-c lifecycle dispatch while preserving other scenario entry paths."""
     def test_default_and_variant_share_full_lifecycle_and_exit_code(self):
+        """Route both F2-c entry paths through main and forward variant timing and exit status."""
         with patch.object(f2c, "main", return_value=1) as main:
             self.assertEqual(runner.run("f2_c_db_pool_exhaustion", False), 1)
             main.assert_called_once_with()
@@ -521,6 +587,7 @@ class EntryPointTests(unittest.TestCase):
             main.assert_called_once_with(strength="strong", hold_seconds=73)
 
     def test_other_scenario_variant_dispatch_unchanged(self):
+        """Preserve the existing inject-only variant dispatch for unrelated scenarios."""
         from v2 import f2a_minio_outage as f2a
         inst = variants.Instance("f2_a_minio_outage", "full-stop", 1, {"down_seconds": 20})
         with patch.object(variants, "generate", return_value=inst), patch.object(f2a, "inject") as inject, patch.object(f2a, "main") as main:

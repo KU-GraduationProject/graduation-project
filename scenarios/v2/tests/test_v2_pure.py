@@ -327,24 +327,28 @@ class TestS2a(unittest.TestCase):
 class TestF2c(unittest.TestCase):
     def test_usable_excludes_reserved(self):
         # 비예약 자유 슬롯 = max - 예약 - 현재 (여유 margin 없음: medium/strong 이 전부 소진).
+        """Subtract existing clients and superuser reservations from ordinary capacity."""
         self.assertEqual(f2c.usable_slots(100, 3, 20), 77)
         self.assertEqual(f2c.usable_slots(100, 3, 0), 97)
         # 예약을 늘리면 그만큼 줄어든다(예약은 반드시 제외).
         self.assertEqual(f2c.usable_slots(100, 3, 20) - f2c.usable_slots(100, 5, 20), 2)
 
     def test_abort_when_no_headroom(self):
+        """Abort when no ordinary capacity remains to inject."""
         self.assertTrue(f2c.should_abort(0))
         self.assertTrue(f2c.should_abort(-5))
         self.assertFalse(f2c.should_abort(1))
 
     def test_target_never_exceeds_usable(self):
         # 어떤 강도·usable 에서도 목표 점유 수는 usable 을 넘지 않는다(예약 침범 금지).
+        """Bound each strength target by the available ordinary slot count."""
         for usable in (1, 10, 77, 200):
             for strength in f2c.STRENGTH_PROFILE:
                 self.assertLessEqual(f2c.target_for_strength(usable, strength), usable)
 
     def test_target_per_strength_consumes_margin(self):
         # (리뷰 2) medium/strong 은 비예약 슬롯을 전부 소진 → 새 연결 거부. weak 만 여유를 남긴다.
+        """Distinguish weak pressure from full medium/strong ordinary-slot consumption."""
         self.assertEqual(f2c.target_for_strength(100, "weak"), 90)     # ~90%, 거부 없음
         self.assertEqual(f2c.target_for_strength(100, "medium"), 100)  # 전부 소진
         self.assertEqual(f2c.target_for_strength(100, "strong"), 100)  # 전부 소진
@@ -355,39 +359,47 @@ class TestF2c(unittest.TestCase):
 
     def test_rejection_expected(self):
         # 성공기준: weak 은 압박만, medium/strong 은 새 연결 거부를 노린다.
+        """Require rejection for medium/strong and acceptance for weak pressure."""
         self.assertFalse(f2c.rejection_expected("weak"))
         self.assertTrue(f2c.rejection_expected("medium"))
         self.assertTrue(f2c.rejection_expected("strong"))
 
     def test_unknown_strength(self):
+        """Reject strength names that have no supported fill profile."""
         with self.assertRaises(ValueError):
             f2c.target_for_strength(100, "nope")
 
     def test_reserved_untouched(self):
+        """Detect connection counts that enter the reserved capacity."""
         self.assertTrue(f2c.reserved_untouched(97, 100, 3))    # 예약 3 비어 있음
         self.assertFalse(f2c.reserved_untouched(99, 100, 3))   # 예약 침범
 
     def test_connections_recovered(self):
+        """Check the legacy baseline comparison with its explicit slack."""
         self.assertTrue(f2c.connections_recovered(after=12, baseline=10))
         self.assertFalse(f2c.connections_recovered(after=40, baseline=10))
 
     def test_per_run_marker_distinguishes_rounds(self):
+        """Generate distinct run markers within PostgreSQL application-name length."""
         self.assertEqual(f2c.run_mark("abc123"), "connhold-abc123")
         self.assertNotEqual(f2c.new_run_id(), f2c.new_run_id())
         self.assertLess(len(f2c.run_mark(f2c.new_run_id()) + "-probe"), 64)
 
     def test_pg17_reservations(self):
+        """Account for both PostgreSQL 17 reservation types in capacity checks."""
         self.assertEqual(f2c.usable_slots(100, 3, 20, reserved_connections=5), 72)
         self.assertTrue(f2c.reserved_untouched(92, 100, 3, 5))
         self.assertFalse(f2c.reserved_untouched(93, 100, 3, 5))
 
     def test_dry_run_has_both_modes_and_no_restart(self):
+        """Describe both transports and reservation accounting without a restart plan."""
         d = f2c.dry_run()
         self.assertEqual(len(d["modes"]), 2)
         self.assertFalse(d["restart_backend"])
         self.assertIn("reserved_connections", d["usable_formula"])
 
     def test_answer_labels(self):
+        """Keep the scenario label and ideal remediation targeted at held DB sessions."""
         row = next(r for r in registry.SCENARIO_REGISTRY_V2 if r["id"] == "f2_c_db_pool_exhaustion")
         self.assertEqual(row["threat_level"], "high")
         self.assertEqual(row["expected_action"], "NOTIFY")
@@ -395,6 +407,7 @@ class TestF2c(unittest.TestCase):
         self.assertNotIn("leafy-backend", row["targets"])   # 대상은 점유 DB 세션
 
     def test_background_default_on(self):
+        """Keep normal background traffic enabled by default for F2-c."""
         self.assertTrue(f2c.BACKGROUND_DEFAULT)
 
 
@@ -657,6 +670,7 @@ class TestWatchdogRestore(unittest.TestCase):
         self.assertTrue(f3a.BACKGROUND_DEFAULT)
 
     def test_all_fault_restore_scripts_valid_sh(self):
+        """Check shell syntax for the remaining shell-based scenario recovery scripts."""
         scripts = [
             supervisor.build_watchdog_script(f2a.watchdog_restore_sh(), 10, "/c", "/l"),
             supervisor.build_watchdog_script(s2a.watchdog_restore_sh(), 10, "/c", "/l"),
