@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import sys
+from datetime import datetime, timezone
 
 from v2.registry import SCENARIO_REGISTRY_V2
 
@@ -76,13 +77,22 @@ def run(scenario_id: str, dry_run: bool, variant_id: str | None = None,
             print("  (이 모듈은 dry_run() 미제공)")
         return 0
 
-    # 변형 파라미터 중 기존 주입기가 받는 축(strength/mode)만 전달. 나머지 축(타이밍 등)은
-    # 측정 PC 런타임에서 처리한다(VARIANTS 참조).
-    if inst is not None and hasattr(mod, "inject"):
-        kw = {k: inst.params[k] for k in ("strength", "mode") if k in inst.params}
-        mod.inject(**kw)
-    else:
-        mod.main()
+    # 실행 기록(시나리오 id·변형·seed·시각 구간). 경보 컨텍스트와 시각으로 짝지어 픽스처를 만든다
+    # (python -m v2.fixtures pair). 정답 레이블은 넣지 않는다.
+    from v2 import fixtures
+    started = datetime.now(timezone.utc)
+    status = "error"
+    try:
+        # 변형 파라미터 중 기존 주입기가 받는 축(strength/mode)만 전달. 나머지 축(타이밍 등)은
+        # 측정 PC 런타임에서 처리한다(VARIANTS 참조).
+        if inst is not None and hasattr(mod, "inject"):
+            kw = {k: inst.params[k] for k in ("strength", "mode") if k in inst.params}
+            mod.inject(**kw)
+        else:
+            mod.main()
+        status = "ok"
+    finally:
+        fixtures.append_run_record(scenario_id, variant_id, seed, started, datetime.now(timezone.utc), status)
     return 0
 
 

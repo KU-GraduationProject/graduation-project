@@ -1,0 +1,158 @@
+{
+ "_note": "테스트용 가짜 픽스처 — 하네스 흐름 검증용. 실측이 아니며 지표 보고에 쓰지 않는다.",
+ "scenario_id": "f2_a_minio_outage",
+ "variant_id": "full-stop",
+ "seed": 3,
+ "captured_at": "2026-11-01T07:00:15Z",
+ "alert": {
+  "status": "firing",
+  "labels": {
+   "alertname": "MinioDown",
+   "severity": "critical",
+   "category": "infra"
+  },
+  "annotations": {
+   "summary": "MinIO 응답 없음",
+   "container": "leafy-minio"
+  },
+  "startsAt": "2026-11-01T07:00:00Z"
+ },
+ "observations": {
+  "received_at": "2026-11-01T07:00:15Z",
+  "container": "leafy-minio",
+  "rule": {
+   "name": "MinioDown",
+   "source": "prometheus",
+   "expr": "up{job=\"minio\"} == 0",
+   "for_seconds": 30,
+   "range_seconds": null,
+   "op": "==",
+   "threshold": 0.0,
+   "value": null,
+   "error": "value query HTTP 503"
+  },
+  "prometheus": {
+   "cpu_usage": [
+    {
+     "labels": {},
+     "values": [
+      {
+       "t": 1793516370.0,
+       "v": 0.0
+      },
+      {
+       "t": 1793516385.0,
+       "v": 0.0
+      },
+      {
+       "t": 1793516400.0,
+       "v": 0.0
+      },
+      {
+       "t": 1793516415.0,
+       "v": 0.0
+      }
+     ]
+    }
+   ]
+  },
+  "loki": [
+   {
+    "ts": 1793516340.0,
+    "labels": {
+     "service": "backend",
+     "log_format": "json"
+    },
+    "line": "{\"level\": \"ERROR\", \"timestamp\": \"2026-11-01T07:00:00Z\", \"message\": \"S3 upload failed: Connection refused minio:9000 (attempt 0)\", \"exception_class\": \"java.net.ConnectException\", \"request_id\": \"e0\"}"
+   },
+   {
+    "ts": 1793516344.0,
+    "labels": {
+     "service": "backend",
+     "log_format": "json"
+    },
+    "line": "{\"level\": \"ERROR\", \"timestamp\": \"2026-11-01T07:00:00Z\", \"message\": \"S3 upload failed: Connection refused minio:9000 (attempt 1)\", \"exception_class\": \"java.net.ConnectException\", \"request_id\": \"e1\"}"
+   },
+   {
+    "ts": 1793516348.0,
+    "labels": {
+     "service": "backend",
+     "log_format": "json"
+    },
+    "line": "{\"level\": \"ERROR\", \"timestamp\": \"2026-11-01T07:00:00Z\", \"message\": \"S3 upload failed: Connection refused minio:9000 (attempt 2)\", \"exception_class\": \"java.net.ConnectException\", \"request_id\": \"e2\"}"
+   },
+   {
+    "ts": 1793516352.0,
+    "labels": {
+     "service": "backend",
+     "log_format": "json"
+    },
+    "line": "{\"level\": \"ERROR\", \"timestamp\": \"2026-11-01T07:00:00Z\", \"message\": \"S3 upload failed: Connection refused minio:9000 (attempt 3)\", \"exception_class\": \"java.net.ConnectException\", \"request_id\": \"e3\"}"
+   },
+   {
+    "ts": 1793516356.0,
+    "labels": {
+     "service": "backend",
+     "log_format": "json"
+    },
+    "line": "{\"level\": \"ERROR\", \"timestamp\": \"2026-11-01T07:00:00Z\", \"message\": \"S3 upload failed: Connection refused minio:9000 (attempt 4)\", \"exception_class\": \"java.net.ConnectException\", \"request_id\": \"e4\"}"
+   },
+   {
+    "ts": 1793516360.0,
+    "labels": {
+     "service": "backend",
+     "log_format": "json"
+    },
+    "line": "{\"level\": \"ERROR\", \"timestamp\": \"2026-11-01T07:00:00Z\", \"message\": \"S3 upload failed: Connection refused minio:9000 (attempt 5)\", \"exception_class\": \"java.net.ConnectException\", \"request_id\": \"e5\"}"
+   },
+   {
+    "ts": 1793516364.0,
+    "labels": {
+     "service": "backend",
+     "log_format": "json"
+    },
+    "line": "{\"level\": \"ERROR\", \"timestamp\": \"2026-11-01T07:00:00Z\", \"message\": \"S3 upload failed: Connection refused minio:9000 (attempt 6)\", \"exception_class\": \"java.net.ConnectException\", \"request_id\": \"e6\"}"
+   },
+   {
+    "ts": 1793516368.0,
+    "labels": {
+     "service": "backend",
+     "log_format": "json"
+    },
+    "line": "{\"level\": \"ERROR\", \"timestamp\": \"2026-11-01T07:00:00Z\", \"message\": \"S3 upload failed: Connection refused minio:9000 (attempt 7)\", \"exception_class\": \"java.net.ConnectException\", \"request_id\": \"e7\"}"
+   },
+   {
+    "ts": 1793516372.0,
+    "labels": {
+     "service": "backend",
+     "log_format": "json"
+    },
+    "line": "{\"level\": \"ERROR\", \"timestamp\": \"2026-11-01T07:00:00Z\", \"message\": \"S3 upload failed: Connection refused minio:9000 (attempt 8)\", \"exception_class\": \"java.net.ConnectException\", \"request_id\": \"e8\"}"
+   },
+   {
+    "ts": 1793516376.0,
+    "labels": {
+     "service": "backend",
+     "log_format": "json"
+    },
+    "line": "{\"level\": \"ERROR\", \"timestamp\": \"2026-11-01T07:00:00Z\", \"message\": \"S3 upload failed: Connection refused minio:9000 (attempt 9)\", \"exception_class\": \"java.net.ConnectException\", \"request_id\": \"e9\"}"
+   },
+   {
+    "ts": 1793516380.0,
+    "labels": {
+     "service": "backend",
+     "log_format": "json"
+    },
+    "line": "{\"level\": \"ERROR\", \"timestamp\": \"2026-11-01T07:00:00Z\", \"message\": \"S3 upload failed: Connection refused minio:9000 (attempt 10)\", \"exception_class\": \"java.net.ConnectException\", \"request_id\": \"e10\"}"
+   },
+   {
+    "ts": 1793516384.0,
+    "labels": {
+     "service": "backend",
+     "log_format": "json"
+    },
+    "line": "{\"level\": \"ERROR\", \"timestamp\": \"2026-11-01T07:00:00Z\", \"message\": \"S3 upload failed: Connection refused minio:9000 (attempt 11)\", \"exception_class\": \"java.net.ConnectException\", \"request_id\": \"e11\"}"
+   }
+  ]
+ }
+}

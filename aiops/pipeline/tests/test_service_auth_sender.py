@@ -37,9 +37,11 @@ def _alert():
 def _result():
     return main.LLMAnalysisResult(
         root_cause="unauthorized transfer",
+        incident_class="attack",
         action_type="ISOLATE",
         action_targets=["leafy-backend"],
         threat_level="high",
+        evidence=["N1"],
         confidence=0.9,
     )
 

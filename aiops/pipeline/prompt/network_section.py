@@ -121,7 +121,7 @@ def _aggregate(events) -> list:
     return sorted(flows.items(), key=order)
 
 
-def _flow_line(key, st, policy) -> str:
+def _flow_line(key, st, policy, fmt_ts=str) -> str:
     src, dst, proto = st["src"], st["dst"], st["proto"]
     app = "/" + ",".join(a for a, _ in st["apps"].most_common(2)) if st["apps"] else ""
     states = " ".join(f"{s}={n}" for s, n in st["states"].most_common())
@@ -150,7 +150,7 @@ def _flow_line(key, st, policy) -> str:
     if st["early_ts"]:
         earliest = min(st["early_ts"])
         peak = max(st["early_bytes"]) if st["early_bytes"] else None
-        tag = f"early={len(st['early_ts'])}@{earliest}"
+        tag = f"early={len(st['early_ts'])}@{fmt_ts(earliest)}"
         if peak is not None:
             tag += f"(>={peak}B)"
         extras.append(tag)
@@ -175,3 +175,36 @@ def _status_lines(nc) -> list:
         lines.append(f"{nc.skipped} malformed network events were ignored.")
     lines.extend(_RULES)
     return lines
+
+
+def build_network_section_v2(nc, policy=None, max_chars: int = NETWORK_MAX_CHARS,
+                             fmt_ts=str) -> tuple[str, list[str], int]:
+    """
+    v2 (prompt/builder_v2.py): flow 마다 증거 ID([N1]…)를 붙이고 max_chars 안에서 만든다.
+    반환: (섹션 문자열, 증거 ID 목록, 생략한 flow 수). 수집 상태/해석 규칙은 자르지 않는다.
+    fmt_ts: early 이벤트 시각 표기 함수 (프롬프트 전체를 한 시간대로 맞추기 위해).
+    """
+    header = (f"\n=== NETWORK CONTEXT (supplementary, service={nc.service}, "
+              f"{nc.start:%Y-%m-%dT%H:%M:%SZ} ~ {nc.end:%Y-%m-%dT%H:%M:%SZ}) ===")
+    status = _status_lines(nc)
+    if not nc.events:
+        body = [f"[N1] 0 network events recorded for {nc.service} in this window.",
+                "This does NOT mean that traffic was absent or that the network was normal."]
+        return "\n".join([header, *body, *status]), ["N1"], 0
+
+    flows = _aggregate(nc.events)
+    intro = f"{len(nc.events)} connections in {len(flows)} flows (src -> dst, protocol):"
+    reserve = len("\n(+999 more flows, 999999 connections not shown)")
+    budget = max_chars - len(header) - len(intro) - len("\n".join(status)) - reserve - 2
+    lines, ids, used = [], [], 0
+    for i, (key, st) in enumerate(flows[:MAX_FLOWS], start=1):
+        line = f"[N{i}] " + _flow_line(key, st, policy, fmt_ts)[2:]
+        if used + len(line) + 1 > budget:
+            break
+        lines.append(line)
+        ids.append(f"N{i}")
+        used += len(line) + 1
+    hidden = flows[len(lines):]
+    if hidden:
+        lines.append(f"(+{len(hidden)} more flows, {sum(st['conns'] for _, st in hidden)} connections not shown)")
+    return "\n".join([header, intro, *lines, *status]), ids, len(hidden)

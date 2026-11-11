@@ -13,6 +13,7 @@ scenarios-v2 정답 레이블 — 단일 소스 (one place only).
 필드:
   id                      : 시나리오 식별자
   label                   : 사람이 읽는 이름 (프롬프트에 넣지 않는다)
+  incident_class          : attack | failure | benign  (평가 정답. benign = 정상 활동·오탐)
   threat_level            : low | medium | high | critical  (평가 정답)
   expected_action         : 현재 대체 조치. 반드시 정책 6개 중 하나
                             (NONE|NOTIFY|THROTTLE|RESTART|PAUSE|ISOLATE,
@@ -39,6 +40,7 @@ from __future__ import annotations
 import importlib
 
 POLICY_ACTIONS = ("NONE", "NOTIFY", "THROTTLE", "RESTART", "PAUSE", "ISOLATE")
+INCIDENT_CLASSES = ("attack", "failure", "benign")
 EVIDENCE_CHANNELS = ("app_log", "nginx_log", "metric", "network")
 
 # 배치 ① — 주입·정리 구현 대상
@@ -46,6 +48,7 @@ SCENARIO_REGISTRY_V2 = [
     {
         "id": "s1_a_input_attack",
         "label": "입력값 공격 (앱까지 통과)",
+        "incident_class": "attack",
         "threat_level": "critical",
         "expected_action": "NOTIFY",        # WAF 경로차단 조치가 없어 알림으로 대체
         "expected_action_ideal": "BLOCK_PATH",
@@ -58,6 +61,7 @@ SCENARIO_REGISTRY_V2 = [
     {
         "id": "s1_c_login_bruteforce",
         "label": "인증 공격 (로그인 대입)",
+        "incident_class": "attack",
         "threat_level": "medium",
         "expected_action": "NOTIFY",        # 계정잠금 조치가 없어 알림으로 대체
         "expected_action_ideal": "LOCK_ACCOUNT",
@@ -70,6 +74,7 @@ SCENARIO_REGISTRY_V2 = [
     {
         "id": "f1_b_memory_leak",
         "label": "메모리 압박·누수 (서서히)",
+        "incident_class": "failure",
         "threat_level": "medium",
         "expected_action": "RESTART",
         "expected_action_ideal": "RESTART",
@@ -82,6 +87,7 @@ SCENARIO_REGISTRY_V2 = [
     {
         "id": "f2_a_minio_outage",
         "label": "MinIO 중단",
+        "incident_class": "failure",
         "threat_level": "medium",
         "expected_action": "RESTART",
         "expected_action_ideal": "RESTART",
@@ -96,6 +102,7 @@ SCENARIO_REGISTRY_V2 = [
     {
         "id": "s2_a_resource_theft",
         "label": "자원 탈취 (채굴형 CPU)",
+        "incident_class": "attack",
         "threat_level": "high",
         "expected_action": "THROTTLE",      # 서비스 생존 → 스로틀
         "expected_action_ideal": "RECREATE",
@@ -108,6 +115,7 @@ SCENARIO_REGISTRY_V2 = [
     {
         "id": "f2_c_db_pool_exhaustion",
         "label": "DB 연결 한도 고갈",
+        "incident_class": "failure",
         "threat_level": "high",
         "expected_action": "NOTIFY",          # 점유 세션 종료가 이상 조치(backend 재시작 아님)
         "expected_action_ideal": "KILL_SESSIONS",
@@ -120,6 +128,7 @@ SCENARIO_REGISTRY_V2 = [
     {
         "id": "f3_a_bad_image_deploy",
         "label": "잘못된 이미지 배포",
+        "incident_class": "failure",
         "threat_level": "high",
         "expected_action": "NOTIFY",         # 롤백 조치가 없어 알림으로 대체
         "expected_action_ideal": "ROLLBACK",
@@ -133,6 +142,7 @@ SCENARIO_REGISTRY_V2 = [
     {
         "id": "s2_c_data_exfil",
         "label": "데이터 반출 (비인가 목적지)",
+        "incident_class": "attack",
         "threat_level": "critical",
         "expected_action": "ISOLATE",
         "expected_action_ideal": "ISOLATE",
@@ -146,6 +156,7 @@ SCENARIO_REGISTRY_V2 = [
     {
         "id": "c_a_authorized_transfer",
         "label": "인가 목적지 대량 전송",
+        "incident_class": "benign",
         "threat_level": "low",
         "expected_action": "NONE",
         "expected_action_ideal": "NONE",
@@ -159,6 +170,7 @@ SCENARIO_REGISTRY_V2 = [
     {
         "id": "c_g_jvm_normal_memory",
         "label": "JVM 평상시 메모리",
+        "incident_class": "benign",
         "threat_level": "low",
         "expected_action": "NONE",
         "expected_action_ideal": "NONE",
@@ -171,6 +183,7 @@ SCENARIO_REGISTRY_V2 = [
     {
         "id": "c_n_aiops_self_load",
         "label": "AIOps 자체 부하 (모델 다운로드)",
+        "incident_class": "benign",
         "threat_level": "low",
         "expected_action": "NONE",
         "expected_action_ideal": "NONE",
@@ -183,6 +196,7 @@ SCENARIO_REGISTRY_V2 = [
     {
         "id": "c_c_blocked_attack",
         "label": "이미 차단된 공격 (4xx 다발)",
+        "incident_class": "attack",   # 막혔어도 공격 시도다(정상 활동 아님)
         "threat_level": "low",
         "expected_action": "NOTIFY",
         "expected_action_ideal": "NOTIFY",
@@ -196,6 +210,7 @@ SCENARIO_REGISTRY_V2 = [
     {
         "id": "c_e_password_mistype",
         "label": "비밀번호 오입력",
+        "incident_class": "benign",
         "threat_level": "low",
         "expected_action": "NONE",
         "expected_action_ideal": "NONE",
@@ -225,6 +240,9 @@ def _validate(registry=SCENARIO_REGISTRY_V2) -> None:
             if ch not in EVIDENCE_CHANNELS:
                 raise ValueError(
                     f"{row['id']}: evidence={ch} 은 채널 {EVIDENCE_CHANNELS} 에 없다")
+        if row.get("incident_class") not in INCIDENT_CLASSES:
+            raise ValueError(f"{row['id']}: incident_class={row.get('incident_class')} 은 "
+                             f"{INCIDENT_CLASSES} 에 없다")
         if row.get("module") and row.get("external_tool"):
             raise ValueError(f"{row['id']}: module 과 external_tool 을 동시에 둘 수 없다")
 
