@@ -284,6 +284,17 @@ class BuilderV2Test(unittest.TestCase):
         self.assertIsNone(net)
         self.assertIsNone(rule_log_matcher("rate(x[1m]) > 1"))
 
+    def test_rule_matcher_loki_api_normalized_form(self):
+        # Loki ruler API 는 'and' 를 ',' 로, 필터를 괄호로 묶고 범위를 공백 없이 붙여 돌려준다 (11-01 측정)
+        m = rule_log_matcher('(sum(count_over_time({service="frontend", log_format="json"} | json'
+                             ' | ( status>=400 , status<500 )[1m])) > 50)')
+        self.assertIsNotNone(m)
+        self.assertTrue(m({"line": '{"status": "404"}'}))
+        self.assertFalse(m({"line": '{"status": "503"}'}))
+        self.assertFalse(m({"line": '{"status": "200"}'}))
+        # or 결합 괄호는 여전히 판정하지 않는다
+        self.assertIsNone(rule_log_matcher('sum(count_over_time({a="b"} | json | ( status>=500 or status=429 )[1m])) > 1'))
+
     def test_lines_are_compact_masked_and_utc(self):
         rec = {"timestamp": "2026-11-01T14:03:00+09:00", "request_method": "POST",
                "request_uri": "/api/auth/login?password=hunter2", "status": "401",

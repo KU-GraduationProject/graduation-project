@@ -143,7 +143,10 @@ def _label_filters(expr: str):
     """label filter 목록 [(필드, 연산자, 값)]. 판정할 수 없는 단계가 있으면 None."""
     out = []
     for stage in _pipeline_stages(expr):
-        stage = re.split(r"\s\[\d", stage)[0].rstrip(") ")      # '... [2m]))' 꼬리 제거
+        stage = re.split(r"\s*\[\d", stage)[0].rstrip(") ")     # '... [2m]))' / '...)[1m]))' 꼬리 제거
+        # Loki ruler API 정규화 형태 '( status>=400 , status<500 )' — or 없는 단일 괄호 묶음만 푼다
+        if stage.startswith("(") and not re.search(r"[()]", stage[1:]) and not re.search(r"\bor\b", stage):
+            stage = stage[1:].strip()
         word = stage.split(None, 1)[0] if stage else ""
         if word in _UNSUPPORTED_STAGES:
             return None
