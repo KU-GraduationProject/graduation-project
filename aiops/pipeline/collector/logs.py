@@ -1,13 +1,7 @@
-"""
-Loki에서 Application Log 수집.
-
-canonical service 기준으로 조회한다 ({service="backend"}).
-legacy {container="..."} 조회는 쓰지 않는다 — correlation.py 참고.
-"""
-
+"""Application logs restricted to a verified observation binding; never widen selectors."""
 import httpx
-
-from correlation import CorrelationContext, service_log_selector
+from correlation import CorrelationContext
+from identity import LogEvidence, matches, selector
 
 
 class LogsCollector:
@@ -17,40 +11,45 @@ class LogsCollector:
 
     async def fetch(self, ctx: CorrelationContext, limit: int = 200,
                     direction: str = "forward") -> list[dict]:
-        """
-        ctx.service의 [ctx.start, ctx.end] 구간 로그 수집. 반환은 항상 시각 오름차순.
-        direction=backward 면 limit 에 걸려도 최신 줄이 남는다 (v2 경보 분석).
-        """
-
-        # service를 모르면 조회하지 않는다 (잘못된 identity로 엉뚱한 로그를 가져오지 않기 위해)
-        if not ctx.service:
-            return []
-
-        async with httpx.AsyncClient(timeout=30, transport=self._transport) as client:
-            resp = await client.get(
-                f"{self.url}/loki/api/v1/query_range",
-                params={
-                    "query": service_log_selector(ctx.service),
-                    "start": ctx.start_ns,
-                    "end":   ctx.end_ns,
-                    "limit": limit,
-                    "direction": direction,
-                },
-            )
-            data = resp.json()
-
-        return self._parse_streams(data)
+        """반환은 항상 시각 오름차순. direction=backward 면 limit 에 걸려도 최신 줄이 남는다 (v2 경보 분석)."""
+        scope = ctx.binding.logs if ctx.binding else {}
+        report = {"backend": "loki", "identity": ctx.identity.to_dict() if ctx.identity else {},
+                  "selector": scope, "limit": limit}
+        if not ctx.identity or not ctx.identity.complete or not scope:
+            return LogEvidence(status="scope_unavailable",
+                               reason="source_unknown" if not ctx.binding else "collector_unmapped", **report)
+        try:
+            async with httpx.AsyncClient(timeout=30, transport=self._transport) as client:
+                # Exact match series proves the required labels exist for this source and time window.
+                resp = await client.get(f"{self.url}/loki/api/v1/series", params={
+                    "match[]": selector(scope), "start": ctx.start_ns, "end": ctx.end_ns})
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("status") != "success" or not isinstance(data.get("data"), list):
+                    raise ValueError("invalid series response")
+                if not data["data"]:
+                    return LogEvidence(status="scope_unavailable", reason="no_matching_series", **report)
+                if not all(matches(labels, scope) for labels in data["data"]):
+                    return LogEvidence(status="source_mismatch", **report)
+                resp = await client.get(f"{self.url}/loki/api/v1/query_range", params={
+                    "query": selector(scope), "start": ctx.start_ns, "end": ctx.end_ns,
+                    "limit": limit, "direction": direction})
+                resp.raise_for_status()
+                data = resp.json()
+                if data.get("status") != "success" or data["data"]["resultType"] != "streams":
+                    raise ValueError("invalid logs response")
+                if not all(matches(s["stream"], scope) for s in data["data"]["result"]):
+                    return LogEvidence(status="source_mismatch", **report)
+                report["stream_labels"] = [s["stream"] for s in data["data"]["result"]]
+                logs = self._parse_streams(data)
+                logs = [row for row in logs if ctx.start.timestamp() <= row["ts"] <= ctx.end.timestamp()]
+                return LogEvidence(logs, status="truncated" if len(logs) >= limit else "ok" if logs else "empty", **report)
+        except httpx.HTTPError:
+            return LogEvidence(status="api_error", **report)
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+            return LogEvidence(status="invalid_response", **report)
 
     def _parse_streams(self, data: dict) -> list[dict]:
-        """Loki streams 응답을 [{"ts": ..., "line": ...}] 형태로 변환"""
-        logs = []
-        for stream in data.get("data", {}).get("result", []):
-            labels = stream.get("stream", {})
-            for ts_ns, line in stream.get("values", []):
-                logs.append({
-                    "ts":     int(ts_ns) / 1e9,
-                    "labels": labels,
-                    "line":   line,
-                })
-        logs.sort(key=lambda x: x["ts"])
-        return logs
+        logs = [{"ts": int(ts) / 1e9, "labels": stream["stream"], "line": line}
+                for stream in data["data"]["result"] for ts, line in stream["values"]]
+        return sorted(logs, key=lambda x: x["ts"])

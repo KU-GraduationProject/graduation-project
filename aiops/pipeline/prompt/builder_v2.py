@@ -57,6 +57,11 @@ ACTION GUIDE:
 Input marked "truncated", "omitted" or "value lookup failed" is incomplete: say so and lower confidence instead of guessing."""
 
 
+# 관측 대상이 호스트(예: 호스트 PostgreSQL)일 때. Docker 조치 대상이 아니다.
+HOST_NOTE = ("\n\nThe alert target is a host, not a Docker container: action_targets must be [] and "
+             "action_type must be NONE or NOTIFY. Missing evidence is unknown, never healthy.")
+
+
 def est_tokens(text: str) -> int:
     return math.ceil(len(text) / CHARS_PER_TOKEN)
 
@@ -101,7 +106,63 @@ _LIT = r'("(?:[^"\\]|\\.)*"|`[^`]*`)'
 _POS_FILTER = re.compile(r'(\|=|\|~)\s*' + _LIT)
 # != / !~ 는 앞 필터나 selector 바로 뒤에 올 때만 줄 필터다 (bytes_sent!="" 같은 label filter 제외)
 _NEG_FILTER = re.compile(r'[}\)"`]\s*(!=|!~)\s*' + _LIT)
-_LABEL_FILTER = re.compile(r'\|\s*([A-Za-z_]\w*)\s*(>=|<=|==|!=|>|<|=)\s*("(?:[^"\\]|\\.)*"|[\w.]+)')
+_CONJUNCT = re.compile(r'^([A-Za-z_]\w*)\s*(>=|<=|==|!=|=~|!~|>|<|=)\s*("(?:[^"\\]|\\.)*"|`[^`]*`|[\w.]+)$')
+# 줄을 그대로 둔 채 판정할 수 없는 단계 (필드 추출·가공). 이런 룰은 관련 줄 판정을 하지 않는다.
+_UNSUPPORTED_STAGES = ("label_format", "line_format", "regexp", "pattern", "template")
+_PASS_STAGES = ("json", "logfmt", "unwrap", "drop", "keep", "decolorize", "unpack")
+
+
+def _pipeline_stages(expr: str) -> list[str]:
+    """LogQL 파이프라인을 문자열 밖의 '|' 로 나눈 단계들 (첫 조각 = selector, 줄 필터 단계 제외)."""
+    stages, buf, quote = [], [], None
+    i = 0
+    while i < len(expr):
+        ch = expr[i]
+        if quote:
+            buf.append(ch)
+            if ch == "\\" and quote != "`" and i + 1 < len(expr):
+                buf.append(expr[i + 1])
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in "\"`":
+            quote = ch
+            buf.append(ch)
+        elif ch == "|":
+            stages.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+        i += 1
+    stages.append("".join(buf))
+    return [st.strip() for st in stages[1:] if st.strip() and st.strip()[0] not in "=~"]
+
+
+def _label_filters(expr: str):
+    """label filter 목록 [(필드, 연산자, 값)]. 판정할 수 없는 단계가 있으면 None."""
+    out = []
+    for stage in _pipeline_stages(expr):
+        stage = re.split(r"\s\[\d", stage)[0].rstrip(") ")      # '... [2m]))' 꼬리 제거
+        word = stage.split(None, 1)[0] if stage else ""
+        if word in _UNSUPPORTED_STAGES:
+            return None
+        if word in _PASS_STAGES:
+            if word in ("json", "logfmt") and len(stage.split()) > 1:
+                return None                                        # json x="y" 필드 추출
+            continue
+        if re.search(r"\bor\b", stage) or stage.startswith("("):
+            return None                                            # or 결합은 흉내 내지 않는다
+        for conj in re.split(r"\band\b|,", stage):
+            m = _CONJUNCT.match(conj.strip())
+            if not m:
+                return None
+            k, op, v = m.groups()
+            v = _unquote(v) if v[0] in "\"`" else v
+            if k.startswith("__") or v == "":
+                continue                                           # __error__="" / bytes_sent!=""
+            out.append((k, op, v))
+    return out
 
 
 def _unquote(lit: str) -> str:
@@ -115,8 +176,9 @@ def _unquote(lit: str) -> str:
 
 def rule_log_matcher(expr: str | None):
     """
-    LogQL 룰 식의 line filter(|= |~ != !~)와 label filter(| status >= 400)로 만든 판정 함수.
-    필터가 없으면(Prometheus 룰 등) None.
+    LogQL 룰 식의 line filter(|= |~ != !~)와 label filter(| status >= 400 and status < 500)로 만든
+    판정 함수. 필터가 없거나(Prometheus 룰), 줄 그대로는 판정할 수 없는 룰(label_format·json 필드
+    추출·or 결합)이면 None — 이때 LOGS 는 관련 줄 표시 없이 심각도 우선으로만 고른다.
     """
     if not expr:
         return None
@@ -130,10 +192,9 @@ def rule_log_matcher(expr: str | None):
                 continue
         else:
             line_filters.append((op, text))
-    label_filters = [(k, op, _unquote(v) if v.startswith('"') else v)
-                     for k, op, v in _LABEL_FILTER.findall(expr)
-                     if not k.startswith("__") and k not in ("json", "logfmt", "unwrap", "line_format")]
-    label_filters = [(k, op, v) for k, op, v in label_filters if v != ""]
+    label_filters = _label_filters(expr)
+    if label_filters is None:
+        return None
     if not line_filters and not label_filters:
         return None
 
@@ -142,6 +203,9 @@ def rule_log_matcher(expr: str | None):
             a, e = float(actual), float(expected)
         except (TypeError, ValueError):
             a, e = str(actual), str(expected)
+        if op in ("=~", "!~"):
+            hit = re.fullmatch(str(expected), str(actual)) is not None
+            return hit if op == "=~" else not hit
         return {">=": a >= e, "<=": a <= e, ">": a > e, "<": a < e,
                 "==": a == e, "=": a == e, "!=": a != e}[op]
 
@@ -167,27 +231,42 @@ def rule_log_matcher(expr: str | None):
 
 
 # ─── 섹션 ─────────────────────────────────────────────────────────────────────
-def _alert_section(alert, container_name, rule, received_at, budget):
+def _alert_section(alert, container_name, rule, received_at, budget, identity=None, evidence_sources=None):
     labels = _labels(alert)
     name = labels.get("alertname", "?")
+    host = identity is not None and getattr(identity, "runtime", None) == "host"
+    target = f"host_target={container_name or 'N/A'}" if host else f"container={container_name or 'N/A'}"
     lines = ["=== ALERT (all times UTC) ==="]
     src = f" source={rule.source}" if rule and rule.source else ""
-    lines.append(f"[A1] rule={name}{src} severity={labels.get('severity', 'unknown')} "
-                 f"container={container_name or 'N/A'}")
+    lines.append(f"[A1] rule={name}{src} severity={labels.get('severity', 'unknown')} {target}")
     lines.append(f"starts_at={utc(alert.startsAt)} received_at={utc(received_at) if received_at else 'unknown'}")
     if rule is None:
         lines.append("rule value: value lookup failed (rule context not collected)")
     else:
-        if rule.op is not None:
-            cond = f"threshold: {rule.op} {_num(rule.threshold)}"
+        if len(rule.conditions) == 1:
+            cond = f"threshold: {rule.conditions[0][0]} {_num(rule.conditions[0][1])}"
+        elif rule.conditions:
+            cond = "conditions (any): " + " | ".join(f"{op} {_num(th)}" for op, th in rule.conditions)
         else:
             cond = "threshold: unknown"
         value = (f"value_at_start={_num(rule.value)}" if rule.value is not None
                  else f"value_at_start=value lookup failed ({rule.error or 'unknown'})")
-        lines.append(f"{value} {cond} window={_dur(rule.window_seconds)} "
-                     f"(range={_dur(rule.range_seconds)}, for={_dur(rule.for_seconds)})")
+        lines.append(f"{value} {cond}")
+        timing = (f"window={_dur(rule.window_seconds)} (ranges={','.join(rule.ranges) or 'none'}, "
+                  f"for={_dur(rule.for_seconds)}")
+        if rule.keep_firing_seconds:
+            timing += f", keep_firing_for={_dur(rule.keep_firing_seconds)}"
+        if rule.eval_interval_seconds:
+            timing += f", eval_every={_dur(rule.eval_interval_seconds)}"
+        lines.append(timing + ")")
     extra = {k: v for k, v in labels.items() if k not in ("alertname", "severity")}
     optional = []
+    if identity is not None:
+        # legacy 와 같은 JSON 표기 (identity 계약 테스트와 Loki 기록 형식에 맞춘다)
+        optional.append("observation identity: " + json.dumps(identity.to_dict()))
+        status = {n: (r or {}).get("status", "?") for n, r in (evidence_sources or {}).items()}
+        if status:
+            optional.append("evidence availability: " + ", ".join(f"{n}={v}" for n, v in status.items()))
     if extra:
         optional.append("labels: " + ", ".join(f"{k}={v}" for k, v in sorted(extra.items())))
     summary = (getattr(alert, "annotations", None) or {}).get("summary")
@@ -242,7 +321,9 @@ def _metrics_section(metrics: dict, anchor_epoch: float, budget):
 def _logs_section(logs: list, rule, log_meta: dict | None, budget):
     meta = log_meta or {}
     window = (f", {utc(meta['start'])} ~ {utc(meta['end'])}" if meta.get("start") and meta.get("end") else "")
-    header = f"\n=== LOGS ({len(logs)} lines fetched{window}; rule-matching first, newest first) ==="
+    status = (getattr(logs, "report", None) or {}).get("status")
+    status = f", collector status={status}" if status else ""
+    header = f"\n=== LOGS ({len(logs)} lines fetched{window}{status}; rule-matching first, newest first) ==="
     lines = [header]
     if meta.get("limit") and len(logs) >= meta["limit"]:
         lines.append(f"(fetch limit {meta['limit']} reached: older lines in the window were not fetched)")
@@ -305,7 +386,7 @@ def _network_section(network, policy, budget):
 class PromptBuilderV2:
     def build(self, alert, metrics: dict, logs: list[dict], container_name: str | None = None,
               network=None, rule=None, received_at=None, log_meta: dict | None = None,
-              policy=None) -> dict:
+              policy=None, identity=None, evidence_sources=None) -> dict:
         """
         반환: system, user, evidence_ids(프롬프트에 붙인 ID), truncated(섹션 하나라도 잘림),
         sections(섹션별 추정 토큰·예산·잘림·생략 수), builder="v2".
@@ -315,9 +396,10 @@ class PromptBuilderV2:
             policy = _load_policy()
         anchor = to_instant(alert.startsAt).timestamp()
         parts = {
-            "alert": _alert_section(alert, container_name, rule, received_at, SECTION_BUDGETS["alert"]),
+            "alert": _alert_section(alert, container_name, rule, received_at, SECTION_BUDGETS["alert"],
+                                    identity, evidence_sources),
             "metrics": _metrics_section(metrics, anchor, SECTION_BUDGETS["metrics"]),
-            "logs": _logs_section(logs or [], rule, log_meta, SECTION_BUDGETS["logs"]),
+            "logs": _logs_section(logs if logs is not None else [], rule, log_meta, SECTION_BUDGETS["logs"]),
             "network": _network_section(network, policy, SECTION_BUDGETS["network"]),
         }
         sections, evidence_ids, texts = {}, [], []
@@ -327,8 +409,11 @@ class PromptBuilderV2:
             sections[name] = {"tokens_est": est_tokens(text), "budget": SECTION_BUDGETS[name],
                               "truncated": truncated, "omitted": omitted}
         user = "\n".join(texts) + "\n\nAnalyze the above data and respond with JSON only."
+        system = SYSTEM_PROMPT_V2
+        if identity is not None and getattr(identity, "runtime", None) == "host":
+            system += HOST_NOTE
         return {
-            "system": SYSTEM_PROMPT_V2,
+            "system": system,
             "user": user,
             "evidence_ids": evidence_ids,
             "truncated": any(s["truncated"] for s in sections.values()),

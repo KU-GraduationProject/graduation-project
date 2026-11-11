@@ -1,0 +1,92 @@
+{
+  "runtime_accepted": false,
+  "actual_alert_e2e_verified": false,
+  "deployment_performed": false,
+  "offline_status": "PASS",
+  "suites": {
+    "pipeline": {
+      "tests": 135,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": 0,
+      "unexpected_successes": 0,
+      "passed": 135,
+      "status": "PASS",
+      "exit_code": 0
+    },
+    "producer": {
+      "tests": 28,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": 0,
+      "unexpected_successes": 0,
+      "passed": 28,
+      "status": "PASS",
+      "exit_code": 0
+    },
+    "rulepack": {
+      "tests": 122,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": 0,
+      "unexpected_successes": 0,
+      "passed": 122,
+      "status": "PASS",
+      "exit_code": 0
+    },
+    "remediation": {
+      "tests": 270,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": 0,
+      "unexpected_successes": 0,
+      "passed": 270,
+      "status": "PASS",
+      "exit_code": 0
+    },
+    "network-observer": {
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "expected_failures": 0,
+      "unexpected_successes": 0,
+      "passed": 12,
+      "status": "PASS",
+      "exit_code": 0
+    },
+    "fluentd": {
+      "tests": 21,
+      "passed": 21,
+      "assertions": 87,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "status": "PASS"
+    }
+  },
+  "unique_tests": 588,
+  "passed": 588,
+  "failed": 0,
+  "skipped": 0,
+  "evidence": {
+    "pipeline": "offline-verification-pipeline-final/pipeline.log",
+    "producer": "offline-verification/producer.log",
+    "rulepack": "offline-verification-followup/rulepack.log",
+    "remediation": "offline-verification-followup/remediation.log",
+    "network-observer": "offline-verification/network-observer.log",
+    "fluentd": "fluentd-tests.log",
+    "initial_failed_remediation": "offline-verification/remediation.log",
+    "static": "static-checks.json"
+  },
+  "initial_failures": [
+    "producer initial sandbox mock socket bind denied: 1 ERROR, resolved fixture-only test execution",
+    "remediation initial Docker SDK missing: 82 ERROR, resolved /private/tmp dependency install",
+    "all-in-one Compose initial required env missing, resolved syntax-only explicit placeholder vars",
+    "Fluentd dependency build/setup initially failed, resolved temporary SDK/gem compatibility setup; no filter test failure masked"
+  ]
+}

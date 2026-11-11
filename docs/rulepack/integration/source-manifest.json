@@ -1,0 +1,1516 @@
+{
+  "base": "92e70dbf8b9af14b9376df3fde3a7fb4db7e3e50",
+  "precedence": [
+    "graduation-project",
+    "oi09-source-identity",
+    "oi02-04-telemetry",
+    "m5b-runtime-acceptance"
+  ],
+  "sources": {
+    "graduation-project": [
+      {
+        "path": "docs/rulepack/M1_OBSERVABILITY_AUDIT.md",
+        "status": "??",
+        "sha256": "6a6bc9dea1fa9c7531f3b9e4740653e9f78709cfce3dfc1e1c8fa304ebc5d7ba"
+      },
+      {
+        "path": "docs/rulepack/M2_2_INFRA_GENERALIZATION.md",
+        "status": "??",
+        "sha256": "d30ab0f821a522b59fe51876cfaac242e597d87f1f4f151204caaaf34cc56268"
+      },
+      {
+        "path": "docs/rulepack/M2_3_RESOURCE_GENERALIZATION.md",
+        "status": "??",
+        "sha256": "5a91d0fa98ea3576079b9301d3212ba61cbf64d133841c54c22e329bdad276c8"
+      },
+      {
+        "path": "docs/rulepack/M2_STATIC_GENERALIZATION.md",
+        "status": "??",
+        "sha256": "9549bbae42920577b878436366fcabdbe9e524e97dc3625fc4d17687bd3fb499"
+      },
+      {
+        "path": "docs/rulepack/M3_NEW_DETECTION_RULES.md",
+        "status": "??",
+        "sha256": "2e1921a9a9781c2ec22e6a3d39cf00879ee811db20ee80c7a1bca90e7355850d"
+      },
+      {
+        "path": "docs/rulepack/M4_NORMAL_BASELINE.md",
+        "status": "??",
+        "sha256": "0df84a9ef99a521e0660f15672200191050ae39338eb8603ed350f67e6b18353"
+      },
+      {
+        "path": "docs/rulepack/M5_A_RULEPACK_INTEGRATION.md",
+        "status": "??",
+        "sha256": "97bdcde9e97d9722c6b9424d810b70019ebb4811a17aab166acb2fde577a45ce"
+      },
+      {
+        "path": "docs/rulepack/M5_B_RUNTIME_ACCEPTANCE.md",
+        "status": "??",
+        "sha256": "3f17d97f57574af9639f9ae293e2195ea728042bd6a8ffbb73a3fb889647baf8"
+      },
+      {
+        "path": "docs/rulepack/OBSERVABILITY_INFRA_MILESTONE.md",
+        "status": "??",
+        "sha256": "9026c770f80f4dfdf371123eda26de576852947229ee20dc8725fa41d2f6fe96"
+      },
+      {
+        "path": "docs/rulepack/OI_01_RUNTIME_INVENTORY.md",
+        "status": "??",
+        "sha256": "3b333b4708ef90791b5f1a70a8d9cfd16dbd382f7a67fd3e0dfd96c5677227a6"
+      },
+      {
+        "path": "docs/rulepack/m2/generated/loki.rules.yml",
+        "status": "??",
+        "sha256": "68d49782dc6a7aa95a50cb4748a6c69b811f5d8b238813c92645e5db8ab36f25"
+      },
+      {
+        "path": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
+        "status": "??",
+        "sha256": "02403acbd975eae750771d6d10858031511fc041f49de0bdf682e9770f6a5df4"
+      },
+      {
+        "path": "docs/rulepack/m2/generated/prometheus.resources.rules.yml",
+        "status": "??",
+        "sha256": "ed336d2a6b8081bdb35b0a4e4b9c64db5d38caa02f91b2ffd066c03451da55d6"
+      },
+      {
+        "path": "docs/rulepack/m2/generated/prometheus.rules.yml",
+        "status": "??",
+        "sha256": "670479fcaaf12e67464fe7587390c42f3aa17746a02f7ae529b4d7663eb9ec14"
+      },
+      {
+        "path": "docs/rulepack/m2/infra_targets.yml",
+        "status": "??",
+        "sha256": "7678abd5d46850955a985c8d38e7214def27a82213c88330f8220df37e1a7695"
+      },
+      {
+        "path": "docs/rulepack/m2/resource_targets.yml",
+        "status": "??",
+        "sha256": "8f1250d1f84168a574296bf84a7f5a20e1038a94fb4a3b80ef7a7a437ad4b115"
+      },
+      {
+        "path": "docs/rulepack/m2/targets.yml",
+        "status": "??",
+        "sha256": "d267ea429315fa37f99ba751b61b5736a4b189d014c8554279e1f87f31594672"
+      },
+      {
+        "path": "docs/rulepack/m3/generated/loki.rules.yml",
+        "status": "??",
+        "sha256": "01d88bce66f5df4828c85d5300a079170785d4cf0bc962083cef74f610f273c0"
+      },
+      {
+        "path": "docs/rulepack/m3/targets.yml",
+        "status": "??",
+        "sha256": "9266bbd3bd3016691135047eb044124e6747b88e927735a74aa57c95685ff181"
+      },
+      {
+        "path": "docs/rulepack/m4/analysis.yml",
+        "status": "??",
+        "sha256": "87053f59065a7b0ecf915537307a31676b208e3d1be96f0422f662065d28aa05"
+      },
+      {
+        "path": "docs/rulepack/m4/availability.json",
+        "status": "??",
+        "sha256": "0a1ea52b89a659083f33125456e653d4d668f395f1b2a3e427f36672bd4344ec"
+      },
+      {
+        "path": "docs/rulepack/m4/current_run/analysis.json",
+        "status": "??",
+        "sha256": "4fba2035e2708b76092879e286eb593fd278a808d5dcfce06639c1b2d4e8b617"
+      },
+      {
+        "path": "docs/rulepack/m4/current_run/summary.md",
+        "status": "??",
+        "sha256": "e7d8f0573b3ccab17c4faed196db80d9e4384573e5fb3cb29bf4414a378d1793"
+      },
+      {
+        "path": "docs/rulepack/m4/execution_record.json",
+        "status": "??",
+        "sha256": "6e1064fa6678979da32629c30a0a409387c7cb31b5f2f9607718244d70a8dc3c"
+      },
+      {
+        "path": "docs/rulepack/m4/query_plan.json",
+        "status": "??",
+        "sha256": "17e9eb7cc308cbe3a7e11e64f741599046680868751f1058c53a5095a233acdb"
+      },
+      {
+        "path": "docs/rulepack/m5/generated/loki.rules.yml",
+        "status": "??",
+        "sha256": "f96b927313e31492ef0f4daf228562f9bf2851301b022c6cc548e44087527aa6"
+      },
+      {
+        "path": "docs/rulepack/m5/generated/prometheus.rules.yml",
+        "status": "??",
+        "sha256": "a44cdf682e38a293595f2492a17f51371f88d88bca80e685ad70dd4a2c8ad96b"
+      },
+      {
+        "path": "docs/rulepack/m5/integration.yml",
+        "status": "??",
+        "sha256": "46dcba22879661d3d62c3929b437326a86f4cf8da161c427185bc06e18ee713b"
+      },
+      {
+        "path": "docs/rulepack/m5/manifest.json",
+        "status": "??",
+        "sha256": "606f4ada77ab88ce7e30f73c23adc7457fe6699da149a0940073a3aa87f67eec"
+      },
+      {
+        "path": "docs/rulepack/m5/reference/loki.legacy-sqli.rules.yml",
+        "status": "??",
+        "sha256": "5fd7a6f10023870ea933061f1ae758b6f1a662fabaaffbbf065999c628db3932"
+      },
+      {
+        "path": "docs/rulepack/m5/verification.json",
+        "status": "??",
+        "sha256": "75ce62b1d11958999cdc6aafce84714b1b9d894d7aad301147a660566171d1cf"
+      },
+      {
+        "path": "docs/rulepack/m5b/local_metadata.json",
+        "status": "??",
+        "sha256": "de10d61c2d8ef0e60be449ccbd1a561161afa1927d1c27a667fa89e56d3a760b"
+      },
+      {
+        "path": "docs/rulepack/m5b/query-plan.json",
+        "status": "??",
+        "sha256": "5ceae6382619ecd591e77254a3b3713d002373368602015b75e040c7f2d42975"
+      },
+      {
+        "path": "docs/rulepack/m5b/runtime.json",
+        "status": "??",
+        "sha256": "cabb4cbb4c80405f24dc25b3525bebb8c7b9c1739e6de528f9234cbbe12f31db"
+      },
+      {
+        "path": "docs/rulepack/m5b/runtime.sandbox.json",
+        "status": "??",
+        "sha256": "787bfd279bb082cd4ef60f566cbd4823038a7461f5f8821ed64c98a48bf6a826"
+      },
+      {
+        "path": "docs/rulepack/m5b/verification.json",
+        "status": "??",
+        "sha256": "56030cf2180ca79655b05b04e853f1722f31f422c24917e0329484d441fe4e41"
+      },
+      {
+        "path": "tools/rulepack/acceptance_m5b.py",
+        "status": "??",
+        "sha256": "c7c697d6eaf18f2329ab8278951e4f39a7e59fee27cbc269c1bc128f7f787918"
+      },
+      {
+        "path": "tools/rulepack/baseline_m4.py",
+        "status": "??",
+        "sha256": "02e30332fae4ddb6358714e3fd0bce6f763eec090578a9bb52671bd764464442"
+      },
+      {
+        "path": "tools/rulepack/generate_m2.py",
+        "status": "??",
+        "sha256": "4a028d7565c3d3bc638c5833b5a15655fc0e66e21255747c6a8488cb947bf77e"
+      },
+      {
+        "path": "tools/rulepack/generate_m2_2.py",
+        "status": "??",
+        "sha256": "dacf243757e5198233a2631d5586dd1268295dee7749f3aa01f07c9e856c4b6e"
+      },
+      {
+        "path": "tools/rulepack/generate_m2_3.py",
+        "status": "??",
+        "sha256": "4342fd74ea0847235fa540755e57b57c93515a1f82459c41f160ed681cc48228"
+      },
+      {
+        "path": "tools/rulepack/generate_m3.py",
+        "status": "??",
+        "sha256": "8a3e7eae1ebf9a84e90ef41e5c0c6535058c4df7bb573e3bdd00193d89ebba38"
+      },
+      {
+        "path": "tools/rulepack/integrate_m5.py",
+        "status": "??",
+        "sha256": "5cceffc914036af77654a5e21f715619025f543a8ab809506ec3457ac95b407c"
+      },
+      {
+        "path": "tools/rulepack/tests/test_acceptance_m5b.py",
+        "status": "??",
+        "sha256": "7b66c4df6ed06912ccdb80a9682d9c8b0f6f9822dad8d5e52ca1db13933f6622"
+      },
+      {
+        "path": "tools/rulepack/tests/test_baseline_m4.py",
+        "status": "??",
+        "sha256": "f7c9f5c845506783514ef2071c0a3bb6c4b06946285d9825550ade4fda480fbf"
+      },
+      {
+        "path": "tools/rulepack/tests/test_generate_m2.py",
+        "status": "??",
+        "sha256": "acd57ddab6b2bd5026c7a0a7d19b15c0bf00876369cd5dd5e1deaf5970d99642"
+      },
+      {
+        "path": "tools/rulepack/tests/test_generate_m2_2.py",
+        "status": "??",
+        "sha256": "9ced73230909e14b23b17ab2bbc2ce01acf3ab1e6c001be968e650941048fc37"
+      },
+      {
+        "path": "tools/rulepack/tests/test_generate_m2_3.py",
+        "status": "??",
+        "sha256": "935da54ef7a7f15e0dcb271efec0879d4a8c78b3d9d981240466ae1a43ffab1d"
+      },
+      {
+        "path": "tools/rulepack/tests/test_generate_m3.py",
+        "status": "??",
+        "sha256": "59f0eeedc1c4fc38d4bea038b80be7843dc91afa5710a9d562cc00b399ad9a91"
+      },
+      {
+        "path": "tools/rulepack/tests/test_integrate_m5.py",
+        "status": "??",
+        "sha256": "426c4c89aa556b53650fb0bdca40408d7a284b6df3a716195469595e8b0b6f63"
+      }
+    ],
+    "oi09-source-identity": [
+      {
+        "path": "aiops/pipeline/collector/logs.py",
+        "status": " M",
+        "sha256": "1538ef6e240d95a076094084081892b77a7124b578887ee05a981bc041976686"
+      },
+      {
+        "path": "aiops/pipeline/collector/metrics.py",
+        "status": " M",
+        "sha256": "f9db41a8722d770dc8d617ad63d75b5521b0da58cb83d89e724416d9b6a10e1a"
+      },
+      {
+        "path": "aiops/pipeline/collector/network.py",
+        "status": " M",
+        "sha256": "b936376f3cc157ea02904d146cca9dd8d78af8c836c7f7fa340b428f81f8f66e"
+      },
+      {
+        "path": "aiops/pipeline/config.py",
+        "status": " M",
+        "sha256": "a9620ac2b04a1bae6cf6bfa4d3408850e2d6383ff04d733efb2ce08c07adc2aa"
+      },
+      {
+        "path": "aiops/pipeline/correlation.py",
+        "status": " M",
+        "sha256": "4896258d2dae3635f7a88cf05c0b4b78480b9b1033566adab773d9b9889c9f84"
+      },
+      {
+        "path": "aiops/pipeline/main.py",
+        "status": " M",
+        "sha256": "f7deb9afe43363c7171a83ccab9c70cbb9208d1ce55092a2a6ca86b67ff22d94"
+      },
+      {
+        "path": "aiops/pipeline/prompt/builder.py",
+        "status": " M",
+        "sha256": "26cc1250c9a4c60aa47c1787768433dfe2033f1c4a31f8c2b44132d9c30f7e32"
+      },
+      {
+        "path": "aiops/pipeline/tests/test_correlation.py",
+        "status": " M",
+        "sha256": "47bdc31482d4100b89f1882dd9a52abd12b4a12448183205df010f1b843ab9cf"
+      },
+      {
+        "path": "aiops/pipeline/tests/test_network.py",
+        "status": " M",
+        "sha256": "f72c8135573d8f773450d2ee27723d102798027ddb4b1a7457cb19684d0cc001"
+      },
+      {
+        "path": "aiops/pipeline/identity.py",
+        "status": "??",
+        "sha256": "cf62a44fe442ceaac61a66c6b189ffe8f0393c658333924dab154d22c8b48354"
+      },
+      {
+        "path": "aiops/pipeline/tests/test_source_identity.py",
+        "status": "??",
+        "sha256": "b7b688a1ed1c259595864311fecb720dfcf37e910a2ebe1de9b91ff02294b97b"
+      },
+      {
+        "path": "docs/rulepack/OI_09_SOURCE_IDENTITY.md",
+        "status": "??",
+        "sha256": "ec5fb3813f93f2cc3a6e4a6370c564ba21549fa760c91b1ab9ab12e6a345e103"
+      }
+    ],
+    "oi02-04-telemetry": [
+      {
+        "path": "deploy/leafy-pc/telemetry/Dockerfile",
+        "status": "??",
+        "sha256": "2d2201f89277fd485d97165c95a7bb7603e98d48663dea89a6bb4fc00ccab300"
+      },
+      {
+        "path": "deploy/leafy-pc/telemetry/README.md",
+        "status": "??",
+        "sha256": "b575edb98be16e6957a56eb417709ce323b6ab97811d0ed644b50d148fb9e680"
+      },
+      {
+        "path": "deploy/leafy-pc/telemetry/compose.candidate.yml",
+        "status": "??",
+        "sha256": "b876d46f5e26529801ddc49a27f960cecb1736767f401140556c2088f77e316a"
+      },
+      {
+        "path": "deploy/leafy-pc/telemetry/config.example.json",
+        "status": "??",
+        "sha256": "0ca728d577b22b4102eccce8549e5f378b20ffd6cfd4fcf0ce7ea9554e6c2fae"
+      },
+      {
+        "path": "deploy/leafy-pc/telemetry/exporter.py",
+        "status": "??",
+        "sha256": "31481bcbae7237ee48080cd50985d5511ea70de9f847d39b1c96b930c94d431c"
+      },
+      {
+        "path": "deploy/leafy-pc/telemetry/requirements-test.txt",
+        "status": "??",
+        "sha256": "8e3f8eb0817211cec848320b3ce9a64da566ffe0f0f61bed23425cd0f1aa6c78"
+      },
+      {
+        "path": "deploy/leafy-pc/telemetry/source-copy-manifest.json",
+        "status": "??",
+        "sha256": "640171c58ba3a318065c082a691b38f125598d88c6ae981398138d1d7d3771ab"
+      },
+      {
+        "path": "deploy/leafy-pc/telemetry/tests/test_telemetry.py",
+        "status": "??",
+        "sha256": "4abad7b9ea2496efbaedc2113b35b2401f125739da7fc5b8b6efdb0ab626412c"
+      },
+      {
+        "path": "deploy/leafy-pc/telemetry/verification.json",
+        "status": "??",
+        "sha256": "517eeb4be46432fddf8bae1506dcc781cbfb7cebb8c5f9268e2b8a8a7051bebb"
+      },
+      {
+        "path": "deploy/leafy-pc/telemetry/verify.py",
+        "status": "??",
+        "sha256": "283c0a39bff415a8e0d29fa10531cba7fa3bd481ed64fb688a78216da46620f9"
+      },
+      {
+        "path": "docs/rulepack/M1_OBSERVABILITY_AUDIT.md",
+        "status": "??",
+        "sha256": "6a6bc9dea1fa9c7531f3b9e4740653e9f78709cfce3dfc1e1c8fa304ebc5d7ba"
+      },
+      {
+        "path": "docs/rulepack/M2_2_INFRA_GENERALIZATION.md",
+        "status": "??",
+        "sha256": "d30ab0f821a522b59fe51876cfaac242e597d87f1f4f151204caaaf34cc56268"
+      },
+      {
+        "path": "docs/rulepack/M2_3_RESOURCE_GENERALIZATION.md",
+        "status": "??",
+        "sha256": "5a91d0fa98ea3576079b9301d3212ba61cbf64d133841c54c22e329bdad276c8"
+      },
+      {
+        "path": "docs/rulepack/M5_A_RULEPACK_INTEGRATION.md",
+        "status": "??",
+        "sha256": "97bdcde9e97d9722c6b9424d810b70019ebb4811a17aab166acb2fde577a45ce"
+      },
+      {
+        "path": "docs/rulepack/M5_B_RUNTIME_ACCEPTANCE.md",
+        "status": "??",
+        "sha256": "3f17d97f57574af9639f9ae293e2195ea728042bd6a8ffbb73a3fb889647baf8"
+      },
+      {
+        "path": "docs/rulepack/OBSERVABILITY_INFRA_MILESTONE.md",
+        "status": "??",
+        "sha256": "9026c770f80f4dfdf371123eda26de576852947229ee20dc8725fa41d2f6fe96"
+      },
+      {
+        "path": "docs/rulepack/OI_02_03_04_TELEMETRY.md",
+        "status": "??",
+        "sha256": "a7b1d7b33ce9dcf228c300988fde26438057760325ae6bd7a47a82bd3491cec7"
+      },
+      {
+        "path": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
+        "status": "??",
+        "sha256": "02403acbd975eae750771d6d10858031511fc041f49de0bdf682e9770f6a5df4"
+      },
+      {
+        "path": "docs/rulepack/m2/generated/prometheus.resources.rules.yml",
+        "status": "??",
+        "sha256": "ed336d2a6b8081bdb35b0a4e4b9c64db5d38caa02f91b2ffd066c03451da55d6"
+      },
+      {
+        "path": "docs/rulepack/m2/infra_targets.yml",
+        "status": "??",
+        "sha256": "7678abd5d46850955a985c8d38e7214def27a82213c88330f8220df37e1a7695"
+      },
+      {
+        "path": "docs/rulepack/m2/resource_targets.yml",
+        "status": "??",
+        "sha256": "8f1250d1f84168a574296bf84a7f5a20e1038a94fb4a3b80ef7a7a437ad4b115"
+      },
+      {
+        "path": "monitoring/prometheus/drafts/oi02-04/scrape.candidate.yml",
+        "status": "??",
+        "sha256": "0a4f672446ec75b5f8db64d3ae3dbe2a3a8364b903e54377d5089322d66b39e1"
+      },
+      {
+        "path": "monitoring/prometheus/drafts/oi02-04/targets.candidate.json",
+        "status": "??",
+        "sha256": "1136f6f9ce18eb87d31b89b28dcc5712f378ee95ba65271219440761a1cfc006"
+      }
+    ],
+    "m5b-runtime-acceptance": [
+      {
+        "path": "docs/rulepack/M1_OBSERVABILITY_AUDIT.md",
+        "status": "??",
+        "sha256": "6a6bc9dea1fa9c7531f3b9e4740653e9f78709cfce3dfc1e1c8fa304ebc5d7ba"
+      },
+      {
+        "path": "docs/rulepack/M2_2_INFRA_GENERALIZATION.md",
+        "status": "??",
+        "sha256": "d30ab0f821a522b59fe51876cfaac242e597d87f1f4f151204caaaf34cc56268"
+      },
+      {
+        "path": "docs/rulepack/M2_3_RESOURCE_GENERALIZATION.md",
+        "status": "??",
+        "sha256": "5a91d0fa98ea3576079b9301d3212ba61cbf64d133841c54c22e329bdad276c8"
+      },
+      {
+        "path": "docs/rulepack/M2_STATIC_GENERALIZATION.md",
+        "status": "??",
+        "sha256": "9549bbae42920577b878436366fcabdbe9e524e97dc3625fc4d17687bd3fb499"
+      },
+      {
+        "path": "docs/rulepack/M3_NEW_DETECTION_RULES.md",
+        "status": "??",
+        "sha256": "2e1921a9a9781c2ec22e6a3d39cf00879ee811db20ee80c7a1bca90e7355850d"
+      },
+      {
+        "path": "docs/rulepack/M4_NORMAL_BASELINE.md",
+        "status": "??",
+        "sha256": "0df84a9ef99a521e0660f15672200191050ae39338eb8603ed350f67e6b18353"
+      },
+      {
+        "path": "docs/rulepack/M5_A_RULEPACK_INTEGRATION.md",
+        "status": "??",
+        "sha256": "97bdcde9e97d9722c6b9424d810b70019ebb4811a17aab166acb2fde577a45ce"
+      },
+      {
+        "path": "docs/rulepack/M5_B_RUNTIME_ACCEPTANCE.md",
+        "status": "??",
+        "sha256": "dfd754775bc2fe6722ad951f2d0be6af95bd39a6b120a8b3a815095816112b5a"
+      },
+      {
+        "path": "docs/rulepack/OBSERVABILITY_INFRA_MILESTONE.md",
+        "status": "??",
+        "sha256": "9026c770f80f4dfdf371123eda26de576852947229ee20dc8725fa41d2f6fe96"
+      },
+      {
+        "path": "docs/rulepack/OI_01_RUNTIME_INVENTORY.md",
+        "status": "??",
+        "sha256": "3b333b4708ef90791b5f1a70a8d9cfd16dbd382f7a67fd3e0dfd96c5677227a6"
+      },
+      {
+        "path": "docs/rulepack/m2/generated/loki.rules.yml",
+        "status": "??",
+        "sha256": "68d49782dc6a7aa95a50cb4748a6c69b811f5d8b238813c92645e5db8ab36f25"
+      },
+      {
+        "path": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
+        "status": "??",
+        "sha256": "02403acbd975eae750771d6d10858031511fc041f49de0bdf682e9770f6a5df4"
+      },
+      {
+        "path": "docs/rulepack/m2/generated/prometheus.resources.rules.yml",
+        "status": "??",
+        "sha256": "ed336d2a6b8081bdb35b0a4e4b9c64db5d38caa02f91b2ffd066c03451da55d6"
+      },
+      {
+        "path": "docs/rulepack/m2/generated/prometheus.rules.yml",
+        "status": "??",
+        "sha256": "670479fcaaf12e67464fe7587390c42f3aa17746a02f7ae529b4d7663eb9ec14"
+      },
+      {
+        "path": "docs/rulepack/m2/infra_targets.yml",
+        "status": "??",
+        "sha256": "7678abd5d46850955a985c8d38e7214def27a82213c88330f8220df37e1a7695"
+      },
+      {
+        "path": "docs/rulepack/m2/resource_targets.yml",
+        "status": "??",
+        "sha256": "8f1250d1f84168a574296bf84a7f5a20e1038a94fb4a3b80ef7a7a437ad4b115"
+      },
+      {
+        "path": "docs/rulepack/m2/targets.yml",
+        "status": "??",
+        "sha256": "d267ea429315fa37f99ba751b61b5736a4b189d014c8554279e1f87f31594672"
+      },
+      {
+        "path": "docs/rulepack/m3/generated/loki.rules.yml",
+        "status": "??",
+        "sha256": "01d88bce66f5df4828c85d5300a079170785d4cf0bc962083cef74f610f273c0"
+      },
+      {
+        "path": "docs/rulepack/m3/targets.yml",
+        "status": "??",
+        "sha256": "9266bbd3bd3016691135047eb044124e6747b88e927735a74aa57c95685ff181"
+      },
+      {
+        "path": "docs/rulepack/m4/analysis.yml",
+        "status": "??",
+        "sha256": "87053f59065a7b0ecf915537307a31676b208e3d1be96f0422f662065d28aa05"
+      },
+      {
+        "path": "docs/rulepack/m4/availability.json",
+        "status": "??",
+        "sha256": "0a1ea52b89a659083f33125456e653d4d668f395f1b2a3e427f36672bd4344ec"
+      },
+      {
+        "path": "docs/rulepack/m4/execution_record.json",
+        "status": "??",
+        "sha256": "6e1064fa6678979da32629c30a0a409387c7cb31b5f2f9607718244d70a8dc3c"
+      },
+      {
+        "path": "docs/rulepack/m4/query_plan.json",
+        "status": "??",
+        "sha256": "17e9eb7cc308cbe3a7e11e64f741599046680868751f1058c53a5095a233acdb"
+      },
+      {
+        "path": "docs/rulepack/m5/generated/loki.rules.yml",
+        "status": "??",
+        "sha256": "f96b927313e31492ef0f4daf228562f9bf2851301b022c6cc548e44087527aa6"
+      },
+      {
+        "path": "docs/rulepack/m5/generated/prometheus.rules.yml",
+        "status": "??",
+        "sha256": "a44cdf682e38a293595f2492a17f51371f88d88bca80e685ad70dd4a2c8ad96b"
+      },
+      {
+        "path": "docs/rulepack/m5/integration.yml",
+        "status": "??",
+        "sha256": "46dcba22879661d3d62c3929b437326a86f4cf8da161c427185bc06e18ee713b"
+      },
+      {
+        "path": "docs/rulepack/m5/manifest.json",
+        "status": "??",
+        "sha256": "606f4ada77ab88ce7e30f73c23adc7457fe6699da149a0940073a3aa87f67eec"
+      },
+      {
+        "path": "docs/rulepack/m5/reference/loki.legacy-sqli.rules.yml",
+        "status": "??",
+        "sha256": "5fd7a6f10023870ea933061f1ae758b6f1a662fabaaffbbf065999c628db3932"
+      },
+      {
+        "path": "docs/rulepack/m5/verification.json",
+        "status": "??",
+        "sha256": "75ce62b1d11958999cdc6aafce84714b1b9d894d7aad301147a660566171d1cf"
+      },
+      {
+        "path": "docs/rulepack/m5b/PHASE_B_REVALIDATION.md",
+        "status": "??",
+        "sha256": "e7dfde821713045c94487a3e688fc18aab6a78e1d4534516affe38edfbea566b"
+      },
+      {
+        "path": "docs/rulepack/m5b/acceptance_matrix.json",
+        "status": "??",
+        "sha256": "b0bfe119d0b2d635962ef8b874c6e354739f7592ad309a0653d00dcda353c72b"
+      },
+      {
+        "path": "docs/rulepack/m5b/access_context.json",
+        "status": "??",
+        "sha256": "f9a5fbe7574fee1ed558d7838a91babbc89056d8423f61c54d6d566564f60b60"
+      },
+      {
+        "path": "docs/rulepack/m5b/existing_rca_metadata.json",
+        "status": "??",
+        "sha256": "eee2ed4f18cc013c93701ba12df894184df3ec76f9ce069ae66178f8b273ac3a"
+      },
+      {
+        "path": "docs/rulepack/m5b/regression.json",
+        "status": "??",
+        "sha256": "5edca523ce2bd56a2524ce0e15a86363b35e52a8cb580fc30605e9964458916f"
+      },
+      {
+        "path": "docs/rulepack/m5b/runtime.initial.json",
+        "status": "??",
+        "sha256": "054460a12530d47467040b876d9b4f3e604e4c2974c652ed37ceb0674110d558"
+      },
+      {
+        "path": "docs/rulepack/m5b/runtime.json",
+        "status": "??",
+        "sha256": "78ce9fb07dd8f64e488764a1288f6330cc523697b788c50b8986c2ea776a81e4"
+      },
+      {
+        "path": "docs/rulepack/m5b/runtime.network.json",
+        "status": "??",
+        "sha256": "9aa3c906c446db7b170d4282c37150bc56c7f5a95eea25dc3c5d3eba3577e121"
+      },
+      {
+        "path": "docs/rulepack/m5b/source_snapshot.json",
+        "status": "??",
+        "sha256": "20953e1b163db14d06cc2f3e5ad35c1e53a694460f29011ca56ec728cf8004d7"
+      },
+      {
+        "path": "docs/rulepack/m5b/static_contract.json",
+        "status": "??",
+        "sha256": "f37f69ee626cc2e136126c1acffef24792a9de5910404810b04c63c126d1f420"
+      },
+      {
+        "path": "docs/rulepack/m5b/verification.json",
+        "status": "??",
+        "sha256": "d91fe9f6634cfcad6e48b09a67ae2df7f3fec2a84fb302822415c1122d1be3eb"
+      },
+      {
+        "path": "tools/rulepack/acceptance_m5b.py",
+        "status": "??",
+        "sha256": "ee8e0ac08b9d09d5663e4d8e4733c532a677b460cd1ed088fab3e1fa16c2e3ce"
+      },
+      {
+        "path": "tools/rulepack/baseline_m4.py",
+        "status": "??",
+        "sha256": "02e30332fae4ddb6358714e3fd0bce6f763eec090578a9bb52671bd764464442"
+      },
+      {
+        "path": "tools/rulepack/generate_m2.py",
+        "status": "??",
+        "sha256": "4a028d7565c3d3bc638c5833b5a15655fc0e66e21255747c6a8488cb947bf77e"
+      },
+      {
+        "path": "tools/rulepack/generate_m2_2.py",
+        "status": "??",
+        "sha256": "dacf243757e5198233a2631d5586dd1268295dee7749f3aa01f07c9e856c4b6e"
+      },
+      {
+        "path": "tools/rulepack/generate_m2_3.py",
+        "status": "??",
+        "sha256": "4342fd74ea0847235fa540755e57b57c93515a1f82459c41f160ed681cc48228"
+      },
+      {
+        "path": "tools/rulepack/generate_m3.py",
+        "status": "??",
+        "sha256": "8a3e7eae1ebf9a84e90ef41e5c0c6535058c4df7bb573e3bdd00193d89ebba38"
+      },
+      {
+        "path": "tools/rulepack/integrate_m5.py",
+        "status": "??",
+        "sha256": "5cceffc914036af77654a5e21f715619025f543a8ab809506ec3457ac95b407c"
+      },
+      {
+        "path": "tools/rulepack/tests/test_acceptance_m5b.py",
+        "status": "??",
+        "sha256": "317e6ca862e0d6ea134584cdd2de9841dacb237ff49710e8c0e1854ff39dc0c9"
+      },
+      {
+        "path": "tools/rulepack/tests/test_baseline_m4.py",
+        "status": "??",
+        "sha256": "f7c9f5c845506783514ef2071c0a3bb6c4b06946285d9825550ade4fda480fbf"
+      },
+      {
+        "path": "tools/rulepack/tests/test_generate_m2.py",
+        "status": "??",
+        "sha256": "acd57ddab6b2bd5026c7a0a7d19b15c0bf00876369cd5dd5e1deaf5970d99642"
+      },
+      {
+        "path": "tools/rulepack/tests/test_generate_m2_2.py",
+        "status": "??",
+        "sha256": "9ced73230909e14b23b17ab2bbc2ce01acf3ab1e6c001be968e650941048fc37"
+      },
+      {
+        "path": "tools/rulepack/tests/test_generate_m2_3.py",
+        "status": "??",
+        "sha256": "935da54ef7a7f15e0dcb271efec0879d4a8c78b3d9d981240466ae1a43ffab1d"
+      },
+      {
+        "path": "tools/rulepack/tests/test_generate_m3.py",
+        "status": "??",
+        "sha256": "59f0eeedc1c4fc38d4bea038b80be7843dc91afa5710a9d562cc00b399ad9a91"
+      },
+      {
+        "path": "tools/rulepack/tests/test_integrate_m5.py",
+        "status": "??",
+        "sha256": "426c4c89aa556b53650fb0bdca40408d7a284b6df3a716195469595e8b0b6f63"
+      }
+    ]
+  },
+  "conflicts": [
+    {
+      "path": "docs/rulepack/M5_B_RUNTIME_ACCEPTANCE.md",
+      "versions": [
+        {
+          "owner": "graduation-project",
+          "sha256": "3f17d97f57574af9639f9ae293e2195ea728042bd6a8ffbb73a3fb889647baf8"
+        },
+        {
+          "owner": "oi02-04-telemetry",
+          "sha256": "3f17d97f57574af9639f9ae293e2195ea728042bd6a8ffbb73a3fb889647baf8"
+        },
+        {
+          "owner": "m5b-runtime-acceptance",
+          "sha256": "dfd754775bc2fe6722ad951f2d0be6af95bd39a6b120a8b3a815095816112b5a"
+        }
+      ],
+      "selected": "m5b-runtime-acceptance"
+    },
+    {
+      "path": "docs/rulepack/m5b/runtime.json",
+      "versions": [
+        {
+          "owner": "graduation-project",
+          "sha256": "cabb4cbb4c80405f24dc25b3525bebb8c7b9c1739e6de528f9234cbbe12f31db"
+        },
+        {
+          "owner": "m5b-runtime-acceptance",
+          "sha256": "78ce9fb07dd8f64e488764a1288f6330cc523697b788c50b8986c2ea776a81e4"
+        }
+      ],
+      "selected": "m5b-runtime-acceptance"
+    },
+    {
+      "path": "docs/rulepack/m5b/verification.json",
+      "versions": [
+        {
+          "owner": "graduation-project",
+          "sha256": "56030cf2180ca79655b05b04e853f1722f31f422c24917e0329484d441fe4e41"
+        },
+        {
+          "owner": "m5b-runtime-acceptance",
+          "sha256": "d91fe9f6634cfcad6e48b09a67ae2df7f3fec2a84fb302822415c1122d1be3eb"
+        }
+      ],
+      "selected": "m5b-runtime-acceptance"
+    },
+    {
+      "path": "tools/rulepack/acceptance_m5b.py",
+      "versions": [
+        {
+          "owner": "graduation-project",
+          "sha256": "c7c697d6eaf18f2329ab8278951e4f39a7e59fee27cbc269c1bc128f7f787918"
+        },
+        {
+          "owner": "m5b-runtime-acceptance",
+          "sha256": "ee8e0ac08b9d09d5663e4d8e4733c532a677b460cd1ed088fab3e1fa16c2e3ce"
+        }
+      ],
+      "selected": "m5b-runtime-acceptance"
+    },
+    {
+      "path": "tools/rulepack/tests/test_acceptance_m5b.py",
+      "versions": [
+        {
+          "owner": "graduation-project",
+          "sha256": "7b66c4df6ed06912ccdb80a9682d9c8b0f6f9822dad8d5e52ca1db13933f6622"
+        },
+        {
+          "owner": "m5b-runtime-acceptance",
+          "sha256": "317e6ca862e0d6ea134584cdd2de9841dacb237ff49710e8c0e1854ff39dc0c9"
+        }
+      ],
+      "selected": "m5b-runtime-acceptance"
+    }
+  ],
+  "owners": {
+    "docs/rulepack/M1_OBSERVABILITY_AUDIT.md": [
+      {
+        "owner": "graduation-project",
+        "sha256": "6a6bc9dea1fa9c7531f3b9e4740653e9f78709cfce3dfc1e1c8fa304ebc5d7ba"
+      },
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "6a6bc9dea1fa9c7531f3b9e4740653e9f78709cfce3dfc1e1c8fa304ebc5d7ba"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "6a6bc9dea1fa9c7531f3b9e4740653e9f78709cfce3dfc1e1c8fa304ebc5d7ba"
+      }
+    ],
+    "docs/rulepack/M2_2_INFRA_GENERALIZATION.md": [
+      {
+        "owner": "graduation-project",
+        "sha256": "d30ab0f821a522b59fe51876cfaac242e597d87f1f4f151204caaaf34cc56268"
+      },
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "d30ab0f821a522b59fe51876cfaac242e597d87f1f4f151204caaaf34cc56268"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "d30ab0f821a522b59fe51876cfaac242e597d87f1f4f151204caaaf34cc56268"
+      }
+    ],
+    "docs/rulepack/M2_3_RESOURCE_GENERALIZATION.md": [
+      {
+        "owner": "graduation-project",
+        "sha256": "5a91d0fa98ea3576079b9301d3212ba61cbf64d133841c54c22e329bdad276c8"
+      },
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "5a91d0fa98ea3576079b9301d3212ba61cbf64d133841c54c22e329bdad276c8"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "5a91d0fa98ea3576079b9301d3212ba61cbf64d133841c54c22e329bdad276c8"
+      }
+    ],
+    "docs/rulepack/M2_STATIC_GENERALIZATION.md": [
+      {
+        "owner": "graduation-project",
+        "sha256": "9549bbae42920577b878436366fcabdbe9e524e97dc3625fc4d17687bd3fb499"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "9549bbae42920577b878436366fcabdbe9e524e97dc3625fc4d17687bd3fb499"
+      }
+    ],
+    "docs/rulepack/M3_NEW_DETECTION_RULES.md": [
+      {
+        "owner": "graduation-project",
+        "sha256": "2e1921a9a9781c2ec22e6a3d39cf00879ee811db20ee80c7a1bca90e7355850d"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "2e1921a9a9781c2ec22e6a3d39cf00879ee811db20ee80c7a1bca90e7355850d"
+      }
+    ],
+    "docs/rulepack/M4_NORMAL_BASELINE.md": [
+      {
+        "owner": "graduation-project",
+        "sha256": "0df84a9ef99a521e0660f15672200191050ae39338eb8603ed350f67e6b18353"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "0df84a9ef99a521e0660f15672200191050ae39338eb8603ed350f67e6b18353"
+      }
+    ],
+    "docs/rulepack/M5_A_RULEPACK_INTEGRATION.md": [
+      {
+        "owner": "graduation-project",
+        "sha256": "97bdcde9e97d9722c6b9424d810b70019ebb4811a17aab166acb2fde577a45ce"
+      },
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "97bdcde9e97d9722c6b9424d810b70019ebb4811a17aab166acb2fde577a45ce"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "97bdcde9e97d9722c6b9424d810b70019ebb4811a17aab166acb2fde577a45ce"
+      }
+    ],
+    "docs/rulepack/M5_B_RUNTIME_ACCEPTANCE.md": [
+      {
+        "owner": "graduation-project",
+        "sha256": "3f17d97f57574af9639f9ae293e2195ea728042bd6a8ffbb73a3fb889647baf8"
+      },
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "3f17d97f57574af9639f9ae293e2195ea728042bd6a8ffbb73a3fb889647baf8"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "dfd754775bc2fe6722ad951f2d0be6af95bd39a6b120a8b3a815095816112b5a"
+      }
+    ],
+    "docs/rulepack/OBSERVABILITY_INFRA_MILESTONE.md": [
+      {
+        "owner": "graduation-project",
+        "sha256": "9026c770f80f4dfdf371123eda26de576852947229ee20dc8725fa41d2f6fe96"
+      },
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "9026c770f80f4dfdf371123eda26de576852947229ee20dc8725fa41d2f6fe96"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "9026c770f80f4dfdf371123eda26de576852947229ee20dc8725fa41d2f6fe96"
+      }
+    ],
+    "docs/rulepack/OI_01_RUNTIME_INVENTORY.md": [
+      {
+        "owner": "graduation-project",
+        "sha256": "3b333b4708ef90791b5f1a70a8d9cfd16dbd382f7a67fd3e0dfd96c5677227a6"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "3b333b4708ef90791b5f1a70a8d9cfd16dbd382f7a67fd3e0dfd96c5677227a6"
+      }
+    ],
+    "docs/rulepack/m2/generated/loki.rules.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "68d49782dc6a7aa95a50cb4748a6c69b811f5d8b238813c92645e5db8ab36f25"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "68d49782dc6a7aa95a50cb4748a6c69b811f5d8b238813c92645e5db8ab36f25"
+      }
+    ],
+    "docs/rulepack/m2/generated/prometheus.infra.rules.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "02403acbd975eae750771d6d10858031511fc041f49de0bdf682e9770f6a5df4"
+      },
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "02403acbd975eae750771d6d10858031511fc041f49de0bdf682e9770f6a5df4"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "02403acbd975eae750771d6d10858031511fc041f49de0bdf682e9770f6a5df4"
+      }
+    ],
+    "docs/rulepack/m2/generated/prometheus.resources.rules.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "ed336d2a6b8081bdb35b0a4e4b9c64db5d38caa02f91b2ffd066c03451da55d6"
+      },
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "ed336d2a6b8081bdb35b0a4e4b9c64db5d38caa02f91b2ffd066c03451da55d6"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "ed336d2a6b8081bdb35b0a4e4b9c64db5d38caa02f91b2ffd066c03451da55d6"
+      }
+    ],
+    "docs/rulepack/m2/generated/prometheus.rules.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "670479fcaaf12e67464fe7587390c42f3aa17746a02f7ae529b4d7663eb9ec14"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "670479fcaaf12e67464fe7587390c42f3aa17746a02f7ae529b4d7663eb9ec14"
+      }
+    ],
+    "docs/rulepack/m2/infra_targets.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "7678abd5d46850955a985c8d38e7214def27a82213c88330f8220df37e1a7695"
+      },
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "7678abd5d46850955a985c8d38e7214def27a82213c88330f8220df37e1a7695"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "7678abd5d46850955a985c8d38e7214def27a82213c88330f8220df37e1a7695"
+      }
+    ],
+    "docs/rulepack/m2/resource_targets.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "8f1250d1f84168a574296bf84a7f5a20e1038a94fb4a3b80ef7a7a437ad4b115"
+      },
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "8f1250d1f84168a574296bf84a7f5a20e1038a94fb4a3b80ef7a7a437ad4b115"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "8f1250d1f84168a574296bf84a7f5a20e1038a94fb4a3b80ef7a7a437ad4b115"
+      }
+    ],
+    "docs/rulepack/m2/targets.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "d267ea429315fa37f99ba751b61b5736a4b189d014c8554279e1f87f31594672"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "d267ea429315fa37f99ba751b61b5736a4b189d014c8554279e1f87f31594672"
+      }
+    ],
+    "docs/rulepack/m3/generated/loki.rules.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "01d88bce66f5df4828c85d5300a079170785d4cf0bc962083cef74f610f273c0"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "01d88bce66f5df4828c85d5300a079170785d4cf0bc962083cef74f610f273c0"
+      }
+    ],
+    "docs/rulepack/m3/targets.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "9266bbd3bd3016691135047eb044124e6747b88e927735a74aa57c95685ff181"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "9266bbd3bd3016691135047eb044124e6747b88e927735a74aa57c95685ff181"
+      }
+    ],
+    "docs/rulepack/m4/analysis.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "87053f59065a7b0ecf915537307a31676b208e3d1be96f0422f662065d28aa05"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "87053f59065a7b0ecf915537307a31676b208e3d1be96f0422f662065d28aa05"
+      }
+    ],
+    "docs/rulepack/m4/availability.json": [
+      {
+        "owner": "graduation-project",
+        "sha256": "0a1ea52b89a659083f33125456e653d4d668f395f1b2a3e427f36672bd4344ec"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "0a1ea52b89a659083f33125456e653d4d668f395f1b2a3e427f36672bd4344ec"
+      }
+    ],
+    "docs/rulepack/m4/current_run/analysis.json": [
+      {
+        "owner": "graduation-project",
+        "sha256": "4fba2035e2708b76092879e286eb593fd278a808d5dcfce06639c1b2d4e8b617"
+      }
+    ],
+    "docs/rulepack/m4/current_run/summary.md": [
+      {
+        "owner": "graduation-project",
+        "sha256": "e7d8f0573b3ccab17c4faed196db80d9e4384573e5fb3cb29bf4414a378d1793"
+      }
+    ],
+    "docs/rulepack/m4/execution_record.json": [
+      {
+        "owner": "graduation-project",
+        "sha256": "6e1064fa6678979da32629c30a0a409387c7cb31b5f2f9607718244d70a8dc3c"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "6e1064fa6678979da32629c30a0a409387c7cb31b5f2f9607718244d70a8dc3c"
+      }
+    ],
+    "docs/rulepack/m4/query_plan.json": [
+      {
+        "owner": "graduation-project",
+        "sha256": "17e9eb7cc308cbe3a7e11e64f741599046680868751f1058c53a5095a233acdb"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "17e9eb7cc308cbe3a7e11e64f741599046680868751f1058c53a5095a233acdb"
+      }
+    ],
+    "docs/rulepack/m5/generated/loki.rules.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "f96b927313e31492ef0f4daf228562f9bf2851301b022c6cc548e44087527aa6"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "f96b927313e31492ef0f4daf228562f9bf2851301b022c6cc548e44087527aa6"
+      }
+    ],
+    "docs/rulepack/m5/generated/prometheus.rules.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "a44cdf682e38a293595f2492a17f51371f88d88bca80e685ad70dd4a2c8ad96b"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "a44cdf682e38a293595f2492a17f51371f88d88bca80e685ad70dd4a2c8ad96b"
+      }
+    ],
+    "docs/rulepack/m5/integration.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "46dcba22879661d3d62c3929b437326a86f4cf8da161c427185bc06e18ee713b"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "46dcba22879661d3d62c3929b437326a86f4cf8da161c427185bc06e18ee713b"
+      }
+    ],
+    "docs/rulepack/m5/manifest.json": [
+      {
+        "owner": "graduation-project",
+        "sha256": "606f4ada77ab88ce7e30f73c23adc7457fe6699da149a0940073a3aa87f67eec"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "606f4ada77ab88ce7e30f73c23adc7457fe6699da149a0940073a3aa87f67eec"
+      }
+    ],
+    "docs/rulepack/m5/reference/loki.legacy-sqli.rules.yml": [
+      {
+        "owner": "graduation-project",
+        "sha256": "5fd7a6f10023870ea933061f1ae758b6f1a662fabaaffbbf065999c628db3932"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "5fd7a6f10023870ea933061f1ae758b6f1a662fabaaffbbf065999c628db3932"
+      }
+    ],
+    "docs/rulepack/m5/verification.json": [
+      {
+        "owner": "graduation-project",
+        "sha256": "75ce62b1d11958999cdc6aafce84714b1b9d894d7aad301147a660566171d1cf"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "75ce62b1d11958999cdc6aafce84714b1b9d894d7aad301147a660566171d1cf"
+      }
+    ],
+    "docs/rulepack/m5b/local_metadata.json": [
+      {
+        "owner": "graduation-project",
+        "sha256": "de10d61c2d8ef0e60be449ccbd1a561161afa1927d1c27a667fa89e56d3a760b"
+      }
+    ],
+    "docs/rulepack/m5b/query-plan.json": [
+      {
+        "owner": "graduation-project",
+        "sha256": "5ceae6382619ecd591e77254a3b3713d002373368602015b75e040c7f2d42975"
+      }
+    ],
+    "docs/rulepack/m5b/runtime.json": [
+      {
+        "owner": "graduation-project",
+        "sha256": "cabb4cbb4c80405f24dc25b3525bebb8c7b9c1739e6de528f9234cbbe12f31db"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "78ce9fb07dd8f64e488764a1288f6330cc523697b788c50b8986c2ea776a81e4"
+      }
+    ],
+    "docs/rulepack/m5b/runtime.sandbox.json": [
+      {
+        "owner": "graduation-project",
+        "sha256": "787bfd279bb082cd4ef60f566cbd4823038a7461f5f8821ed64c98a48bf6a826"
+      }
+    ],
+    "docs/rulepack/m5b/verification.json": [
+      {
+        "owner": "graduation-project",
+        "sha256": "56030cf2180ca79655b05b04e853f1722f31f422c24917e0329484d441fe4e41"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "d91fe9f6634cfcad6e48b09a67ae2df7f3fec2a84fb302822415c1122d1be3eb"
+      }
+    ],
+    "tools/rulepack/acceptance_m5b.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "c7c697d6eaf18f2329ab8278951e4f39a7e59fee27cbc269c1bc128f7f787918"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "ee8e0ac08b9d09d5663e4d8e4733c532a677b460cd1ed088fab3e1fa16c2e3ce"
+      }
+    ],
+    "tools/rulepack/baseline_m4.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "02e30332fae4ddb6358714e3fd0bce6f763eec090578a9bb52671bd764464442"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "02e30332fae4ddb6358714e3fd0bce6f763eec090578a9bb52671bd764464442"
+      }
+    ],
+    "tools/rulepack/generate_m2.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "4a028d7565c3d3bc638c5833b5a15655fc0e66e21255747c6a8488cb947bf77e"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "4a028d7565c3d3bc638c5833b5a15655fc0e66e21255747c6a8488cb947bf77e"
+      }
+    ],
+    "tools/rulepack/generate_m2_2.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "dacf243757e5198233a2631d5586dd1268295dee7749f3aa01f07c9e856c4b6e"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "dacf243757e5198233a2631d5586dd1268295dee7749f3aa01f07c9e856c4b6e"
+      }
+    ],
+    "tools/rulepack/generate_m2_3.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "4342fd74ea0847235fa540755e57b57c93515a1f82459c41f160ed681cc48228"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "4342fd74ea0847235fa540755e57b57c93515a1f82459c41f160ed681cc48228"
+      }
+    ],
+    "tools/rulepack/generate_m3.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "8a3e7eae1ebf9a84e90ef41e5c0c6535058c4df7bb573e3bdd00193d89ebba38"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "8a3e7eae1ebf9a84e90ef41e5c0c6535058c4df7bb573e3bdd00193d89ebba38"
+      }
+    ],
+    "tools/rulepack/integrate_m5.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "5cceffc914036af77654a5e21f715619025f543a8ab809506ec3457ac95b407c"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "5cceffc914036af77654a5e21f715619025f543a8ab809506ec3457ac95b407c"
+      }
+    ],
+    "tools/rulepack/tests/test_acceptance_m5b.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "7b66c4df6ed06912ccdb80a9682d9c8b0f6f9822dad8d5e52ca1db13933f6622"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "317e6ca862e0d6ea134584cdd2de9841dacb237ff49710e8c0e1854ff39dc0c9"
+      }
+    ],
+    "tools/rulepack/tests/test_baseline_m4.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "f7c9f5c845506783514ef2071c0a3bb6c4b06946285d9825550ade4fda480fbf"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "f7c9f5c845506783514ef2071c0a3bb6c4b06946285d9825550ade4fda480fbf"
+      }
+    ],
+    "tools/rulepack/tests/test_generate_m2.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "acd57ddab6b2bd5026c7a0a7d19b15c0bf00876369cd5dd5e1deaf5970d99642"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "acd57ddab6b2bd5026c7a0a7d19b15c0bf00876369cd5dd5e1deaf5970d99642"
+      }
+    ],
+    "tools/rulepack/tests/test_generate_m2_2.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "9ced73230909e14b23b17ab2bbc2ce01acf3ab1e6c001be968e650941048fc37"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "9ced73230909e14b23b17ab2bbc2ce01acf3ab1e6c001be968e650941048fc37"
+      }
+    ],
+    "tools/rulepack/tests/test_generate_m2_3.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "935da54ef7a7f15e0dcb271efec0879d4a8c78b3d9d981240466ae1a43ffab1d"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "935da54ef7a7f15e0dcb271efec0879d4a8c78b3d9d981240466ae1a43ffab1d"
+      }
+    ],
+    "tools/rulepack/tests/test_generate_m3.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "59f0eeedc1c4fc38d4bea038b80be7843dc91afa5710a9d562cc00b399ad9a91"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "59f0eeedc1c4fc38d4bea038b80be7843dc91afa5710a9d562cc00b399ad9a91"
+      }
+    ],
+    "tools/rulepack/tests/test_integrate_m5.py": [
+      {
+        "owner": "graduation-project",
+        "sha256": "426c4c89aa556b53650fb0bdca40408d7a284b6df3a716195469595e8b0b6f63"
+      },
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "426c4c89aa556b53650fb0bdca40408d7a284b6df3a716195469595e8b0b6f63"
+      }
+    ],
+    "aiops/pipeline/collector/logs.py": [
+      {
+        "owner": "oi09-source-identity",
+        "sha256": "1538ef6e240d95a076094084081892b77a7124b578887ee05a981bc041976686"
+      }
+    ],
+    "aiops/pipeline/collector/metrics.py": [
+      {
+        "owner": "oi09-source-identity",
+        "sha256": "f9db41a8722d770dc8d617ad63d75b5521b0da58cb83d89e724416d9b6a10e1a"
+      }
+    ],
+    "aiops/pipeline/collector/network.py": [
+      {
+        "owner": "oi09-source-identity",
+        "sha256": "b936376f3cc157ea02904d146cca9dd8d78af8c836c7f7fa340b428f81f8f66e"
+      }
+    ],
+    "aiops/pipeline/config.py": [
+      {
+        "owner": "oi09-source-identity",
+        "sha256": "a9620ac2b04a1bae6cf6bfa4d3408850e2d6383ff04d733efb2ce08c07adc2aa"
+      }
+    ],
+    "aiops/pipeline/correlation.py": [
+      {
+        "owner": "oi09-source-identity",
+        "sha256": "4896258d2dae3635f7a88cf05c0b4b78480b9b1033566adab773d9b9889c9f84"
+      }
+    ],
+    "aiops/pipeline/main.py": [
+      {
+        "owner": "oi09-source-identity",
+        "sha256": "f7deb9afe43363c7171a83ccab9c70cbb9208d1ce55092a2a6ca86b67ff22d94"
+      }
+    ],
+    "aiops/pipeline/prompt/builder.py": [
+      {
+        "owner": "oi09-source-identity",
+        "sha256": "26cc1250c9a4c60aa47c1787768433dfe2033f1c4a31f8c2b44132d9c30f7e32"
+      }
+    ],
+    "aiops/pipeline/tests/test_correlation.py": [
+      {
+        "owner": "oi09-source-identity",
+        "sha256": "47bdc31482d4100b89f1882dd9a52abd12b4a12448183205df010f1b843ab9cf"
+      }
+    ],
+    "aiops/pipeline/tests/test_network.py": [
+      {
+        "owner": "oi09-source-identity",
+        "sha256": "f72c8135573d8f773450d2ee27723d102798027ddb4b1a7457cb19684d0cc001"
+      }
+    ],
+    "aiops/pipeline/identity.py": [
+      {
+        "owner": "oi09-source-identity",
+        "sha256": "cf62a44fe442ceaac61a66c6b189ffe8f0393c658333924dab154d22c8b48354"
+      }
+    ],
+    "aiops/pipeline/tests/test_source_identity.py": [
+      {
+        "owner": "oi09-source-identity",
+        "sha256": "b7b688a1ed1c259595864311fecb720dfcf37e910a2ebe1de9b91ff02294b97b"
+      }
+    ],
+    "docs/rulepack/OI_09_SOURCE_IDENTITY.md": [
+      {
+        "owner": "oi09-source-identity",
+        "sha256": "ec5fb3813f93f2cc3a6e4a6370c564ba21549fa760c91b1ab9ab12e6a345e103"
+      }
+    ],
+    "deploy/leafy-pc/telemetry/Dockerfile": [
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "2d2201f89277fd485d97165c95a7bb7603e98d48663dea89a6bb4fc00ccab300"
+      }
+    ],
+    "deploy/leafy-pc/telemetry/README.md": [
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "b575edb98be16e6957a56eb417709ce323b6ab97811d0ed644b50d148fb9e680"
+      }
+    ],
+    "deploy/leafy-pc/telemetry/compose.candidate.yml": [
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "b876d46f5e26529801ddc49a27f960cecb1736767f401140556c2088f77e316a"
+      }
+    ],
+    "deploy/leafy-pc/telemetry/config.example.json": [
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "0ca728d577b22b4102eccce8549e5f378b20ffd6cfd4fcf0ce7ea9554e6c2fae"
+      }
+    ],
+    "deploy/leafy-pc/telemetry/exporter.py": [
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "31481bcbae7237ee48080cd50985d5511ea70de9f847d39b1c96b930c94d431c"
+      }
+    ],
+    "deploy/leafy-pc/telemetry/requirements-test.txt": [
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "8e3f8eb0817211cec848320b3ce9a64da566ffe0f0f61bed23425cd0f1aa6c78"
+      }
+    ],
+    "deploy/leafy-pc/telemetry/source-copy-manifest.json": [
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "640171c58ba3a318065c082a691b38f125598d88c6ae981398138d1d7d3771ab"
+      }
+    ],
+    "deploy/leafy-pc/telemetry/tests/test_telemetry.py": [
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "4abad7b9ea2496efbaedc2113b35b2401f125739da7fc5b8b6efdb0ab626412c"
+      }
+    ],
+    "deploy/leafy-pc/telemetry/verification.json": [
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "517eeb4be46432fddf8bae1506dcc781cbfb7cebb8c5f9268e2b8a8a7051bebb"
+      }
+    ],
+    "deploy/leafy-pc/telemetry/verify.py": [
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "283c0a39bff415a8e0d29fa10531cba7fa3bd481ed64fb688a78216da46620f9"
+      }
+    ],
+    "docs/rulepack/OI_02_03_04_TELEMETRY.md": [
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "a7b1d7b33ce9dcf228c300988fde26438057760325ae6bd7a47a82bd3491cec7"
+      }
+    ],
+    "monitoring/prometheus/drafts/oi02-04/scrape.candidate.yml": [
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "0a4f672446ec75b5f8db64d3ae3dbe2a3a8364b903e54377d5089322d66b39e1"
+      }
+    ],
+    "monitoring/prometheus/drafts/oi02-04/targets.candidate.json": [
+      {
+        "owner": "oi02-04-telemetry",
+        "sha256": "1136f6f9ce18eb87d31b89b28dcc5712f378ee95ba65271219440761a1cfc006"
+      }
+    ],
+    "docs/rulepack/m5b/PHASE_B_REVALIDATION.md": [
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "e7dfde821713045c94487a3e688fc18aab6a78e1d4534516affe38edfbea566b"
+      }
+    ],
+    "docs/rulepack/m5b/acceptance_matrix.json": [
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "b0bfe119d0b2d635962ef8b874c6e354739f7592ad309a0653d00dcda353c72b"
+      }
+    ],
+    "docs/rulepack/m5b/access_context.json": [
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "f9a5fbe7574fee1ed558d7838a91babbc89056d8423f61c54d6d566564f60b60"
+      }
+    ],
+    "docs/rulepack/m5b/existing_rca_metadata.json": [
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "eee2ed4f18cc013c93701ba12df894184df3ec76f9ce069ae66178f8b273ac3a"
+      }
+    ],
+    "docs/rulepack/m5b/regression.json": [
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "5edca523ce2bd56a2524ce0e15a86363b35e52a8cb580fc30605e9964458916f"
+      }
+    ],
+    "docs/rulepack/m5b/runtime.initial.json": [
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "054460a12530d47467040b876d9b4f3e604e4c2974c652ed37ceb0674110d558"
+      }
+    ],
+    "docs/rulepack/m5b/runtime.network.json": [
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "9aa3c906c446db7b170d4282c37150bc56c7f5a95eea25dc3c5d3eba3577e121"
+      }
+    ],
+    "docs/rulepack/m5b/source_snapshot.json": [
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "20953e1b163db14d06cc2f3e5ad35c1e53a694460f29011ca56ec728cf8004d7"
+      }
+    ],
+    "docs/rulepack/m5b/static_contract.json": [
+      {
+        "owner": "m5b-runtime-acceptance",
+        "sha256": "f37f69ee626cc2e136126c1acffef24792a9de5910404810b04c63c126d1f420"
+      }
+    ]
+  }
+}

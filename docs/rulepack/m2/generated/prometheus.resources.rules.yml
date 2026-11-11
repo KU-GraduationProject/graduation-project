@@ -1,0 +1,43 @@
+# Generated M2-3 static draft; not mounted by Compose. Do not edit.
+groups:
+- name: m2-3-static-resources
+  rules:
+  - alert: HighMemoryUsage
+    expr: |
+      max by (name) (
+        (
+          container_memory_working_set_bytes{id=~"/docker/.+", instance="cadvisor:8080", job="cadvisor"}
+          / (container_spec_memory_limit_bytes{id=~"/docker/.+", instance="cadvisor:8080", job="cadvisor"} > 0)
+        ) * on(id) group_left(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata"}
+      ) > 0.85
+    for: 5m
+    labels:
+      severity: warning
+      category: infra
+      rulepack_source: integrated
+    annotations:
+      summary: 컨테이너 메모리 사용률(working set) 85% 5분 이상 초과
+      container: '{{ $labels.name }}'
+  - alert: HighNetworkReceive
+    expr: |
+      (
+        sum by (name) (
+          rate(container_network_receive_bytes_total{interface!="lo", id=~"/docker/.+", name!="", name=~"leafy-frontend|leafy-backend|leafy-db|leafy-minio", instance="cadvisor:8080", job="cadvisor"}[1m])
+        ) > 1e7
+      ) or (
+        (
+          sum without (interface) (
+            rate(container_network_receive_bytes_total{interface!="lo", id="/", instance="cadvisor:8080", job="cadvisor"}[1m])
+          ) > 1e7
+        )
+        unless on ()
+        (count(container_network_receive_bytes_total{id=~"/docker/.+", instance="cadvisor:8080", job="cadvisor"}) > 0)
+      )
+    for: 30s
+    labels:
+      severity: warning
+      category: security
+      rulepack_source: integrated
+    annotations:
+      summary: 네트워크 수신량 급증 (잠재적 DDoS/스캔)
+      container: '{{ if $labels.name }}{{ $labels.name }}{{ else }}unknown (host-level){{ end }}'

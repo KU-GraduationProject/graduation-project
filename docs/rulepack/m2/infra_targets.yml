@@ -1,0 +1,32 @@
+# M2-2 통합 환경 정적 매핑이다. 실제 메트릭/라벨은 UNVERIFIED인 상태이다.
+# PC 2 수집 경로를 선언하거나 배포하는 파일이 아닌 것이다.
+version: 1
+sources:
+  integrated:
+    cadvisor:
+      job: cadvisor
+      instance: cadvisor:8080
+    pipeline:
+      job: pipeline-metadata
+      instance: pipeline:8000
+targets:
+  - id: leafy-frontend
+    source: integrated
+    name: leafy-frontend
+    alert_target: leafy-frontend
+    rules: [cpu]
+  - id: leafy-backend
+    source: integrated
+    name: leafy-backend
+    alert_target: leafy-backend
+    rules: [cpu, restart]
+  - id: leafy-db
+    source: integrated
+    name: leafy-db
+    alert_target: leafy-db
+    rules: [cpu]
+  - id: leafy-minio
+    source: integrated
+    name: leafy-minio
+    alert_target: leafy-minio
+    rules: [cpu]

@@ -153,6 +153,8 @@ Notifier._send_slack()는 HTTP 200과 본문 ok를 성공으로 본다. 같은 n
 
 run.py::panel_remediation은 risk만 보고 실행 성공을 추정한다. 이것을 실제 조치 증거로 사용하지 않는다. verifier의 verify_loki는 로그 키워드 발견이며 Ruler 발화 검증이 아니다. 일부 시나리오는 직접 webhook으로 detector/Alertmanager를 우회한다.
 
+LLM inference requires a GPU-capable execution environment. CPU-only inference is excluded from the target deployment because inference workload can interfere with the monitored workload and distort anomaly detection results.
+
 ### 3.2 Grafana provisioning은 존재함
 
 - [dashboards.yml](../monitoring/grafana/provisioning/dashboards/dashboards.yml): provider path=/etc/grafana/provisioning/dashboards.

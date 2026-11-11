@@ -1,0 +1,93 @@
+{
+  "at_utc": "2026-11-10T16:55:18.617791+00:00",
+  "scope": "JH development Mac; not remote JH deployment",
+  "containers": [
+    {
+      "name": "aiops-remediation",
+      "service": "remediation",
+      "state": "created",
+      "image_id": "sha256:b0b58253fa40d313d31fcf49a20efdad38396cecdd42f3ffebec444d11eb03a4",
+      "env_whitelist": {
+        "LOKI_URL": "http://loki:3100"
+      },
+      "target_service_map_present": false,
+      "mount_destinations": [
+        "/var/run/docker.sock"
+      ],
+      "restart_count": 0
+    },
+    {
+      "name": "aiops-pipeline",
+      "service": "pipeline",
+      "state": "created",
+      "image_id": "sha256:fe57daf43108239aeca1a737d0bba5b96368445f153c20254447c9da826877ad",
+      "env_whitelist": {
+        "LLM_MODEL": "llama3.2:3b",
+        "PROMETHEUS_URL": "http://prometheus:9090",
+        "LOKI_URL": "http://loki:3100",
+        "OLLAMA_URL": "http://ollama:11434",
+        "REMEDIATION_URL": "http://remediation:8001"
+      },
+      "target_service_map_present": false,
+      "mount_destinations": [
+        "/app/results",
+        "/var/run/docker.sock"
+      ],
+      "restart_count": 0
+    },
+    {
+      "name": "loki",
+      "service": "loki",
+      "state": "exited",
+      "image_id": "sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193",
+      "env_whitelist": {},
+      "target_service_map_present": false,
+      "mount_destinations": [
+        "/etc/loki/local-config.yaml",
+        "/loki",
+        "/loki/rules"
+      ],
+      "restart_count": 0
+    },
+    {
+      "name": "prometheus",
+      "service": "prometheus",
+      "state": "exited",
+      "image_id": "sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0",
+      "env_whitelist": {},
+      "target_service_map_present": false,
+      "mount_destinations": [
+        "/etc/prometheus/prometheus.yml",
+        "/etc/prometheus/rules",
+        "/prometheus"
+      ],
+      "restart_count": 0
+    },
+    {
+      "name": "alertmanager",
+      "service": "alertmanager",
+      "state": "exited",
+      "image_id": "sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a",
+      "env_whitelist": {},
+      "target_service_map_present": false,
+      "mount_destinations": [
+        "/alertmanager",
+        "/etc/alertmanager/alertmanager.yml"
+      ],
+      "restart_count": 0
+    },
+    {
+      "name": "ollama",
+      "service": "ollama",
+      "state": "created",
+      "image_id": "sha256:da6e0dc5651df159e45686fd663c4dbe1624a52c44d7280eeac1551d8f865532",
+      "env_whitelist": {},
+      "target_service_map_present": false,
+      "mount_destinations": [
+        "/root/.ollama"
+      ],
+      "restart_count": 0
+    }
+  ],
+  "status": "VERIFIED_METADATA_ONLY"
+}

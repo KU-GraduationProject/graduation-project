@@ -1,0 +1,471 @@
+{
+  "active_files": [
+    "generated/loki.rules.yml",
+    "generated/prometheus.rules.yml"
+  ],
+  "counts": {
+    "active_definitions": 21,
+    "definitions_by_engine": {
+      "loki": 12,
+      "prometheus": 9
+    },
+    "legacy_sql_reference_names": 1,
+    "m2_replaced_names": 8,
+    "original_names": 17,
+    "retained_original_definitions": 8,
+    "unique_active_names": 18
+  },
+  "cross_component_checks": {
+    "meaning": "Static mapping consistency only; does not resolve mixed Docker/host runtime identities",
+    "shared_log_aliases_checked": [
+      "leafy-db",
+      "leafy-frontend"
+    ],
+    "shared_source_ids_checked": [
+      "integrated"
+    ]
+  },
+  "deferred": [
+    "LoginBruteForce",
+    "DB connection utilization/max_connections branch"
+  ],
+  "deployment_allowed": false,
+  "entries": [
+    {
+      "alert": "SecretDumpAttempt",
+      "component": "legacy_security",
+      "engine": "loki",
+      "labels": {
+        "category": "security",
+        "severity": "critical"
+      },
+      "origin": "monitoring/loki/rules/fake/security-rules.yml",
+      "origin_group": "security-log-alerts",
+      "origin_index": 1,
+      "rule_sha256": "d2ea0dc08d3c1133ff3334165db8cf3c51c321316b537dca1f78a0c216f5de2f"
+    },
+    {
+      "alert": "SuspiciousProcessExecution",
+      "component": "legacy_security",
+      "engine": "loki",
+      "labels": {
+        "category": "security",
+        "severity": "critical"
+      },
+      "origin": "monitoring/loki/rules/fake/security-rules.yml",
+      "origin_group": "security-log-alerts",
+      "origin_index": 4,
+      "rule_sha256": "136c3872ea2f18764bbeb8ba3350a98266c3cecef28fb126b5da1c89db466f2f"
+    },
+    {
+      "alert": "SuspiciousProcessExec",
+      "component": "legacy_security",
+      "engine": "loki",
+      "labels": {
+        "category": "security",
+        "severity": "critical"
+      },
+      "origin": "monitoring/loki/rules/fake/security-rules.yml",
+      "origin_group": "security-log-alerts",
+      "origin_index": 5,
+      "rule_sha256": "cd7935d35be35d3718e62d3d7b7928dc682faa4efb338327057ab00e209e8a4f"
+    },
+    {
+      "alert": "PathTraversalAttempt",
+      "component": "legacy_security",
+      "engine": "loki",
+      "labels": {
+        "category": "security",
+        "severity": "critical"
+      },
+      "origin": "monitoring/loki/rules/fake/security-rules.yml",
+      "origin_group": "security-log-alerts",
+      "origin_index": 7,
+      "rule_sha256": "0114ce2e6722c6f594615fcaad0cb90920f89a93196424afb89224aaa2cf3340"
+    },
+    {
+      "alert": "ContainerEscapeAttempt",
+      "component": "legacy_security",
+      "engine": "loki",
+      "labels": {
+        "category": "security",
+        "severity": "critical"
+      },
+      "origin": "monitoring/loki/rules/fake/security-rules.yml",
+      "origin_group": "security-log-alerts",
+      "origin_index": 8,
+      "rule_sha256": "452e0b65ee10ad5d5f9a7516daa6bb876fad1146124e346ba09b7bb6af3a382a"
+    },
+    {
+      "alert": "UnauthorizedDataTransfer",
+      "component": "legacy_network",
+      "engine": "loki",
+      "labels": {
+        "category": "security",
+        "detection": "cumulative",
+        "severity": "critical"
+      },
+      "origin": "monitoring/loki/rules/fake/network-allowlist.yml",
+      "origin_group": "network-allowlist-alerts",
+      "origin_index": 0,
+      "rule_sha256": "32fb938bb6fc95eb58392d834212f0df2e8980cc11d426bb564dd43cf655e1c5"
+    },
+    {
+      "alert": "UnauthorizedTransferEarly",
+      "component": "legacy_network",
+      "engine": "loki",
+      "labels": {
+        "category": "security",
+        "detection": "early",
+        "severity": "critical"
+      },
+      "origin": "monitoring/loki/rules/fake/network-allowlist.yml",
+      "origin_group": "network-allowlist-alerts",
+      "origin_index": 1,
+      "rule_sha256": "503fb38752cc13447688f1d62c9a6a06e511ae157842cd4d8aabace2d0f1ceb9"
+    },
+    {
+      "alert": "HighPostgresConnections",
+      "component": "legacy_metrics",
+      "engine": "prometheus",
+      "labels": {
+        "category": "security",
+        "severity": "warning"
+      },
+      "origin": "monitoring/prometheus/rules/alert.rules.yml",
+      "origin_group": "aiops-alerts",
+      "origin_index": 5,
+      "rule_sha256": "50951418ca28cf8c204633e0cc59c302318800438629b2f3e9f27a0230bd2411"
+    },
+    {
+      "alert": "HighNginxErrorRate",
+      "component": "m2_logs",
+      "engine": "loki",
+      "labels": {
+        "category": "infra",
+        "rulepack_target": "leafy-web",
+        "severity": "warning"
+      },
+      "origin": "docs/rulepack/m2/generated/loki.rules.yml",
+      "origin_group": "m2-static-loki",
+      "origin_index": 0,
+      "rule_sha256": "c7afc40cd9edd9417af7fbf6454311922d63516540895478551cadbf2c908b2a"
+    },
+    {
+      "alert": "VulnerabilityScanningDetected",
+      "component": "m2_logs",
+      "engine": "loki",
+      "labels": {
+        "category": "security",
+        "rulepack_target": "leafy-web",
+        "severity": "warning"
+      },
+      "origin": "docs/rulepack/m2/generated/loki.rules.yml",
+      "origin_group": "m2-static-loki",
+      "origin_index": 1,
+      "rule_sha256": "75c1c961132c6956c82c78f738db46dbf1055050bf1345aba65308f98204ba52"
+    },
+    {
+      "alert": "UnauthorizedDBAccess",
+      "component": "m2_logs",
+      "engine": "loki",
+      "labels": {
+        "category": "security",
+        "rulepack_target": "leafy-postgres",
+        "severity": "critical"
+      },
+      "origin": "docs/rulepack/m2/generated/loki.rules.yml",
+      "origin_group": "m2-static-loki",
+      "origin_index": 2,
+      "rule_sha256": "6d33c71d7933d5e20a582d8602f7a8f058dccd5048675851a0f7a9340069c607"
+    },
+    {
+      "alert": "HighNginxRequestRate",
+      "component": "m2_metrics",
+      "engine": "prometheus",
+      "labels": {
+        "category": "security",
+        "rulepack_target": "leafy-web",
+        "severity": "warning"
+      },
+      "origin": "docs/rulepack/m2/generated/prometheus.rules.yml",
+      "origin_group": "m2-static-prometheus",
+      "origin_index": 0,
+      "rule_sha256": "a763e02d2a839ded50ad3bed2838a42b3ad71bb8114b81944ff10b8f354de58f"
+    },
+    {
+      "alert": "HighCpuUsage",
+      "component": "m2_infra",
+      "engine": "prometheus",
+      "labels": {
+        "category": "infra",
+        "rulepack_target": "leafy-frontend",
+        "severity": "warning"
+      },
+      "origin": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
+      "origin_group": "m2-2-static-infra",
+      "origin_index": 0,
+      "rule_sha256": "ba76f79cbd70034140b2c42cd01a5cbc6bf79ffc6d39bf0414646b95f98bc162"
+    },
+    {
+      "alert": "HighCpuUsage",
+      "component": "m2_infra",
+      "engine": "prometheus",
+      "labels": {
+        "category": "infra",
+        "rulepack_target": "leafy-backend",
+        "severity": "warning"
+      },
+      "origin": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
+      "origin_group": "m2-2-static-infra",
+      "origin_index": 1,
+      "rule_sha256": "ceb94f2479af5660fe01f0ed6c336c8b0cfc891fc76252554aa38c0b7ef4621d"
+    },
+    {
+      "alert": "ContainerRestarted",
+      "component": "m2_infra",
+      "engine": "prometheus",
+      "labels": {
+        "category": "infra",
+        "rulepack_target": "leafy-backend",
+        "severity": "critical"
+      },
+      "origin": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
+      "origin_group": "m2-2-static-infra",
+      "origin_index": 2,
+      "rule_sha256": "24698ad686793a004547511afef3af8c997c230d61da17d81a7933cab9228295"
+    },
+    {
+      "alert": "HighCpuUsage",
+      "component": "m2_infra",
+      "engine": "prometheus",
+      "labels": {
+        "category": "infra",
+        "rulepack_target": "leafy-db",
+        "severity": "warning"
+      },
+      "origin": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
+      "origin_group": "m2-2-static-infra",
+      "origin_index": 3,
+      "rule_sha256": "338555e295c73023bcb238bd6667b323eec0afd2d42c574b4a7e8854c6cfa5f9"
+    },
+    {
+      "alert": "HighCpuUsage",
+      "component": "m2_infra",
+      "engine": "prometheus",
+      "labels": {
+        "category": "infra",
+        "rulepack_target": "leafy-minio",
+        "severity": "warning"
+      },
+      "origin": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
+      "origin_group": "m2-2-static-infra",
+      "origin_index": 4,
+      "rule_sha256": "5b058e745df26ef36a02bd0361e254e4abbf4cc910995df4e3ffbf96b9631c97"
+    },
+    {
+      "alert": "HighMemoryUsage",
+      "component": "m2_resources",
+      "engine": "prometheus",
+      "labels": {
+        "category": "infra",
+        "rulepack_source": "integrated",
+        "severity": "warning"
+      },
+      "origin": "docs/rulepack/m2/generated/prometheus.resources.rules.yml",
+      "origin_group": "m2-3-static-resources",
+      "origin_index": 0,
+      "rule_sha256": "ef8961fbefd9dedd290e5c35d4ab1ec7fa22cff5f8cb5e8152332da379008e16"
+    },
+    {
+      "alert": "HighNetworkReceive",
+      "component": "m2_resources",
+      "engine": "prometheus",
+      "labels": {
+        "category": "security",
+        "rulepack_source": "integrated",
+        "severity": "warning"
+      },
+      "origin": "docs/rulepack/m2/generated/prometheus.resources.rules.yml",
+      "origin_group": "m2-3-static-resources",
+      "origin_index": 1,
+      "rule_sha256": "a3094cb6940f88d5d8c32234fc16744567be8f172e25ecd51364df2d7c66d902"
+    },
+    {
+      "alert": "SQLInjection",
+      "component": "m3_logs",
+      "engine": "loki",
+      "labels": {
+        "category": "security",
+        "rulepack_target": "leafy-web-sqli",
+        "severity": "warning"
+      },
+      "origin": "docs/rulepack/m3/generated/loki.rules.yml",
+      "origin_group": "m3-new-detection-static",
+      "origin_index": 0,
+      "rule_sha256": "91c1694c33900de965c7f465eb76b7f29d01687c557c71c0e4690473e223f468"
+    },
+    {
+      "alert": "DBConnectionLimit",
+      "component": "m3_logs",
+      "engine": "loki",
+      "labels": {
+        "category": "infra",
+        "rulepack_target": "leafy-host-postgres-limit",
+        "severity": "critical"
+      },
+      "origin": "docs/rulepack/m3/generated/loki.rules.yml",
+      "origin_group": "m3-new-detection-static",
+      "origin_index": 1,
+      "rule_sha256": "9d3731f2c1d0c1fcd14f6946b221d89159144c482e295b89a967ea52484e62da"
+    }
+  ],
+  "group_timing": "Preserved from each input group; unspecified intervals still inherit the server setting. M3 interval=5s remains explicit.",
+  "inputs_sha256": {
+    "docs/rulepack/m2/generated/loki.rules.yml": "68d49782dc6a7aa95a50cb4748a6c69b811f5d8b238813c92645e5db8ab36f25",
+    "docs/rulepack/m2/generated/prometheus.infra.rules.yml": "02403acbd975eae750771d6d10858031511fc041f49de0bdf682e9770f6a5df4",
+    "docs/rulepack/m2/generated/prometheus.resources.rules.yml": "ed336d2a6b8081bdb35b0a4e4b9c64db5d38caa02f91b2ffd066c03451da55d6",
+    "docs/rulepack/m2/generated/prometheus.rules.yml": "670479fcaaf12e67464fe7587390c42f3aa17746a02f7ae529b4d7663eb9ec14",
+    "docs/rulepack/m2/infra_targets.yml": "7678abd5d46850955a985c8d38e7214def27a82213c88330f8220df37e1a7695",
+    "docs/rulepack/m2/resource_targets.yml": "8f1250d1f84168a574296bf84a7f5a20e1038a94fb4a3b80ef7a7a437ad4b115",
+    "docs/rulepack/m2/targets.yml": "d267ea429315fa37f99ba751b61b5736a4b189d014c8554279e1f87f31594672",
+    "docs/rulepack/m3/generated/loki.rules.yml": "01d88bce66f5df4828c85d5300a079170785d4cf0bc962083cef74f610f273c0",
+    "docs/rulepack/m3/targets.yml": "9266bbd3bd3016691135047eb044124e6747b88e927735a74aa57c95685ff181",
+    "monitoring/loki/rules/fake/network-allowlist.yml": "d693dd8bd02efdbe279bf34c8b7f3520160aa180803d8595af0149fc59baac43",
+    "monitoring/loki/rules/fake/security-rules.yml": "9d0b46a6f1843f3ab99778aefcfee4800729dfa5ba79215ee5c8a3f4a0e3d391",
+    "monitoring/prometheus/rules/alert.rules.yml": "3e5e391abc161ec0d5d5f5261f216b5493c517f67d99d3c2f32cdeea59bc2e65",
+    "tools/rulepack/generate_m2.py": "4a028d7565c3d3bc638c5833b5a15655fc0e66e21255747c6a8488cb947bf77e",
+    "tools/rulepack/generate_m2_2.py": "dacf243757e5198233a2631d5586dd1268295dee7749f3aa01f07c9e856c4b6e",
+    "tools/rulepack/generate_m2_3.py": "4342fd74ea0847235fa540755e57b57c93515a1f82459c41f160ed681cc48228",
+    "tools/rulepack/generate_m3.py": "8a3e7eae1ebf9a84e90ef41e5c0c6535058c4df7bb573e3bdd00193d89ebba38",
+    "tools/rulepack/integrate_m5.py": "5cceffc914036af77654a5e21f715619025f543a8ab809506ec3457ac95b407c"
+  },
+  "original_disposition": [
+    {
+      "alert": "UnauthorizedDBAccess",
+      "candidate": "m2_logs",
+      "status": "replaced_by_m2"
+    },
+    {
+      "alert": "SecretDumpAttempt",
+      "candidate": "original",
+      "status": "retained"
+    },
+    {
+      "alert": "SQLInjectionAttempt",
+      "candidate": "m3_logs",
+      "status": "reference_only"
+    },
+    {
+      "alert": "HighNginxErrorRate",
+      "candidate": "m2_logs",
+      "status": "replaced_by_m2"
+    },
+    {
+      "alert": "SuspiciousProcessExecution",
+      "candidate": "original",
+      "status": "retained"
+    },
+    {
+      "alert": "SuspiciousProcessExec",
+      "candidate": "original",
+      "status": "retained"
+    },
+    {
+      "alert": "VulnerabilityScanningDetected",
+      "candidate": "m2_logs",
+      "status": "replaced_by_m2"
+    },
+    {
+      "alert": "PathTraversalAttempt",
+      "candidate": "original",
+      "status": "retained"
+    },
+    {
+      "alert": "ContainerEscapeAttempt",
+      "candidate": "original",
+      "status": "retained"
+    },
+    {
+      "alert": "UnauthorizedDataTransfer",
+      "candidate": "original",
+      "status": "retained"
+    },
+    {
+      "alert": "UnauthorizedTransferEarly",
+      "candidate": "original",
+      "status": "retained"
+    },
+    {
+      "alert": "HighCpuUsage",
+      "candidate": "m2_infra",
+      "status": "replaced_by_m2"
+    },
+    {
+      "alert": "HighMemoryUsage",
+      "candidate": "m2_resources",
+      "status": "replaced_by_m2"
+    },
+    {
+      "alert": "ContainerRestarted",
+      "candidate": "m2_infra",
+      "status": "replaced_by_m2"
+    },
+    {
+      "alert": "HighNetworkReceive",
+      "candidate": "m2_resources",
+      "status": "replaced_by_m2"
+    },
+    {
+      "alert": "HighNginxRequestRate",
+      "candidate": "m2_metrics",
+      "status": "replaced_by_m2"
+    },
+    {
+      "alert": "HighPostgresConnections",
+      "candidate": "original",
+      "status": "retained"
+    }
+  ],
+  "outputs_sha256": {
+    "generated/loki.rules.yml": "f96b927313e31492ef0f4daf228562f9bf2851301b022c6cc548e44087527aa6",
+    "generated/prometheus.rules.yml": "a44cdf682e38a293595f2492a17f51371f88d88bca80e685ad70dd4a2c8ad96b",
+    "reference/loki.legacy-sqli.rules.yml": "5fd7a6f10023870ea933061f1ae758b6f1a662fabaaffbbf065999c628db3932"
+  },
+  "policy": {
+    "sql_injection_policy": "m3_primary_legacy_reference",
+    "version": 1
+  },
+  "policy_sha256": "0bd483c881720b33c367691d93c8bafca440245d092eca57ff8cd97b132146e4",
+  "reference_only_files": [
+    "reference/loki.legacy-sqli.rules.yml"
+  ],
+  "runtime_acceptance": "UNVERIFIED; mixed source/alias/identity gates remain",
+  "scope": "offline mixed-scope review candidate",
+  "version": 1,
+  "warnings": [
+    {
+      "detail": "Integrated Docker resource inputs and host PG17 log inputs need separate runtime/source acceptance.",
+      "id": "MIXED_CONFIGURED_SCOPES"
+    },
+    {
+      "detail": "Existing AlertLabel/dedup do not preserve source identity or reliably classify host fallback; OI-09 remains open.",
+      "id": "PIPELINE_SOURCE_AND_HOST_ROUTING"
+    },
+    {
+      "detail": "No normal interval or threshold candidate is assumed. Every condition is copied from original/M2/M3 definitions.",
+      "id": "BASELINE_NOT_USED"
+    },
+    {
+      "detail": "Retained stdout markers/command strings do not establish process execution or host compromise.",
+      "id": "LEGACY_MARKER_TELEMETRY"
+    },
+    {
+      "aliases": [
+        "leafy-db"
+      ],
+      "detail": "The same Pipeline alias is used by integrated Docker CPU and host PostgreSQL logs; this is not an accepted deployment profile.",
+      "id": "HOST_CONTAINER_ALIAS_CONFLICT"
+    }
+  ]
+}

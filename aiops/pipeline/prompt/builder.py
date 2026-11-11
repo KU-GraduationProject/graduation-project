@@ -70,11 +70,22 @@ MAX_PROMPT_CHARS = 6000  # ← 이 줄 추가
 
 class PromptBuilder:
     def build(self, alert, metrics: dict, logs: list[dict], container_name: str | None = None,
-              network=None, **_v2_only) -> dict:
+              network=None, identity=None, evidence_sources=None, **_v2_only) -> dict:
         """system + user 프롬프트 딕셔너리 반환. v2 전용 인자(rule, received_at, log_meta)는 쓰지 않는다."""
         user_content = self._build_user(alert, metrics, logs, container_name, network)
+        if identity is not None:
+            availability = {name: {k: v for k, v in report.items()
+                                   if k in ("status", "reason", "query_status", "selector", "observer")}
+                            for name, report in (evidence_sources or {}).items()}
+            if identity.runtime == "host":
+                user_content = user_content.replace(f"Container: {identity.target}", f"Host target: {identity.target}", 1)
+            user_content = ("=== OBSERVATION IDENTITY ===\n" + json.dumps(identity.to_dict())
+                            + "\nEvidence availability: " + json.dumps(availability)
+                            + "\n" + user_content)
         return {
-            "system": SYSTEM_PROMPT,
+            "system": SYSTEM_PROMPT + ("\nAnalyze the supplied host or container identity only. Missing evidence is unknown, never healthy. "
+                                      "Host metrics describe the OS, not a DB process. Host targets are not Docker containers. "
+                                      "Do not invent numeric evidence or recommend Docker actions for host targets." if identity is not None else ""),
             "user":   user_content,
         }
 

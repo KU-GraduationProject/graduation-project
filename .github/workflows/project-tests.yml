@@ -1,0 +1,65 @@
+name: Project tests
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+env:
+  # Windows redirected stdout otherwise uses cp1252 and cannot print Korean.
+  PYTHONUTF8: '1'
+concurrency:
+  group: project-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  collaboration-tests:
+    name: collaboration-tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s .github/scripts/tests -v
+  isolated-tests:
+    name: isolated-tests (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [pipeline, remediation, network, observer]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+      - name: Install existing service test dependencies
+        # rich is already documented in README for the network scenario tests.
+        run: python -m pip install -r aiops/pipeline/requirements.txt -r aiops/remediation/requirements.txt -r aiops/network-observer/requirements.txt rich
+      - name: Run existing guarded suite (no Docker or external services)
+        run: python testing/run_isolated.py "$SUITE"
+        env:
+          SUITE: ${{ matrix.suite }}
+  project-tests:
+    name: project-tests
+    if: ${{ always() }}
+    needs: [collaboration-tests, isolated-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every matrix job to pass
+        run: python3 -c 'import os,sys; sys.exit(not all(os.environ[k] == "success" for k in ("POLICY_RESULT", "APP_RESULT")))'
+        env:
+          POLICY_RESULT: ${{ needs.collaboration-tests.result }}
+          APP_RESULT: ${{ needs.isolated-tests.result }}

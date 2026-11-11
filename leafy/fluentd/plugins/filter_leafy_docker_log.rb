@@ -48,7 +48,7 @@ module Fluent::Plugin
       body = LeafyLogSize.fit(body, @max_line_bytes)
 
       container_name = record["container_name"]
-      body.merge(
+      out = body.merge(
         "_lbl_container" => tag,
         "_lbl_source" => record["source"] || "stdout",
         "_lbl_service" => record["com.docker.compose.service"] || "unknown",
@@ -56,6 +56,14 @@ module Fluent::Plugin
         "_lbl_runtime" => record["container_id"] ? "container" : "unknown",
         "_lbl_log_format" => format,
       )
+      # Only Docker driver metadata establishes source; app JSON is untrusted.
+      %w[_lbl_site _lbl_observation_source _lbl_target].each { |key| out.delete(key) }
+      if record["aiops.site"] && record["aiops.source"]
+        out["_lbl_site"] = record["aiops.site"]
+        out["_lbl_observation_source"] = record["aiops.source"]
+        out["_lbl_target"] = container_name && container_name.sub(%r{\A/}, "")
+      end
+      out
     end
 
     private

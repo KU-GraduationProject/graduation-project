@@ -1,110 +1,95 @@
-"""
-Prometheus에서 이상 시점 전후 N분 메트릭 수집.
-macOS Docker Desktop에서 cAdvisor는 container_label_* 를 내보내지 않으므로
-Docker SDK로 컨테이너 ID를 조회해 id 레이블 필터로 전환한다.
-"""
-
-# ❌ 삭제: import subprocess
+"""Prometheus evidence from explicit site/job/instance bindings. No local Docker fallback."""
+import math
+from datetime import datetime
 import httpx
-import logging
-from datetime import datetime, timedelta
-logger = logging.getLogger(__name__)
-
-
-async def _get_container_id(container_name: str) -> str | None:
-    """Docker Unix socket으로 컨테이너 ID 조회"""
-    try:
-        async with httpx.AsyncClient(
-            transport=httpx.AsyncHTTPTransport(uds="/var/run/docker.sock"),
-            base_url="http://docker",  # UDS 사용 시 hostname은 무시됨
-            timeout=3,
-        ) as client:
-            resp = await client.get(f"/containers/{container_name}/json")
-            if resp.status_code == 200:
-                return resp.json().get("Id")
-    except Exception as e:
-        logger.debug(f"[_get_container_id] 실패: {e}")
-        return None
-    return None
+from correlation import CorrelationContext
+from identity import MetricEvidence, matches, selector
 
 
 class MetricsCollector:
-    def __init__(self, prometheus_url: str):
+    def __init__(self, prometheus_url: str, transport: httpx.AsyncBaseTransport | None = None):
         self.url = prometheus_url
+        self._transport = transport
 
-    async def fetch_around(
-        self,
-        container: str | None,
-        alert_time: datetime,
-        window_minutes: int = 5,
-        container_id: str | None = None,   # ← 추가
-    ) -> dict:
-        """이상 시점 ±window_minutes 범위의 주요 메트릭 수집"""
-        start = alert_time - timedelta(minutes=window_minutes)
-        end   = alert_time + timedelta(minutes=window_minutes)
-
-        # ← 여기 추가
-        label = None
-        net_label = None
-        # cAdvisor는 id=/docker/<full_id> 형태만 지원 → 컨테이너 ID로 필터
-        if container_id:
-            cid = container_id             # ← ID 직접 사용
-        elif container:
-            cid = await _get_container_id(container)  # ← fallback
-        else:
-            cid = None
-        if cid:
-            label = f'{{id="/docker/{cid}",cpu="total"}}'
-            net_label = f'{{id="/docker/{cid}"}}'
-        else:
-            # ID 조회 실패 시 호스트 메트릭만 수집
-            logger.warning(f"[MetricsCollector] 컨테이너 ID 조회 실패: {container}")
-            label = None
-            net_label = None
-
-        if label:
-            mem_label = label.replace(',cpu="total"', '')
+    async def fetch_around(self, container: str | None, alert_time: datetime,
+                           window_minutes: int = 5, container_id: str | None = None,
+                           ctx: CorrelationContext | None = None) -> dict:
+        # Legacy signature is accepted but names/ids alone cannot establish the observation site.
+        scope = ctx.binding.metrics if ctx and ctx.binding else {}
+        report = {"backend": "prometheus", "identity": ctx.identity.to_dict() if ctx and ctx.identity else {},
+                  "selector": scope, "queries": {}}
+        if not ctx or not ctx.identity or not ctx.identity.complete or not scope:
+            return MetricEvidence(status="scope_unavailable",
+                                  reason="source_unknown" if not ctx or not ctx.binding else "collector_unmapped", **report)
+        runtime = ctx.identity.runtime
+        profile = ctx.binding.metrics_profile
+        report["metrics_profile"] = profile
+        report["unsupported_metrics"] = []
+        s = selector(scope)
+        query_scopes = {}
+        if runtime == "container":
+            cpu = selector({**scope, "cpu": "total"})
             queries = {
-                "cpu_usage":    f'rate(container_cpu_usage_seconds_total{label}[1m])',
-                "memory_usage": f'container_memory_usage_bytes{mem_label}',
-                "memory_limit": f'container_spec_memory_limit_bytes{mem_label}',
-                "net_rx_bytes": f'rate(container_network_receive_bytes_total{net_label}[1m])',
-                "net_tx_bytes": f'rate(container_network_transmit_bytes_total{net_label}[1m])',
-                "host_cpu":     'avg(rate(node_cpu_seconds_total{mode!="idle"}[1m]))',
-                "host_mem":     'node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes',
+                "cpu_usage": f'rate(container_cpu_usage_seconds_total{cpu}[1m])',
+                "memory_usage": f'container_memory_usage_bytes{s}',
+                "memory_limit": f'container_spec_memory_limit_bytes{s}',
+                "net_rx_bytes": f'rate(container_network_receive_bytes_total{s}[1m])',
+                "net_tx_bytes": f'rate(container_network_transmit_bytes_total{s}[1m])',
             }
+            if profile == "gc-telemetry-v1":
+                # This producer exports working set and RX only. Missing TX is
+                # unsupported, never a zero or a query against a different PC.
+                del queries["memory_usage"]
+                del queries["net_tx_bytes"]
+                queries["memory_working_set"] = f'container_memory_working_set_bytes{s}'
+                stable_scope = {k: v for k, v in scope.items() if k != "id"}
+                stable = selector(stable_scope)
+                for name, metric in (("restart_count", "aiops_docker_container_restarts_total"),
+                                     ("started_at_seconds", "aiops_docker_container_started_at_seconds")):
+                    queries[name] = metric + stable
+                    query_scopes[name] = stable_scope
+                report["unsupported_metrics"] = ["memory_usage", "net_tx_bytes"]
         else:
-            # 컨테이너 특정 불가 → 호스트 메트릭만 수집
+            # Host OS context, never container evidence or proof of PostgreSQL process usage.
+            cpu = s[:-1] + ',mode!="idle"}'
             queries = {
-                "host_cpu": 'avg(rate(node_cpu_seconds_total{mode!="idle"}[1m]))',
-                "host_mem": 'node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes',
+                "host_cpu": f'avg by (job,instance) (rate(node_cpu_seconds_total{cpu}[1m]))',
+                "host_mem": f'node_memory_MemAvailable_bytes{s} / node_memory_MemTotal_bytes{s}',
             }
-
-        results = {}
-        async with httpx.AsyncClient(timeout=30) as client:
+        results, states = {}, {}
+        async with httpx.AsyncClient(timeout=30, transport=self._transport) as client:
             for name, query in queries.items():
-                resp = await client.get(
-                    f"{self.url}/api/v1/query_range",
-                    params={
-                        "query": query,
-                        "start": start.timestamp(),
-                        "end":   end.timestamp(),
-                        "step":  "15s",
-                    },
-                )
-                data = resp.json()
-                results[name] = self._parse_range(data)
-
-        return results
+                report["queries"][name] = {"query": query, "scope": runtime}
+                try:
+                    resp = await client.get(f"{self.url}/api/v1/query_range", params={
+                        "query": query, "start": ctx.start.timestamp(), "end": ctx.end.timestamp(), "step": "15s"})
+                    resp.raise_for_status()
+                    data = resp.json()
+                    if data.get("status") != "success":
+                        states[name] = "api_error"
+                        continue
+                    if data["data"]["resultType"] != "matrix":
+                        raise ValueError("invalid metric response")
+                    expected = query_scopes.get(name, {k: scope[k] for k in ("job", "instance")} if name == "host_cpu" else scope)
+                    if not all(matches(row["metric"], expected) for row in data["data"]["result"]):
+                        states[name] = "source_mismatch"
+                        continue
+                    results[name] = self._parse_range(data)
+                    states[name] = "partial" if data.get("warnings") or data.get("infos") else "ok" if results[name] else "empty"
+                except httpx.HTTPError:
+                    states[name] = "api_error"
+                except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+                    states[name] = "invalid_response"
+        good = [v for v in states.values() if v in ("ok", "empty")]
+        status = "ok" if len(good) == len(states) and any(results.values()) else "empty" if len(good) == len(states) else "partial" if good else next(iter(states.values()))
+        return MetricEvidence(results, status=status, query_status=states,
+                              series_labels={k: [s["labels"] for s in rows] for k, rows in results.items()}, **report)
 
     def _parse_range(self, data: dict) -> list[dict]:
-        """Prometheus range query 응답을 [{"t": timestamp, "v": value}] 형태로 변환"""
         out = []
-        for result in data.get("data", {}).get("result", []):
-            metric_labels = result.get("metric", {})
-            values = [
-                {"t": float(ts), "v": float(val)}
-                for ts, val in result.get("values", [])
-            ]
-            out.append({"labels": metric_labels, "values": values})
+        for row in data["data"]["result"]:
+            values = [{"t": float(t), "v": float(v)} for t, v in row["values"]]
+            if any(not math.isfinite(p["v"]) for p in values):
+                raise ValueError("nonfinite metric")
+            out.append({"labels": row["metric"], "values": values})
         return out

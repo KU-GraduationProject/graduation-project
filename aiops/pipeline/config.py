@@ -21,5 +21,6 @@ class Settings:
     target_service_map: str = os.getenv("TARGET_SERVICE_MAP", "")
     # 프롬프트 조립 방식. v2 = 룰 기준 조회 구간·증거 ID·섹션별 예산, legacy = 1학기 방식(전후 비교용).
     prompt_builder: str = os.getenv("PROMPT_BUILDER", "v2")
+    observation_bindings: str = os.getenv("OBSERVATION_BINDINGS", "[]")
 settings = Settings()
 

@@ -10,9 +10,10 @@ AlertManager 웹훅 수신 → 데이터 수집 → 프롬프트 조립 → LLM 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime, timedelta, timezone
 from collections import deque
+import dataclasses
 import json
 import asyncio
 import logging
@@ -24,7 +25,8 @@ from collector.metrics import MetricsCollector
 from collector.logs import LogsCollector
 from collector.network import NetworkCollector
 from collector.rules import RulesCollector
-from correlation import CorrelationContext, MONITORED_SERVICES, parse_target_map, resolve_service
+from correlation import CorrelationContext, MONITORED_SERVICES, parse_target_map, to_instant
+from identity import parse_bindings, resolve_identity, dedup_key
 from prompt.builder import make_builder
 from prompt.log_line import render_log_line
 from schemas.actions import ACTION_TYPES
@@ -69,8 +71,16 @@ app = FastAPI(title="AIOps Pipeline", version="0.1.0", lifespan=lifespan)
 
 # ─── AlertManager 웹훅 스키마 ───────────────────────────
 class AlertLabel(BaseModel):
-    # 룰이 붙인 라벨(name, category, dst_ip …)을 버리지 않는다 — v2 프롬프트 ALERT 섹션과 룰 값 조회에 쓴다
     model_config = ConfigDict(extra="allow")
+    site: str | None = None
+    service: str | None = None
+    runtime: str | None = None
+    target: str | None = None
+    source: str | None = None
+    job: str | None = None
+    name: str | None = None
+    id: str | None = None
+    observer: str | None = None
     alertname: str
     severity: str | None = None
     instance: str | None = None
@@ -81,7 +91,8 @@ class Alert(BaseModel):
     labels: AlertLabel
     startsAt: str
     endsAt: str | None = None
-    annotations: dict = {}
+    fingerprint: str | None = None
+    annotations: dict = Field(default_factory=dict)
 
 class AlertManagerWebhook(BaseModel):
     version: str
@@ -97,6 +108,7 @@ rules_collector   = RulesCollector(settings.prometheus_url, settings.loki_url)
 prompt_builder    = make_builder(settings.prompt_builder)
 # 원격 배포: alert 대상 이름 -> canonical service (로컬 Docker에 Leafy 컨테이너가 없다)
 _target_map       = parse_target_map(settings.target_service_map)
+_observation_bindings = parse_bindings(settings.observation_bindings)
 
 _SERVICE_PREFIXES = ["leafy-", "aiops-", "graduation-project-"]
 
@@ -260,24 +272,7 @@ async def receive_alert(payload: AlertManagerWebhook, background_tasks: Backgrou
 
 # ─── 핵심 파이프라인 ──────────────────────────────────────
 
-async def _resolve_top_cpu_container() -> str | None:
-    query = 'topk(1, sum(irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s])) by (name))'
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get(
-                f"{settings.prometheus_url}/api/v1/query",
-                params={"query": query},
-            )
-            data = resp.json()
-            results = data.get("data", {}).get("result", [])
-            if results:
-                return results[0].get("metric", {}).get("name")
-    except Exception as e:
-        logger.warning(f"[Pipeline] top CPU container 조회 실패: {e}")
-    return None
-
-
-# v2 로그 조회: [startsAt - 룰 시간 창 - 여유, 경보 수신 시각]. 룰을 모르면 기본 창을 쓴다.
+# v2 조회 구간: [startsAt - 룰 시간 창 - 여유, 경보 수신 시각]. 룰을 모르면 기본 창을 쓴다.
 LOG_WINDOW_MARGIN = timedelta(seconds=60)
 LOG_WINDOW_DEFAULT = timedelta(minutes=5)
 LOG_FETCH_LIMIT = 200
@@ -286,130 +281,76 @@ LOG_FETCH_LIMIT = 200
 async def analyze_alerts(alerts: list[Alert], received_at: datetime | None = None):
     received_at = received_at or datetime.now(timezone.utc)
     now = time.time()
-    expired = [k for k, ts in _recent_alerts.items() if now - ts > DEDUP_WINDOW_SEC * 2]
-    for k in expired:
-        del _recent_alerts[k]
+    for key in [k for k, ts in _recent_alerts.items() if now - ts > DEDUP_WINDOW_SEC * 2]:
+        del _recent_alerts[key]
 
     for alert in alerts:
-        container_name = alert.annotations.get("container") or alert.labels.container
-
-        dedup_key = f"{alert.labels.alertname}:{container_name}" \
-            if container_name and container_name != "unknown" \
-            else alert.labels.alertname
-        last_seen = _recent_alerts.get(dedup_key)
+        labels = alert.labels.model_dump(exclude_none=True)
+        identity, binding, identity_status = resolve_identity(
+            labels, alert.annotations, _observation_bindings, _target_map)
+        key = dedup_key(alert.labels.alertname, identity, labels, alert.annotations)
+        last_seen = _recent_alerts.get(key)
         if last_seen is not None and now - last_seen < DEDUP_WINDOW_SEC:
-            logger.info(f"[Pipeline] 중복 Alert 스킵: {dedup_key}")
             continue
-        _recent_alerts[dedup_key] = now
-
+        _recent_alerts[key] = now
         try:
-            if alert.labels.alertname == "HighCpuUsage" and (not container_name or container_name == "unknown"):
-                container_name = await _resolve_top_cpu_container()
-                logger.info(f"[Pipeline] HighCpuUsage container 자동 조회: {container_name}")
-
-            logger.info(f"[Pipeline] 분석 시작: {alert.labels.alertname} | 대상: {container_name}")
-            alert_time = datetime.fromisoformat(alert.startsAt.replace("Z", "+00:00"))
-
-            # [FIX] 컨테이너 없음 → Loki 기록만, Slack/Remediation 스킵
-            if not container_name or container_name == "unknown":
-                logger.warning(f"[Pipeline] 컨테이너 정보 없음, 스킵: {alert.labels.alertname}")
-                fallback_result = LLMAnalysisResult.invalid(["no_target_container"])
-                entry = {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "alert_name": alert.labels.alertname,
-                    "container": "unknown",
-                    "result": fallback_result.model_dump(),
-                }
-                analysis_history.append(entry)
-                try:
-                    await push_to_loki(entry)
-                except Exception:
-                    pass
-                continue
-
-            logger.info(f"[Pipeline] LLM 분석 시작: {alert.labels.alertname} / {container_name}")
-
-            # 1. 메트릭/로그 수집
-            # 메트릭은 cAdvisor가 container 단위이므로 container 이름을 그대로 쓴다.
-            metrics = await metrics_collector.fetch_around(
-                container=container_name,
-                alert_time=alert_time,
-                window_minutes=5,
-            )
-            # 로그는 canonical service로 조회한다. (leafy-backend -> backend -> {service="backend"})
-            service, runtime = await resolve_service(container_name, target_map=_target_map)
-            if not service:
-                logger.warning(f"[Pipeline] service 해석 실패, app log 조회 생략: {container_name}")
-            rule, log_meta = None, None
+            alert_time = to_instant(alert.startsAt)
+            ctx = CorrelationContext.around(
+                identity.service, alert_time, timedelta(minutes=5),
+                container_name=identity.target if identity.runtime == "container" else None,
+                runtime=identity.runtime, identity=identity, binding=binding)
+            rule, log_meta, direction = None, None, "forward"
             if settings.prompt_builder == "v2":
-                labels = {k: v for k, v in alert.labels.model_dump().items() if v is not None}
                 rule = await rules_collector.fetch(alert.labels.alertname, labels, alert_time)
                 window = (timedelta(seconds=rule.window_seconds) if rule.window_seconds
                           else LOG_WINDOW_DEFAULT)
-                ctx = CorrelationContext(
-                    service=service, start=alert_time - window - LOG_WINDOW_MARGIN,
-                    end=max(received_at, alert_time), anchor=alert_time,
-                    container_name=container_name, runtime=runtime,
-                )
+                # 같은 source binding 범위에서 구간만 바꾼다 (수집 범위는 넓히지 않는다)
+                ctx = dataclasses.replace(ctx, start=alert_time - window - LOG_WINDOW_MARGIN,
+                                          end=max(received_at, alert_time))
                 # 최신 우선: limit 에 걸려도 경보 직전 줄이 남는다 (forward 는 창 앞부분만 남았다)
-                logs = await logs_collector.fetch(ctx, limit=LOG_FETCH_LIMIT, direction="backward")
+                direction = "backward"
                 log_meta = {"start": ctx.start, "end": ctx.end, "limit": LOG_FETCH_LIMIT}
                 logger.info(f"[Pipeline] rule context: {rule.as_dict()}")
-            else:
-                ctx = CorrelationContext.around(
-                    service, alert_time, timedelta(minutes=5),
-                    container_name=container_name, runtime=runtime,
-                )
-                logs = await logs_collector.fetch(ctx)
-            # Network Context (best-effort, 예외를 던지지 않는다). 프롬프트에는 요약만 들어간다 (#11).
+            metrics = await metrics_collector.fetch_around(
+                container=ctx.container_name, alert_time=alert_time, ctx=ctx)
+            logs = await logs_collector.fetch(ctx, limit=LOG_FETCH_LIMIT, direction=direction)
             network = await network_collector.fetch(ctx)
-            logger.info(
-                f"[Pipeline] network context: service={network.service} events={len(network.events)} "
-                f"query_complete={network.query_complete} skipped={network.skipped} errors={list(network.errors)}"
-            )
-
-            # 2. 프롬프트 조립
-            prompt = prompt_builder.build(
-                alert=alert,
-                metrics=metrics,
-                logs=logs,
-                container_name=container_name,
-                network=network,
-                rule=rule,
-                received_at=received_at,
-                log_meta=log_meta,
-            )
-            if prompt.get("truncated"):
-                logger.warning(f"[Pipeline] 프롬프트 섹션 잘림: {prompt.get('sections')}")
-
-            # 3. LLM 호출
-            async with _llm_semaphore:
-                result: LLMAnalysisResult = await call_llm(prompt)
-            logger.info(f"[Pipeline] LLM 분석 완료: {result.model_dump()}")
-
-            # 4. 결과 저장
+            evidence_sources = {
+                "metrics": metrics.report, "logs": logs.report, "network": network.provenance,
+            }
+            if not binding or not (any(metrics.values()) or logs or network.events):
+                # LLM 판단이 아니므로 NONE 으로 메우지 않는다 — 분석 실패(NOTIFY)로 남긴다
+                result = LLMAnalysisResult.invalid(
+                    ["observation_unresolved" if not binding else "evidence_unavailable"])
+            else:
+                prompt = prompt_builder.build(
+                    alert=alert, metrics=metrics, logs=logs, container_name=identity.target,
+                    network=network, identity=identity, evidence_sources=evidence_sources,
+                    rule=rule, received_at=received_at, log_meta=log_meta)
+                if prompt.get("truncated"):
+                    logger.warning(f"[Pipeline] 프롬프트 섹션 잘림: {prompt.get('sections')}")
+                async with _llm_semaphore:
+                    result = await call_llm(prompt)
             entry = {
+                "schema_version": "2.0",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "alert_name": alert.labels.alertname,
-                "container": container_name,
-                "result": result.model_dump(),
+                "alert_starts_at": alert.startsAt,
+                "alert_fingerprint": alert.fingerprint,
+                # Compatibility field only; host targets are never Docker action targets.
+                "container": ctx.container_name or "unknown",
+                "identity": identity.to_dict(), "identity_status": identity_status,
+                "alert_labels": labels, "alert_annotations": alert.annotations,
+                "evidence_sources": evidence_sources, "result": result.model_dump(),
+                "handoff_status": "deferred_source_aware_consumer_required",
+                "remediation_dispatched": False, "notification_dispatched": False,
             }
             analysis_history.append(entry)
-
-            # 5. Loki 푸시
-            await push_to_loki(entry)
-
-            # 분석 실패(invalid)도 전달한다 — action_type=NOTIFY 라 사람에게 "분석 실패" 로 알리고,
-            # 정책 엔진은 analysis_status=invalid 를 보고 자동 조치를 하지 않는다.
-            if result.analysis_status == "invalid":
-                logger.warning(
-                    f"[Pipeline] LLM 분석 실패 {result.invalid_reasons} — NOTIFY 로 전달: "
-                    f"{alert.labels.alertname} / {container_name}"
-                )
-
-            # 6. Remediation 전달 (여기서 Slack 전송됨)
-            await forward_to_remediation(alert, result)
-
+            entry["storage_status"] = "stored" if await push_to_loki(entry) else "api_error"
+            # Remediation currently addresses containers by name only. It cannot consume v2
+            # site/source identity safely; retain RCA, defer handoff until that consumer is upgraded.
+            logger.info("[Pipeline] RCA identity=%s storage=%s; name-only remediation handoff deferred",
+                        identity_status, entry["storage_status"])
         except Exception as e:
             logger.error(f"[Pipeline] 분석 실패 ({alert.labels.alertname}): {e}")
 
@@ -867,7 +808,7 @@ async def send_periodic_slack(
 # 기존 헬퍼 함수 (변경 없음)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-async def push_to_loki(entry: dict) -> None:
+async def push_to_loki(entry: dict) -> bool:
     ts_ns = str(int(time.time() * 1_000_000_000))
     result = entry.get("result", {})
     payload = {
@@ -877,6 +818,7 @@ async def push_to_loki(entry: dict) -> None:
                 # 분석 대상 컨테이너. 앱 로그의 container(fluentd 태그) 라벨과 충돌하지 않도록 분리
                 "target_container": entry.get("container", "unknown"),
                 "alert": entry.get("alert_name", "unknown"),
+                **{k: entry["identity"][k] for k in ("site", "service", "runtime", "source", "target") if entry.get("identity")},
                 "threat_level": result.get("threat_level", "unknown"),
             },
             "values": [[ts_ns, json.dumps(entry, ensure_ascii=False)]]
@@ -884,22 +826,27 @@ async def push_to_loki(entry: dict) -> None:
     }
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            await client.post(
+            response = await client.post(
                 f"{settings.loki_url}/loki/api/v1/push",
                 json=payload,
                 headers={"Content-Type": "application/json"},
             )
+            response.raise_for_status()
         logger.info(f"[Pipeline] Loki 푸시 완료: {entry['alert_name']} / {entry['container']}")
         await push_timeline_event("llm_analysis_completed", {
             "alert": entry.get("alert_name", "unknown"),
             "container": entry.get("container", "unknown"),
+            "identity": entry.get("identity"),
+            "evidence_sources": entry.get("evidence_sources"),
             "threat_level": result.get("threat_level", "unknown"),
             "confidence": result.get("confidence", 0.0),
             "recommended_action": result.get("action_type", "NONE"),
             "status": "COMPLETED",
         })
     except Exception as e:
-        logger.warning(f"[Pipeline] Loki 푸시 실패 (무시): {e}")
+        logger.warning(f"[Pipeline] Loki 푸시 실패: {type(e).__name__}")
+        return False
+    return True
 
 
 async def push_timeline_event(event: str, fields: dict) -> None:

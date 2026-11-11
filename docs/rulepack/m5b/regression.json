@@ -1,0 +1,451 @@
+{
+  "at_utc": "2026-11-10T17:21:17.509943+00:00",
+  "tests": [
+    {
+      "test": "test_acceptance_m5b.AcceptanceTests.test_am_original_config_and_webhook_credentials_never_export",
+      "status": "PASS"
+    },
+    {
+      "test": "test_acceptance_m5b.AcceptanceTests.test_credential_urls_redirects_and_unsafe_output_are_refused",
+      "status": "PASS"
+    },
+    {
+      "test": "test_acceptance_m5b.AcceptanceTests.test_empty_zero_nonfinite_and_label_values_are_distinct",
+      "status": "PASS"
+    },
+    {
+      "test": "test_acceptance_m5b.AcceptanceTests.test_exact_expression_alone_cannot_certify_loaded_definition",
+      "status": "PASS"
+    },
+    {
+      "test": "test_acceptance_m5b.AcceptanceTests.test_historical_rca_metadata_is_not_inference_or_candidate_proof",
+      "status": "PASS"
+    },
+    {
+      "test": "test_acceptance_m5b.AcceptanceTests.test_http_uses_get_and_does_not_export_errors_or_warning_text",
+      "status": "PASS"
+    },
+    {
+      "test": "test_acceptance_m5b.AcceptanceTests.test_loaded_candidate_firing_does_not_certify_correlated_e2e",
+      "status": "PASS"
+    },
+    {
+      "test": "test_acceptance_m5b.AcceptanceTests.test_metadata_endpoint_denial_does_not_skip_queries_or_other_apis",
+      "status": "PASS"
+    },
+    {
+      "test": "test_acceptance_m5b.AcceptanceTests.test_plan_has_all_21_exact_definitions_and_valid_inputs",
+      "status": "PASS"
+    },
+    {
+      "test": "test_acceptance_m5b.AcceptanceTests.test_raw_logs_only_export_whitelisted_key_types",
+      "status": "PASS"
+    },
+    {
+      "test": "test_acceptance_m5b.AcceptanceTests.test_server_join_errors_are_classified_without_raw_message",
+      "status": "PASS"
+    },
+    {
+      "test": "test_acceptance_m5b.AcceptanceTests.test_successful_predicates_still_do_not_certify_delivery_or_scope",
+      "status": "PASS"
+    },
+    {
+      "test": "test_acceptance_m5b.AcceptanceTests.test_unreachable_apis_do_not_claim_inputs_missing_or_e2e_pass",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_candidate_needs_evidence_units_and_normal_quality",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_cli_protects_operating_paths_and_writes_only_local_analysis",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_cli_window_cannot_reassign_existing_normal_attestation",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_cli_window_options_validate_pairs_timezone_and_preserve_config",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_collection_uses_warmup_raw_samples_and_sanitized_outputs",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_conflicting_final_connection_bytes_are_excluded_not_summed_or_maxed",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_duplicate_samples_rejected_and_raw_scrape_jitter_allowed",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_exceedance_boundary_for_duration_and_gaps",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_fallback_mask_active_and_missing_are_different_states",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_fitting_and_m6_intervals_and_timezones_validated",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_hourly_statistics_keep_utc_hours_separate",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_http_sanitization_counts_and_sample_cap",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_missing_nonfinite_and_out_of_range_are_not_zero",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_native_cpu_memory_rate_and_host_fallback_values",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_native_logql_query_plan",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_native_promql_query_plan",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_network_requested_windows_and_first_observed_are_not_global_novelty",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_network_thresholds_duplicate_cumulative_bytes_and_scopes",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_no_window_or_data_produces_no_baseline_or_threshold",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_partial_api_no_series_and_zero_are_distinct",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_percentiles_mean_dispersion_and_trend",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_provenance_mismatches_and_unknown_queries_rejected",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_raw_limit_matching_and_no_source_mixing",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_raw_samples_detect_lookback_masked_gaps_and_metadata_duplicates",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_readonly_api_validation_errors_never_echo_credentials",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_scopes_and_immutable_units_and_expressions",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_unconfirmed_or_synthetic_never_becomes_normal_baseline",
+      "status": "PASS"
+    },
+    {
+      "test": "test_baseline_m4.M4AnalysisTest.test_unconfirmed_percentiles_withheld_from_all_export_sections",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2.GeneralizationTest.test_ambiguous_source_selectors_are_rejected",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2.GeneralizationTest.test_committed_drafts_match_generator",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2.GeneralizationTest.test_duplicate_ids_or_pipeline_destinations_are_rejected",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2.GeneralizationTest.test_generation_is_deterministic_and_leaves_inputs_unchanged",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2.GeneralizationTest.test_preserves_predicates_thresholds_windows_and_alert_timing",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2.GeneralizationTest.test_renamed_targets_need_no_leafy_names_or_service_role_labels",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2.GeneralizationTest.test_same_service_host_and_container_db_are_explicitly_separate",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2.GeneralizationTest.test_selector_values_cannot_escape_their_quoted_literals",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2.GeneralizationTest.test_unknown_collector_labels_and_unscoped_jobs_are_rejected",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2.NativeLogQLTest.test_all_default_and_renamed_target_expressions_parse",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2.NativePrometheusTest.test_per_target_isolation_threshold_boundary_pending_and_no_data",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_2.ContractTest.test_check_mode_never_rewrites_a_drifted_draft",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_2.ContractTest.test_defaults_retain_four_cpu_targets_and_one_restart_target",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_2.ContractTest.test_generation_is_reproducible_and_inputs_are_unchanged",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_2.ContractTest.test_invalid_or_ambiguous_mappings_are_rejected",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_2.ContractTest.test_original_predicates_and_rule_properties_are_preserved",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_2.ContractTest.test_restart_only_scope_does_not_require_cadvisor",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_2.ContractTest.test_source_shape_drift_requires_review",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_2.ContractTest.test_target_and_source_names_are_configuration_values",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_2.NativePrometheusTest.test_cpu_existing_added_normal_missing_id_and_concurrent_cases",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_2.NativePrometheusTest.test_duplicate_metadata_id_remains_a_join_error",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_2.NativePrometheusTest.test_restart_branches_resets_gaps_missing_and_keep_firing",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_2.NativePrometheusTest.test_same_name_and_id_in_two_explicit_synthetic_scopes",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_2.NativePrometheusTest.test_source_scope_excludes_another_job",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_3.ContractTest.test_changed_source_shapes_require_review",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_3.ContractTest.test_check_mode_leaves_drifted_file_unchanged",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_3.ContractTest.test_invalid_and_overlapping_sources_are_rejected",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_3.ContractTest.test_memory_keeps_all_names_and_network_fallback_is_not_duplicated",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_3.ContractTest.test_network_only_needs_no_pipeline_metadata",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_3.ContractTest.test_original_conditions_timing_and_annotations_are_preserved",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_3.ContractTest.test_reproducibility_input_preservation_and_generated_drift",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_3.NativePrometheusTest.test_duplicate_metadata_remains_an_evaluation_error",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_3.NativePrometheusTest.test_memory_ratio_label_matching_limits_maximum_and_all_names",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_3.NativePrometheusTest.test_network_targets_fallback_presence_and_rate",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_3.NativePrometheusTest.test_renamed_literal_targets_and_other_job_exclusion",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m2_3.NativePrometheusTest.test_two_source_host_fallback_is_local_and_memory_is_isolated",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m3.M3ContractTest.test_cli_check_has_no_file_changes",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m3.M3ContractTest.test_default_rules_use_only_documented_inputs_and_no_deferred_rules",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m3.M3ContractTest.test_duplicate_and_overlapping_targets_are_rejected",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m3.M3ContractTest.test_existing_sql_rule_overlap_and_intended_differences",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m3.M3ContractTest.test_invalid_config_and_unsupported_fields_are_rejected",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m3.M3ContractTest.test_native_db_pipeline_excludes_auth_pool_role_and_database_limits",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m3.M3ContractTest.test_native_full_expressions_parse_including_renamed_targets",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m3.M3ContractTest.test_native_promql_count_boundary_alert_labels_and_resolution",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m3.M3ContractTest.test_native_sql_pipeline_on_synthetic_json_and_invalid_rows",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m3.M3ContractTest.test_one_kind_can_be_deferred_without_disabling_the_other",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m3.M3ContractTest.test_renamed_and_disjoint_targets_and_literal_escaping",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m3.M3ContractTest.test_render_preserves_input_and_generated_file_matches",
+      "status": "PASS"
+    },
+    {
+      "test": "test_generate_m3.M3ContractTest.test_scope_and_time_window_fixtures_with_native_filtering",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_conflicting_shared_sources_and_log_role_aliases_are_rejected",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_deterministic_manifest_hashes_input_immutability_and_check",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_duplicate_static_identity_and_exact_predicate_are_rejected",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_every_active_rule_is_an_exact_input_object",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_group_intervals_and_rule_timing_are_preserved",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_invalid_policy_and_stale_output_check_are_non_mutating",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_inventory_disposition_and_reference_separation",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_native_all_candidate_and_reference_logql_expressions",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_native_concurrent_targets_and_all_metric_rule_families",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_native_duplicate_metadata_remains_an_error_in_combined_bundle",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_native_host_fallback_and_individual_database_series_semantics",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_native_integrated_sql_db_and_http_pipelines",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_native_normal_missing_and_other_job_inputs",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_native_prometheus_bundle_syntax",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_runtime_warnings_and_deferred_inputs_survive_integration",
+      "status": "PASS"
+    },
+    {
+      "test": "test_integrate_m5.M5AssemblyTest.test_upstream_drift_is_refused_without_writing_any_draft",
+      "status": "PASS"
+    }
+  ],
+  "counts": {
+    "PASS": 106,
+    "SKIP": 0,
+    "FAIL": 0
+  },
+  "tests_run": 106,
+  "native_tools": {
+    "promtool": {
+      "version": "3.7.3",
+      "sha256": "5591a9112006676a44a9c52635f8d32abd3f7224673074ff8f757524d91d4631"
+    },
+    "logcli": {
+      "version": "3.7.1",
+      "sha256": "b7041319cd90c83d9870e02f9846044d0ebf6b7e29f3b0d0d5f6976161f00eea"
+    }
+  },
+  "synthetic_only": true,
+  "runtime_firing_proof": false,
+  "tested_owned_files_sha256": {
+    "tools/rulepack/acceptance_m5b.py": "ee8e0ac08b9d09d5663e4d8e4733c532a677b460cd1ed088fab3e1fa16c2e3ce",
+    "tools/rulepack/tests/test_acceptance_m5b.py": "317e6ca862e0d6ea134584cdd2de9841dacb237ff49710e8c0e1854ff39dc0c9"
+  }
+}

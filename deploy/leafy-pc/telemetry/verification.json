@@ -1,0 +1,37 @@
+{
+  "date_kst": "2026-11-11",
+  "branch": "feat/oi02-04-telemetry",
+  "head": "92e70dbf8b9af14b9376df3fde3a7fb4db7e3e50",
+  "runtime_verified": false,
+  "deployed": false,
+  "tests": {
+    "total": 28,
+    "passed": 28,
+    "skipped": 0,
+    "native_promql": 9,
+    "producer_quality_transport": 19,
+    "promtool_version": "3.7.3",
+    "verifier_cli_smoke": "PASS",
+    "compose_config_syntax": "PASS",
+    "prometheus_config_syntax": "PASS (file_sd target not installed)"
+  },
+  "preservation": {
+    "copied_references_original_and_worktree": "10/10 SHA256 match",
+    "protected_operating_pipeline_files": "8/8 equal HEAD in both worktrees",
+    "original_tracked_changes": 0
+  },
+  "sha256": {
+    "deploy/leafy-pc/telemetry/Dockerfile": "2d2201f89277fd485d97165c95a7bb7603e98d48663dea89a6bb4fc00ccab300",
+    "deploy/leafy-pc/telemetry/README.md": "b575edb98be16e6957a56eb417709ce323b6ab97811d0ed644b50d148fb9e680",
+    "deploy/leafy-pc/telemetry/compose.candidate.yml": "b876d46f5e26529801ddc49a27f960cecb1736767f401140556c2088f77e316a",
+    "deploy/leafy-pc/telemetry/config.example.json": "0ca728d577b22b4102eccce8549e5f378b20ffd6cfd4fcf0ce7ea9554e6c2fae",
+    "deploy/leafy-pc/telemetry/exporter.py": "31481bcbae7237ee48080cd50985d5511ea70de9f847d39b1c96b930c94d431c",
+    "deploy/leafy-pc/telemetry/requirements-test.txt": "8e3f8eb0817211cec848320b3ce9a64da566ffe0f0f61bed23425cd0f1aa6c78",
+    "deploy/leafy-pc/telemetry/source-copy-manifest.json": "640171c58ba3a318065c082a691b38f125598d88c6ae981398138d1d7d3771ab",
+    "deploy/leafy-pc/telemetry/tests/test_telemetry.py": "4abad7b9ea2496efbaedc2113b35b2401f125739da7fc5b8b6efdb0ab626412c",
+    "deploy/leafy-pc/telemetry/verify.py": "283c0a39bff415a8e0d29fa10531cba7fa3bd481ed64fb688a78216da46620f9",
+    "monitoring/prometheus/drafts/oi02-04/scrape.candidate.yml": "0a4f672446ec75b5f8db64d3ae3dbe2a3a8364b903e54377d5089322d66b39e1",
+    "monitoring/prometheus/drafts/oi02-04/targets.candidate.json": "1136f6f9ce18eb87d31b89b28dcc5712f378ee95ba65271219440761a1cfc006",
+    "docs/rulepack/OI_02_03_04_TELEMETRY.md": "a7b1d7b33ce9dcf228c300988fde26438057760325ae6bd7a47a82bd3491cec7"
+  }
+}

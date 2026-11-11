@@ -1,0 +1,81 @@
+{
+  "gc_compose": {
+    "status": "PASS",
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "jh_compose": {
+    "status": "PASS",
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "original_aiops_compose": {
+    "status": "PASS",
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "original_all_in_one_compose": {
+    "status": "PASS",
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "candidate_prometheus": {
+    "status": "PASS",
+    "exit_code": 0,
+    "stdout": "Checking /private/tmp/m5-release-synthetic-final/prometheus.validation.yml\n  SUCCESS: 1 rule files found\n SUCCESS: /private/tmp/m5-release-synthetic-final/prometheus.validation.yml is valid prometheus config file syntax\n\nChecking /private/tmp/m5-release-synthetic-final/prometheus.rules.yml\n  SUCCESS: 6 rules found\n\n",
+    "stderr": ""
+  },
+  "original_prometheus.aiops.yml": {
+    "status": "PASS",
+    "exit_code": 0,
+    "stdout": "Checking /private/tmp/m5-release-synthetic-final/original-prometheus.aiops.yml\n  SUCCESS: 1 rule files found\n SUCCESS: /private/tmp/m5-release-synthetic-final/original-prometheus.aiops.yml is valid prometheus config file syntax\n\nChecking /Users/kwonjunhui/Desktop/graduation/m5-integration-release/monitoring/prometheus/rules/alert.rules.yml\n  SUCCESS: 6 rules found\n\n",
+    "stderr": ""
+  },
+  "original_prometheus.yml": {
+    "status": "PASS",
+    "exit_code": 0,
+    "stdout": "Checking /private/tmp/m5-release-synthetic-final/original-prometheus.yml\n  SUCCESS: 1 rule files found\n SUCCESS: /private/tmp/m5-release-synthetic-final/original-prometheus.yml is valid prometheus config file syntax\n\nChecking /Users/kwonjunhui/Desktop/graduation/m5-integration-release/monitoring/prometheus/rules/alert.rules.yml\n  SUCCESS: 6 rules found\n\n",
+    "stderr": ""
+  },
+  "bundle_query_plan": {
+    "status": "PASS",
+    "exit_code": 0,
+    "stdout": "{\"output\": \"/private/tmp/m5-release-synthetic-final/query-plan.json\", \"definitions\": 17, \"actual_alert_e2e_verified\": false}\n",
+    "stderr": ""
+  },
+  "tracked_diff_whitespace": {
+    "status": "PASS",
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "fluentd_config_parse": {
+    "status": "PASS",
+    "exit_code": 0,
+    "stdout": "Fluentd config parser: PASS (no plugins/listeners started)\n",
+    "stderr": ""
+  },
+  "ruby_filter_syntax": {
+    "status": "PASS",
+    "exit_code": 0,
+    "stdout": "Syntax OK\n",
+    "stderr": ""
+  },
+  "ruby_pg_filter_syntax": {
+    "status": "PASS",
+    "exit_code": 0,
+    "stdout": "Syntax OK\n",
+    "stderr": ""
+  },
+  "scope": {
+    "runtime_accepted": false,
+    "deployment_performed": false,
+    "fixtures_only": true,
+    "path_rewrite": "Prometheus validation copies only: rule mounts point at repository/synthetic rules, file_sd uses explicit fixture/empty file. No connectivity claim.",
+    "initial_attempt": "all-in-one Compose first refused absent STORAGE_SECRET_KEY; rerun with all required syntax-only placeholder env vars; no service started."
+  }
+}

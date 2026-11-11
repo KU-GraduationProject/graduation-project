@@ -1,0 +1,19 @@
+# Merge only after acceptance; this is not loaded by current Prometheus.
+# Transport placeholder: an approved private listener/tunnel to GC collector.
+# Exactly ONE address per GC Docker daemon; never also scrape raw cAdvisor or
+# another collector of that daemon. Existing JH pipeline-metadata stays local.
+scrape_configs:
+  - job_name: gc-docker-telemetry
+    scrape_interval: 5s
+    scrape_timeout: 4s
+    metrics_path: /metrics
+    honor_labels: true
+    honor_timestamps: false
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/gc-docker-telemetry.json"]
+    metric_relabel_configs:
+      # source/site are produced by collector; do not infer them from instance.
+      # Replace tokens with the SAME validated collector config values.
+      - source_labels: [site, source]
+        regex: 'REPLACE_GC_SITE;REPLACE_GC_DOCKER_OBSERVER'
+        action: keep

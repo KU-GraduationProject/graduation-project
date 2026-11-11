@@ -74,3 +74,13 @@ LLM 코딩의 흔한 실수를 줄이기 위한 행동 지침입니다.
 
 **이 지침이 잘 동작하고 있다면:**
 diff에 불필요한 변경이 줄어들고, 과도한 복잡화로 인한 재작성이 줄어들며, 구현 이후가 아니라 구현 이전에 명확히 하는 질문이 나온다.
+
+<!-- BEGIN github-collaboration-policy -->
+## GitHub 작업 규칙
+
+작업 시작 전 Issue를 확인하고 `<type>/<issue-number>-<description>` 브랜치를 사용한다.
+커밋·PR 제목은 `[type] 요약 (#이슈번호)`로 작성하고 PR 템플릿과 `Closes #숫자`를 사용한다.
+테스트 결과를 허위 작성하지 않고 사람 리뷰·CI를 우회하지 않는다.
+사용자의 명시적 승인 없이 Commit, Push, PR 생성, Merge를 수행하지 않는다.
+세부 규칙은 [docs/dev-rules.md](docs/dev-rules.md)와 [AGENTS.md](AGENTS.md)를 따른다.
+<!-- END github-collaboration-policy -->

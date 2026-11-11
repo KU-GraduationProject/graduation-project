@@ -1,0 +1,18 @@
+# M2-3 통합 환경 정적 매핑이며 실제 입력은 UNVERIFIED인 상태이다.
+# memory는 원본처럼 source 안의 전체 해당 컨테이너를 유지하는 범위이다.
+# network의 host fallback은 source별 한 번이며 특정 컨테이너에 귀속하지 않는 범위이다.
+version: 1
+sources:
+  integrated:
+    cadvisor:
+      job: cadvisor
+      instance: cadvisor:8080
+    pipeline:
+      job: pipeline-metadata
+      instance: pipeline:8000
+    rules: [memory, network]
+    network_names:
+      - leafy-frontend
+      - leafy-backend
+      - leafy-db
+      - leafy-minio

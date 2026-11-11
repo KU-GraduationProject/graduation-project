@@ -1,0 +1,14 @@
+# Generated M2 static draft; not mounted by Compose. Do not edit.
+groups:
+- name: m2-static-prometheus
+  rules:
+  - alert: HighNginxRequestRate
+    expr: rate(nginx_http_requests_total{job="nginx-exporter"}[1m]) > 30
+    for: 30s
+    labels:
+      severity: warning
+      category: security
+      rulepack_target: leafy-web
+    annotations:
+      summary: Nginx 요청량 급증 (잠재적 SQLi/DDoS/스캔)
+      container: leafy-frontend

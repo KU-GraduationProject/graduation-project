@@ -1,0 +1,6 @@
+# Optional private Tailscale Serve backend. Review and approve before applying.
+# Run with compose.candidate.yml; never publish cAdvisor or a wildcard listener.
+services:
+  collector:
+    ports:
+      - "127.0.0.1:${GC_TELEMETRY_LOOPBACK_PORT:?Choose unused local proxy port}:9108/tcp"

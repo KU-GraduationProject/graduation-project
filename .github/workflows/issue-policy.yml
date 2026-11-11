@@ -1,0 +1,23 @@
+name: Issue policy
+on:
+  issues:
+    types: [opened, edited, reopened]
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: issue-policy-${{ github.event.issue.number }}
+  cancel-in-progress: true
+jobs:
+  issue-policy:
+    name: issue-policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # Invalid Issues remain open; mark with needs-issue-update, remove after repair.
+      - run: python3 .github/scripts/collaboration.py issue
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

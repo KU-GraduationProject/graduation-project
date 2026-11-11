@@ -158,29 +158,16 @@ class ParseTargetMapTest(unittest.TestCase):
 
 
 class LogsCollectorTest(unittest.IsolatedAsyncioTestCase):
-    async def test_queries_by_service_never_by_container(self):
-        seen = {}
-
+    async def test_service_without_observation_source_skips_query(self):
+        # OI-09 intentionally replaces the unsafe service-only collection contract.
         def handler(request):
-            seen.update(request.url.params)
-            return httpx.Response(200, json={"data": {"result": [{
-                "stream": {"service": "backend", "container": "backend",
-                           "container_name": "leafy-backend"},
-                "values": [["2000000000000000000", "message=b"], ["1000000000000000000", "message=a"]],
-            }]}})
-
+            raise AssertionError("service/runtime/name alone do not identify the observation site")
         ctx = CorrelationContext.around(
             "backend", "2026-10-04T05:00:00Z", timedelta(minutes=5),
-            container_name="leafy-backend", runtime="container",
-        )
+            container_name="leafy-backend", runtime="container")
         logs = await LogsCollector("http://loki:3100", transport=_docker(handler)).fetch(ctx)
-
-        # 기존 버그: {container="leafy-backend"} -> aiops-llm 자체 출력이 반환되었다
-        self.assertEqual(seen["query"], '{service="backend"}')
-        self.assertNotIn("container", seen["query"])
-        self.assertEqual(int(seen["start"]), ctx.start_ns)
-        self.assertEqual(int(seen["end"]), ctx.end_ns)
-        self.assertEqual([l["line"] for l in logs], ["message=a", "message=b"])  # ts 순 정렬
+        self.assertEqual(logs, [])
+        self.assertEqual(logs.report["status"], "scope_unavailable")
 
     async def test_unresolved_service_skips_query(self):
         def handler(request):
