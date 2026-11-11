@@ -7,10 +7,10 @@ Issue 1개 = 작업 Branch 1개 = PR 1개. 하나의 PR에는 여러 커밋을 �
 
 ## 1. Issue → Branch → Commit
 
-1. GitHub **Issues → New issue**에서 Feature, Bug 또는 Task / Docs Form을 선택한다.
+1. GitHub **Issues → New issue**에서 Feature, Bug, Docs 또는 Task / Chore Form을 선택한다.
    작업 목적·범위·완료 조건·검증 방법을 실제 내용으로 작성한다.
 2. Issue 제목은 `[type] 작업 제목`이다. type은 `feat`, `fix`, `docs`, `test`, `refactor`, `chore`, `ci`다.
-   Docs는 Task / Docs Form의 제목을 `[docs] ...`로 바꾼다.
+   문서는 Docs Form을 선택하면 `[docs]` 제목과 문서 라벨이 기본 적용된다.
 3. 실제 발급된 Issue 번호로 `<type>/<issue-number>-<description>` 브랜치를 만든다.
    description은 영문 소문자·숫자·하이픈을 사용한다. 예: `feat/12-user-auth`.
 4. 일반 커밋 제목은 `[type] 요약 (#이슈번호)`다. 모든 작업 커밋의 Issue 번호는 PR/브랜치와 같아야 한다.
@@ -19,7 +19,53 @@ Issue 1개 = 작업 Branch 1개 = PR 1개. 하나의 PR에는 여러 커밋을 �
 빈 Issue 버튼은 숨긴다. API·CLI로 생성한 Issue까지 사전 차단하는 기능은 아니다.
 `issue-policy`는 새 Issue·수정·재오픈 때 검사하고 위반 시 `needs-issue-update` 라벨을 붙이며 실패한다.
 수정하면 라벨을 제거한다. 기존 Issue는 자동 일괄 수정하지 않는다. 라벨 API가 차단되면 관리자가 권한을 확인한다.
-Feature/Bug/Task별 필수 본문은 Form과 `.github/scripts/collaboration.py`에 정의한다.
+Feature/Bug/Docs/Task별 필수 본문은 Form과 `.github/scripts/collaboration.py`에 정의한다.
+
+### 라벨·담당자·리뷰어
+
+작업 유형은 **주된 목적 하나**, 영역은 **실제 변경 범위 여러 개**, 상태는 **현재 단계 하나**로 구분한다.
+라벨의 색과 설명은 `.github/labels.json`에 관리한다. 기존 `bug`, `documentation` 등의 라벨도 보존한다.
+
+| 구분 | 값 | 적용 기준 |
+|---|---|---|
+| 유형 | `type:feat`, `type:fix`, `type:docs`, `type:test`, `type:refactor`, `type:chore`, `type:ci` | 제목의 `[type]`에 맞는 라벨 하나 |
+| 영역 | `area:github`, `area:docs`, `area:pipeline`, `area:remediation`, `area:observability`, `area:infra`, `area:scenarios`, `area:tooling` | PR은 변경 파일에서 계산, Issue는 담당자가 선택 |
+| Issue 상태 | `status:open`, `status:done`, `status:closed` | 열림 / 완료 종료 / 진행하지 않음 등의 종료 |
+| PR 상태 | `status:draft`, `status:in-review`, `status:done`, `status:closed` | Draft / 정식 PR 리뷰 단계 / 병합 / 미병합 종료 |
+| Issue 기본 Type | `Feature`, `Bug`, `Task` | feat → Feature, fix → Bug, 나머지 → Task |
+
+예를 들어 CI 설정과 문서를 함께 바꿨다면 `type:ci` + `area:github` + `area:docs`를 사용한다.
+문서 파일이 포함됐다는 이유로 주된 작업 유형까지 `type:docs`로 중복 지정하지 않는다.
+`status:in-review`는 정식 PR의 검토 단계이며 사람의 승인 완료를 뜻하지 않는다. 실제 승인은 Reviews에서 확인한다.
+Issue의 Type 필드와 달리 PR은 유형 라벨로 구분한다.
+
+담당자와 리뷰어는 서로 다른 역할이다.
+
+- **Issue Assignees**: 구현 책임자. 작업 시작 전에 실제 담당자를 지정한다. 외부 제보자를 자동 담당자로 지정하지 않는다.
+- **PR Assignees**: 변경 책임자. 미지정이면 write 권한이 확인된 사람 작성자를 자동 지정하며 기존 담당자는 유지한다.
+- **PR Reviewers**: 작성자 이외 사람. CODEOWNERS 자동 요청을 확인하고 필요하면 수동으로 요청한다.
+  Issue에는 PR과 같은 리뷰 요청 필드가 없으므로 리뷰 책임은 연결된 PR에서 관리한다.
+
+현재 작업 #25/#26은 담당자 `galgalrobot`, 사람 리뷰어 `gicks04`로 구분했다.
+새 자동화는 Issue/PR 생성·제목 수정·재오픈·종료, PR 커밋 추가·Draft/ready 전환 때 실행한다.
+기존 사용자 라벨은 전체 교체하지 않는다. 제목 유형을 바꾸면 이전 관리 유형 라벨을 정리하고,
+PR 파일 변경 시 관리 영역 라벨을 갱신한다. Issue의 수동 영역 라벨은 보존한다.
+라벨 카탈로그에 없는 사용자 라벨·우선순위·기존 담당자는 자동 변경하지 않는다.
+
+**현재 Issue/PR 메타데이터는 이미 적용했다.** 향후 자동 분류와 Form 기본값은 이 PR이 기본 브랜치에 반영된 뒤 작동한다.
+Workflow는 신뢰하는 기본 브랜치의 코드만 실행하며 PR head 코드를 쓰기 권한으로 실행하지 않는다.
+조직 Issue Type 자체를 생성/변경하지 않고, 조회로 확인된 기존 Type만 사용한다.
+([공식 Issue Forms 라벨·Type 설정](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms))
+
+GitHub 목록 검색 예시:
+
+```text
+is:issue is:open label:"type:docs"
+is:issue is:open assignee:galgalrobot
+is:pr is:open label:"type:feat"
+is:pr is:open label:"area:github" label:"status:in-review"
+is:pr is:open review-requested:gicks04
+```
 
 ### 로컬 commit-msg Hook
 
@@ -198,7 +244,7 @@ Issue 제목:
 [ci] GitHub 협업 규칙과 자동 리뷰 검사 구축
 ```
 
-Task / Docs Issue 본문:
+Task / Chore Issue 본문 (Docs도 같은 필수 섹션 사용):
 
 ```markdown
 ### 작업 목적

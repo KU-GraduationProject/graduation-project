@@ -8,3 +8,4 @@
 - CodeRabbit 지적은 수정하거나 근거를 남긴다. 사람 승인과 필수 CI를 우회하지 않는다.
 - 사용자의 명시적 승인 없이 Commit, Push, PR 생성, Merge를 수행하지 않는다. 기존 보호 설정과 core.hooksPath를 임의 변경하지 않는다.
 - 상세 절차와 Required Status Check 이름은 `docs/dev-rules.md`를 따른다.
+- Issue/PR은 제목에 맞는 `type:*` 하나, 변경 범위의 `area:*`, 현재 단계의 `status:*`로 분류한다. Assignees는 작업 책임자, Reviewers는 작성자 이외 사람으로 구분한다. 수동 라벨·담당자를 전체 교체하지 않는다.

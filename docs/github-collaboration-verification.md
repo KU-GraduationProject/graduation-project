@@ -41,13 +41,14 @@ CodeRabbit 첫 실제 리뷰는 기본 설정으로 실행되어 영문으로 �
 열린 PR #23·#24에 필수 체크를 도입하려면 담당자와 전환을 합의해야 한다. 강제 푸시·일괄 재작성은 수행하지 않았다.
 기존 Workflow/Hook/CODEOWNERS와의 중복은 발견되지 않았다.
 
-## PR에 포함하는 생성 파일 17개
+## PR에 포함하는 생성 파일 22개
 
 | 파일 | 용도 |
 |---|---|
 | `.github/ISSUE_TEMPLATE/feature.yml` | 목적·배경·요구사항·범위·완료 조건·테스트 필수, 참고 자료 선택 |
 | `.github/ISSUE_TEMPLATE/bug.yml` | 문제·재현·기대/실제 동작·완료 조건 필수, 오류 로그 선택 |
-| `.github/ISSUE_TEMPLATE/task.yml` | 목적·항목·산출물·완료 조건 필수, Docs에도 사용 |
+| `.github/ISSUE_TEMPLATE/task.yml` | 일반 작업/Chore 목적·항목·산출물·완료 조건 필수 |
+| `.github/ISSUE_TEMPLATE/docs.yml` | 문서 전용 Form, type:docs/area:docs와 Task Type 기본 지정 |
 | `.github/ISSUE_TEMPLATE/config.yml` | 일반 UI의 빈 Issue 버튼 제한 |
 | `.github/pull_request_template.md` | 필수 6개 섹션, Closes 안내, 체크리스트 |
 | `.github/CODEOWNERS` | 검증된 사람 2명을 저장소 전역 기본 소유자로 지정 |
@@ -58,6 +59,10 @@ CodeRabbit 첫 실제 리뷰는 기본 설정으로 실행되어 영문으로 �
 | `.github/workflows/pr-template-check.yml` | `pr-template-check` Job, PR 양식·브랜치·Issue·Closes 검사 |
 | `.github/workflows/issue-policy.yml` | `issue-policy` Job, 위반 Issue 라벨 추가/수정 후 제거 |
 | `.github/workflows/project-tests.yml` | 정책 OS matrix + 기존 4개 격리 테스트, 최종 `project-tests` Job |
+| `.github/labels.json` | 유형 7개·영역 8개·상태 5개의 색·설명 카탈로그 |
+| `.github/scripts/collaboration_labels.py` | 유형/영역/상태 동기화, Issue Type, PR 책임자 처리 |
+| `.github/scripts/tests/test_collaboration_labels.py` | 수동 라벨/담당자 보존, 멱등성, 외부 작성자·파일 누락 등 회귀 검사 |
+| `.github/workflows/collaboration-labels.yml` | 기본 브랜치 코드로 Issue/PR 메타데이터 자동 분류 |
 | `.coderabbit.yaml` | 한국어·비 Draft 자동/후속 리뷰·자동 승인 비활성·실제 경로별 지침 |
 | `AGENTS.md` | GitHub 협업 규칙만 담은 에이전트 지침. 선행 로컬 메모리 설정은 포함하지 않음 |
 | `docs/dev-rules.md` | 개발/AI 작업 규칙, Hook 통합, Ruleset 적용, 실패 해결, 작성 예시 |
@@ -91,7 +96,7 @@ CodeRabbit 첫 실제 리뷰는 기본 설정으로 실행되어 영문으로 �
 | 전체 커밋 페이지·수량 대조, 250개 초과/누락·API 403 | 실패 시 검사 차단 | PASS (로컬 모의 검증) |
 | Issue 위반 라벨 지정/수정 후 제거 | API mock | PASS (로컬 모의 검증) |
 | 실제 commit-msg 실행, 위조 Merge 거부/실제 merge context 허용 | 임시 Git 저장소, 실제 Hook 프로세스 | PASS |
-| 정책 테스트 합계 | 24 tests, OK (CodeRabbit 코드블록 경계 회귀 포함) | PASS |
+| 정책 테스트 합계 | 36 tests, OK (코드블록·라벨/담당자 회귀 포함) | PASS |
 | Pipeline 기존 격리 테스트 | 100 tests, OK | PASS |
 | Remediation 기존 격리 테스트 | 270 tests, OK | PASS |
 | Network 기존 격리 테스트 | 100 tests, OK | PASS |
@@ -107,6 +112,11 @@ CodeRabbit 첫 실제 리뷰는 기본 설정으로 실행되어 영문으로 �
 | CodeRabbit 실제 한국어/후속 자동 리뷰 | App 설치 확인, YAML 작성; ready PR 실행 없음 | BLOCKED |
 | CODEOWNERS 실제 자동 리뷰 요청 | base 브랜치 미반영 | BLOCKED |
 | Ruleset/필수 체크 연결·사람 승인·병합 차단 | 관리자 설정 미적용 | BLOCKED |
+
+후속 협업 분류 검증: 저장소의 기존 라벨 9개는 보존하고 관리 라벨 20개를 추가했다.
+실제 Issue #25에는 `type:ci`, `area:github`, `area:docs`, `status:open`, 담당자 `galgalrobot`, 기본 Type `Task`를 적용했다.
+실제 PR #26에는 `type:ci`, `area:github`, `area:docs`, `status:in-review`, 담당자 `galgalrobot`을 적용했으며
+사람 리뷰 요청 대상 `gicks04`를 유지했다. 새로운 자동 분류 Workflow는 기본 브랜치 반영 후 작동한다.
 
 초기 Network 검사는 `rich` 누락과 샌드박스의 루프백 bind 제한으로 실패했다.
 기존 README의 rich를 CI 설치에 포함하고, Python 3.11 임시 환경에서 테스트 전용 루프백 접근을 허용해 다시 실행했다.

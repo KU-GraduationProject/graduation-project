@@ -1,6 +1,8 @@
 name: Bug
 description: Bug 작업을 정의하고 완료 기준을 합의합니다.
 title: '[fix] '
+labels: ['type:fix', 'status:open']
+type: Bug
 body:
 - type: markdown
   attributes:
