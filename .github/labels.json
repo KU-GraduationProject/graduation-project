@@ -1,0 +1,22 @@
+[
+  {"name":"type:feat","color":"0E8A16","description":"새 기능·사용자 동작 추가"},
+  {"name":"type:fix","color":"D73A4A","description":"버그·오류 수정"},
+  {"name":"type:docs","color":"0075CA","description":"문서·가이드·명세 변경 (docs)"},
+  {"name":"type:test","color":"5319E7","description":"테스트 추가·보완"},
+  {"name":"type:refactor","color":"FBCA04","description":"기능 변경 없는 코드 구조 개선"},
+  {"name":"type:chore","color":"CFD3D7","description":"일반 설정·의존성·유지보수"},
+  {"name":"type:ci","color":"1D76DB","description":"GitHub 협업 자동화·CI/CD 변경"},
+  {"name":"area:github","color":"BFD4F2","description":"GitHub 설정·Git Hook·에이전트 협업 규칙"},
+  {"name":"area:docs","color":"C5DEF5","description":"문서·가이드·명세"},
+  {"name":"area:pipeline","color":"D4C5F9","description":"분석 파이프라인·프롬프트·상관 분석"},
+  {"name":"area:remediation","color":"F9D0C4","description":"조치 정책·Controller·Agent·복구"},
+  {"name":"area:observability","color":"BFDADC","description":"모니터링·네트워크 관측·로그 수집"},
+  {"name":"area:infra","color":"D1E8FF","description":"배포·Compose·DB·Nginx 인프라 설정"},
+  {"name":"area:scenarios","color":"FEF2C0","description":"실험·시나리오·평가"},
+  {"name":"area:tooling","color":"E4E669","description":"측정·개발·격리 테스트 실행 도구"},
+  {"name":"status:open","color":"EDEDED","description":"열린 Issue: 담당자와 완료 조건 확인"},
+  {"name":"status:draft","color":"CFD3D7","description":"작성 중인 Draft PR"},
+  {"name":"status:in-review","color":"FBCA04","description":"열린 정식 PR의 리뷰·CI 단계 (승인 여부는 Reviews 확인)"},
+  {"name":"status:done","color":"0E8A16","description":"완료한 Issue 또는 병합한 PR"},
+  {"name":"status:closed","color":"6F42C1","description":"미병합 종료 PR 또는 진행하지 않기로 닫은 Issue"}
+]

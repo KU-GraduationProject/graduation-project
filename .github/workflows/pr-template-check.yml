@@ -1,0 +1,25 @@
+name: PR policy
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, ready_for_review, review_requested, review_request_removed]
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+concurrency:
+  group: pr-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  pr-template-check:
+    name: pr-template-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Read metadata using the base version of the validator; no PR code execution.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - run: python3 .github/scripts/collaboration.py pr
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

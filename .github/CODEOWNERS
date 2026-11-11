@@ -1,0 +1,4 @@
+# 2026-11-11: both existing human collaborators verified with admin/write access.
+# Two-person team: repository-wide fallback until directory ownership is agreed.
+# GitHub does not request review from the PR author; the other owner can review.
+* @galgalrobot @gicks04
