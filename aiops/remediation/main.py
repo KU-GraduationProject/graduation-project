@@ -39,8 +39,11 @@ from security.service_auth import SIGNATURE_HEADER as SERVICE_SIGNATURE_HEADER
 from security.service_auth import verify_service_request
 from security.slack_signature import SIGNATURE_HEADER as SLACK_SIGNATURE_HEADER
 from security.slack_signature import verify_slack_request
+from slack_socket import SlackSettings, SocketModeRuntime
 
 logging.basicConfig(level=logging.INFO)
+# HTTPX INFO includes full webhook/response URLs, which are bearer credentials.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 LOKI_URL = os.getenv("LOKI_URL", "http://loki:3100")
 
@@ -51,6 +54,8 @@ SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
 REMEDIATION_API_KEY = os.getenv("REMEDIATION_API_KEY", "")
 
 _replay_guard = ReplayGuard()
+slack_settings = SlackSettings.from_env()
+slack_socket = None
 
 # docker   : 로컬 Docker SDK로 조치를 실행한다 (기존 all-in-one docker-compose.yml)
 # disabled : 조치를 실행하지 않는다. AIOps 단독 배포에서는 Leafy가 다른 PC에 있어 로컬 Docker 조치가 대상에 닿지 않고,
@@ -102,7 +107,7 @@ async def lifespan(_app: FastAPI):
     TTL 복구 스캐너를 기동한다. disabled 모드에서도 돌지만 실행기가 아무것도 하지
     않으므로 조치는 일어나지 않는다 (만료 레코드가 없으면 조용히 쉰다).
     """
-    global ttl_scanner
+    global ttl_scanner, slack_socket
     task = None
     if TTL_SCAN_INTERVAL_SEC > 0:
         ttl_scanner = recovery_mod.TtlScanner(
@@ -113,12 +118,19 @@ async def lifespan(_app: FastAPI):
     else:
         logger.info("[Recovery] TTL 스캐너 비활성 (REMEDIATION_TTL_SCAN_SEC<=0)")
     try:
+        if slack_settings.transport == "socket_mode":
+            slack_socket = SocketModeRuntime(slack_settings, handle_socket_action)
+            await slack_socket.start()
         yield
     finally:
         if ttl_scanner is not None:
             ttl_scanner.stop()
         if task is not None:
             task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        if slack_socket is not None:
+            await slack_socket.close()
+            slack_socket = None
 
 
 app = FastAPI(title="AIOps Remediation", version="0.1.0", lifespan=lifespan)
@@ -190,7 +202,10 @@ async def require_service_auth(request: Request) -> None:
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+    slack = (await slack_socket.health() if slack_socket is not None else
+             {"transport": slack_settings.transport, "connected": False,
+              "status": "not_started" if slack_settings.transport == "socket_mode" else slack_settings.transport})
+    return {"status": "ok", "timestamp": datetime.utcnow().isoformat(), "slack": slack}
 
 
 class RemoteReconcileRequest(BaseModel):
@@ -350,6 +365,10 @@ async def slack_interactive_action(request: Request):
       periodic_log_scan → 주기적 로그 스캔에서 온 승인
       llm_health_check  → LLM 헬스체크에서 온 승인
     """
+    # Socket Mode payloads are accepted only from our outbound SDK connection.
+    # Keeping this URL accessible must never bypass the Socket Mode trust boundary.
+    if slack_settings.transport != "http":
+        return JSONResponse(status_code=410, content={"error": "http_interactivity_disabled"})
     # 0. Slack 서명 검증 — 파싱·실행보다 먼저. 거부되면 조치 코드에 닿지 않는다.
     body = await request.body()
     slack_signature = request.headers.get(SLACK_SIGNATURE_HEADER)
@@ -372,21 +391,47 @@ async def slack_interactive_action(request: Request):
     except json.JSONDecodeError:
         return JSONResponse(status_code=400, content={"error": "Invalid payload JSON"})
 
+    return await handle_slack_action(slack_payload)
+
+
+async def handle_socket_action(payload):
+    response = await handle_slack_action(payload, socket_mode=True)
+    logger.info("[Slack Socket] action result HTTP-equivalent=%s", response.status_code)
+    return response
+
+
+async def handle_slack_action(slack_payload, socket_mode=False):
+    """Shared policy/execution path, after transport-specific authentication."""
+    if not isinstance(slack_payload, dict):
+        return JSONResponse(status_code=400, content={"error": "Invalid payload"})
+    if socket_mode:
+        team = slack_payload.get("team")
+        user = slack_payload.get("user")
+        if (slack_payload.get("type") != "block_actions" or
+                not isinstance(team, dict) or team.get("id") != slack_settings.team_id or
+                not isinstance(user, dict) or user.get("id") not in slack_settings.allowed_users):
+            return JSONResponse(status_code=403, content={"error": "slack_actor_not_allowed"})
+
     # 2. action 정보 추출
     actions = slack_payload.get("actions", [])
-    if not actions:
+    if not isinstance(actions, list) or len(actions) != 1 or not isinstance(actions[0], dict):
         return JSONResponse(status_code=400, content={"error": "No actions in payload"})
 
     action       = actions[0]
     action_id    = action.get("action_id", "")
     raw_value    = action.get("value", "{}")
     response_url = slack_payload.get("response_url", "")
-    user_name    = slack_payload.get("user", {}).get("name", "unknown")
+    user_name    = (slack_payload.get("user", {}).get("id") if socket_mode else
+                    slack_payload.get("user", {}).get("name", "unknown"))
 
     try:
         action_data = json.loads(raw_value)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         return JSONResponse(status_code=400, content={"error": "Invalid action value JSON"})
+    if (not isinstance(action_data, dict) or not isinstance(action_data.get("action_type", "NONE"), str)
+            or not isinstance(action_data.get("action_targets", []), list)
+            or any(not isinstance(t, str) for t in action_data.get("action_targets", []))):
+        return JSONResponse(status_code=400, content={"error": "Invalid action value"})
 
     alertname      = action_data.get("alertname", "unknown")
     action_type    = action_data.get("action_type", "NONE").upper()
@@ -397,6 +442,37 @@ async def slack_interactive_action(request: Request):
     # 대상에서 결정적으로 유도해 같은 승인이 한 건으로 합쳐지게 한다.
     remediation_id = action_data.get("remediation_id") or \
         store_mod.derive_id(alertname, action_type, action_targets)
+
+    if socket_mode:
+        # Old buttons cannot create a new execution record at approval time.
+        rid = action_data.get("remediation_id")
+        record = record_store.get(rid) if isinstance(rid, str) else None
+        if record is None:
+            return JSONResponse(status_code=404, content={"error": "stored_remediation_required"})
+        if (record.alertname != alertname or record.action_type != action_type or
+                sorted(record.targets) != sorted(action_targets)):
+            return JSONResponse(status_code=409, content={"error": "stored_action_mismatch"})
+        requested_at = (record.recovery_approval_requested_at if action_id == "approve_recovery"
+                        else record.approval_requested_at)
+        requested_ts = store_mod._parse_ts(requested_at)
+        if requested_ts is None or not 0 <= time.time() - requested_ts <= slack_settings.approval_ttl:
+            return JSONResponse(status_code=409, content={"error": "approval_expired"})
+        if action_id in ("approve_action", "reject_action") and record.state not in (
+                store_mod.PROPOSED, store_mod.AWAITING_APPROVAL, store_mod.APPROVED):
+            return JSONResponse(status_code=409, content={"error": "approval_no_longer_pending"})
+        # response_url is a bearer capability received from Slack, never an
+        # arbitrary URL from a button value. Keep outbound updates on Slack hosts.
+        try:
+            if not isinstance(response_url, str):
+                raise ValueError("invalid URL type")
+            parsed = urllib.parse.urlsplit(response_url)
+            port = parsed.port
+        except ValueError:
+            return JSONResponse(status_code=400, content={"error": "invalid_response_url"})
+        if response_url and (parsed.scheme != "https" or parsed.hostname not in (
+                "hooks.slack.com", "hooks.slack-gov.com") or parsed.username or parsed.password
+                or port not in (None, 443) or not parsed.path.startswith("/actions/")):
+            return JSONResponse(status_code=400, content={"error": "invalid_response_url"})
 
     logger.info(
         f"[Slack Action] id={action_id}, user={user_name}, "
@@ -535,6 +611,9 @@ async def slack_interactive_action(request: Request):
                                      "results": summaries})
 
     elif action_id == "reject_action":
+        if record_store.get(remediation_id) is not None and not record_store.mark_rejected(
+                remediation_id, user_name):
+            return JSONResponse(status_code=409, content={"error": "approval_no_longer_pending"})
         await _push_soc_event("aiops-timeline", {
             "event":       "manual_approval_rejected",
             "alert":       alertname,
@@ -568,7 +647,7 @@ async def _update_slack_message(response_url: str, text: str) -> None:
             )
         logger.info("[Slack Action] 메시지 업데이트 완료")
     except Exception as e:
-        logger.warning(f"[Slack Action] 메시지 업데이트 실패: {e}")
+        logger.warning("[Slack Action] 메시지 업데이트 실패 (%s)", type(e).__name__)
 
 
 # ─── 헬퍼 함수 ───────────────────────────────────────────
@@ -600,6 +679,8 @@ async def _on_ttl_event(record, results, state) -> None:
     updated = record_store.get(record.remediation_id) or record
     await _push_record(updated, "ttl_recovery_processed", state)
     if state == store_mod.RECOVERY_APPROVAL_REQUIRED:
+        record_store.update(updated.remediation_id,
+                            recovery_approval_requested_at=store_mod.utcnow())
         await notifier.send_recovery_request(updated)
         # 자동 복구 금지 조치 — 사람에게 복구 승인을 요청한다.
         await _push_soc_event("aiops-timeline", {

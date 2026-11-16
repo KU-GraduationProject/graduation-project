@@ -55,7 +55,7 @@ def full_doc():
 
 def load_main(mode="docker", state_dir=None, ttl_scan="0"):
     """TTL 스캐너는 테스트에서 끄고(run_due 를 직접 호출) 상태는 임시 디렉터리에 둔다."""
-    env = {"SLACK_WEBHOOK_URL": "", "REMEDIATION_MODE": mode,
+    env = {"SLACK_WEBHOOK_URL": "", "SLACK_TRANSPORT": "http", "REMEDIATION_MODE": mode,
            "SLACK_SIGNING_SECRET": SLACK_SECRET, "REMEDIATION_API_KEY": API_KEY,
            "REMEDIATION_TTL_SCAN_SEC": ttl_scan}
     if state_dir:

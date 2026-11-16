@@ -255,12 +255,13 @@ class Notifier:
                     "dispatched_at": dispatched_at,
                 }
         except httpx.HTTPError as e:
-            logger.error(f"[Notifier] Failed to send Slack notification: {e}")
-            _push_loki_slack_event(alert_name, "FAILED", None, str(e))
+            error_type = type(e).__name__
+            logger.error("[Notifier] Failed to send Slack notification (%s)", error_type)
+            _push_loki_slack_event(alert_name, "FAILED", None, error_type)
             return {
                 "sent": False,
                 "status": "FAILED",
                 "response_code": None,
-                "response_text": str(e),
+                "response_text": error_type,
                 "dispatched_at": dispatched_at,
             }
