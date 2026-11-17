@@ -1,0 +1,60 @@
+[
+  {
+    "identity": {
+      "site": "fixture-gc",
+      "service": "db",
+      "runtime": "host",
+      "target": "fixture-pg17",
+      "source": "fixture-host-pg"
+    },
+    "match": {
+      "site": "fixture-gc",
+      "target": "fixture-pg17"
+    },
+    "logs": {
+      "site": "fixture-gc",
+      "service": "db",
+      "runtime": "host",
+      "target": "fixture-pg17"
+    },
+    "metrics": {},
+    "network": {
+      "observer": "network-observer",
+      "observer_instance": "fixture-gc-backend-netns"
+    }
+  },
+  {
+    "identity": {
+      "site": "fixture-gc",
+      "service": "backend",
+      "runtime": "container",
+      "target": "fixture-backend",
+      "source": "fixture-docker"
+    },
+    "match": {
+      "site": "fixture-gc",
+      "target": "fixture-backend"
+    },
+    "logs": {
+      "site": "fixture-gc",
+      "service": "backend",
+      "runtime": "container",
+      "container_name": "fixture-backend"
+    },
+    "metrics": {
+      "job": "fixture-gc-telemetry",
+      "instance": "fixture-gc:9101",
+      "id": "/docker/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "site": "fixture-gc",
+      "source": "fixture-docker",
+      "service": "backend",
+      "runtime": "container",
+      "target": "fixture-backend"
+    },
+    "network": {
+      "observer": "network-observer",
+      "observer_instance": "fixture-gc-backend-netns"
+    },
+    "metrics_profile": "gc-telemetry-v1"
+  }
+]

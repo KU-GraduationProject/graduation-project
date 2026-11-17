@@ -1,0 +1,39 @@
+{
+  "request_schema_version": "1.0",
+  "trigger": "manual",
+  "alert": {
+    "labels": {
+      "alertname": "DBConnectionLimit",
+      "severity": "critical",
+      "category": "infra",
+      "rulepack_target": "leafy-host-postgres-limit",
+      "site": "fixture-gc",
+      "source": "fixture-host-pg",
+      "service": "db",
+      "runtime": "host",
+      "target": "fixture-pg17"
+    },
+    "annotations": {
+      "summary": "PostgreSQL 서버 연결 슬롯 부족으로 접속 거부",
+      "description": "2분 내 1회 이상 FATAL/53300 서버 슬롯 거부. Hikari 풀 고갈·전체 연결 사용률은 판정하지 않는다.",
+      "container": "leafy-db"
+    },
+    "starts_at": "2026-11-10T03:00:20.512Z",
+    "fingerprint": "8c1f0e7a9b3d2c45"
+  },
+  "window_policy": "symmetric_5m",
+  "acquisition_padding_s": 60,
+  "lateness_margin_s": 600,
+  "scope_policy": "alert_identity_plus_related",
+  "related_scopes": [
+    {
+      "site": "fixture-gc",
+      "service": "backend",
+      "runtime": "container",
+      "target": "fixture-backend",
+      "reason": "declared_dependency"
+    }
+  ],
+  "force_reacquire": false,
+  "expected_incident_id": "inc_3f9a00917bce9babb36e68f4"
+}
