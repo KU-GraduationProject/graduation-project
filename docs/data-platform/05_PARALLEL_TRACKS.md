@@ -86,7 +86,7 @@ Pipeline 모듈은 패키지가 아니라 `from identity import …`처럼 **작
 
 ```python
 # 모든 진입점은 순수 함수. 네트워크·시계·저장소는 인자로 주입한다.
-RunContext(run_id, orchestrator, dag_id, airflow_run_id, task_id, try_number, code_version, git_sha, git_dirty, now)
+RunContext(run_id, orchestrator, dag_id, airflow_run_id, task_id, try_number, map_index, code_version, git_sha, git_dirty, now)
 
 # Track A
 plan_incident(request: IncidentRequest, bindings: tuple[ObservationBinding, ...]) -> list[AcquisitionPlanItem]
@@ -117,7 +117,7 @@ validate(store: ObjectStore, manifests: list[ManifestRef]) -> ValidationReport
 | 재사용 | `identity.parse_bindings/selector/matches`, `correlation.to_instant/CorrelationContext/network_event_selectors`, collector 쿼리 템플릿(메트릭 쿼리 문자열 파리티) |
 | 의존 | STEP 0.5만 |
 | Mock | `httpx.MockTransport`가 fixture의 raw page를 반환. 페이지 실패·timeout·label 불일치·빈 응답을 주입 |
-| 테스트 | ① fixture 요청 → `10/11/12_*.jsonl`과 같은 행(acquisition_id·시각 제외) ② limit 3 페이지네이션 경계 중복 제거 ③ 2페이지 timeout → `partial` + 받은 행 보존 ④ series absent → `empty_unverified` ⑤ binding 없음 → 질의 0회 + `scope_unavailable` ⑥ `network-experiment` 요청 거부 ⑦ 메트릭 쿼리 문자열 = `MetricsCollector` 생성 문자열 |
+| 테스트 | ① fixture 요청 → `10/11/12_*.jsonl`과 같은 행(acquisition_id·시각 제외) ② limit 3 페이지네이션 경계 중복 제거 ③ 2페이지 timeout → `partial` + 받은 행 보존 ④ series absent → `empty_unverified` ⑤ binding 없음 → 질의 0회 + `scope_unavailable` ⑥ `network-experiment` 요청 거부 ⑦ 메트릭 쿼리 문자열 = `MetricsCollector` 생성 문자열 ⑧ 같은 ns entry `L+1`개 + 이후 entry → 무한 반복 없이 `truncated`/`same_ts_overflow`, 받은 `L`행 보존 |
 | 완료 기준 | 위 테스트 PASS, DQ-B01~B06 구현, 실제 HTTP 0회(격리 실행기), 기존 Pipeline 테스트 변화 없음 |
 
 ### Track B — Silver Transformation & Quality

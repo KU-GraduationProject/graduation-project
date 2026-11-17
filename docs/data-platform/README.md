@@ -77,4 +77,4 @@ GC PC ──Tailscale──▶ JH Fluentd ─▶ Loki ─┐                 ┌
 - [ ] 03 리니지와 RCA 연결 의미(`post_hoc_same_alert`)
 - [ ] 04 상태 규칙과 "없음 vs 실패" 판정
 - [ ] 05 파일 소유권과 STEP 0.5 선행
-- [ ] DEC-01/02/03/13/16 결정
+- [ ] DEC-01/02/03/13/16/18 결정

@@ -76,6 +76,22 @@
 | R-03 | 변경 파일(`docker-compose*.yml`, `.env.example`, `aiops/remediation/**`, `scenarios/v2/**`)이 계약에 주는 영향 | Compose 변경은 `remediation` 서비스의 Slack 환경변수·주석뿐 → 02 저장소 설계·DEC-04 무영향. F2-c Host 지원 → 07 §1 갱신, X-08 추가 |
 | R-04 | fixture JSON/JSONL 파싱 | 25개 파일, 319개 객체 파싱 PASS |
 
-S-01~S-06(ID 재계산·manifest 해시·파리티)은 이번에 **다시 실행하지 않았다**. 당시 검증 스크립트가 저장소 밖에 있어 남아 있지 않다. fixture와 R-01의 입력 경로가 바뀌지 않았으므로 결과가 유지된다고 판단하지만, STEP 0.5의 `tests/contracts/`에서 코드로 재검증한다.
+S-01~S-06 전체는 다시 실행하지 않았다(당시 검증 스크립트 미보존). 아래 §4.1에서 `coverage_id`·`run_id`·flow `evidence_id`·`edge_id`와 현재 build의 manifest 파일 bytes·sha256은 새로 작성한 검사로 재계산했다. 나머지 ID(`record_key`, `db_log_id` 등)와 파리티는 STEP 0.5의 `tests/contracts/`에서 코드로 재검증한다.
+
+### 4.1 PR #37 리뷰로 고친 계약 결함
+
+| 결함 | 수정 | fixture 영향 |
+|---|---|---|
+| incident `plan_id`에 binding이 없어 binding이 바뀌어도 같은 `coverage_id` → 획득이 섞임(03 §4와 충돌) | `coverage_id`에 `plan_binding_sha256` 추가 (01 §1.1) | `coverage_id` 8개 재계산(50·51) |
+| `run_id`가 mapped task 인스턴스를 구분하지 못함 | `map_index`가 있을 때만 해시에 추가, `RunContext`에 `map_index` (01 §1.1, 05 §4) | 없음(fixture는 모두 null) |
+| 같은 `scope_role`의 related scope가 여럿이면 flow `evidence_id` 충돌 | `scope_identity`를 해시 입력·컬럼에 추가 (01 §4.5) | flow 1행·edge 2개·parity 키 재계산 |
+| Loki 같은 ns entry가 limit 이상이면 커서가 전진하지 않음 | `truncated` + `same_ts_overflow`로 종료, Track A 테스트 ⑧ (02 §6, 04 §1, 05) | 없음 |
+| 리니지 재귀 추적이 다른 build의 edge까지 따라감 | 시작 `child_version = :gold_build_id`, 재귀 `e.child_version = up.parent_version` (03 §6) | 없음 |
+| 기존 collector `partial`(metrics warnings, network skipped)을 `page_failed`로만 매핑 | 원인별 매핑, `source_warnings` 사유 (04 §1·§1.1) | 없음 |
+| `source_mismatch`가 섞인 채널이 `complete`가 됨 | 규칙 5에 `source_mismatch` 추가 (04 §4) | 없음 |
+| 미검증 쿼리가 있어도 `complete_empty` | 규칙 7은 모든 쿼리 `empty_verified`일 때만 (04 §4) | 없음 |
+| 표 안 selector의 `\|` 미이스케이프, 테스트 discover 경로, 체크리스트 DEC-18 누락 | 각각 수정 (01 §2.4, 06, README) | 없음 |
+
+검사 결과(2026-11-17, 수정 후): 새 식으로 `coverage_id` 10건·`run_id` 6건·flow `evidence_id`·`edge_id` 전체·현재 build manifest 파일 bytes/sha256 전체 재계산 → 불일치 0. 01 §4.5 컬럼 집합 = fixture 컬럼. 링크·앵커 깨짐 0. 대체된 build(`mf_sb_…62bad93f`, `mf_gb_…edd1b412`)는 행이 fixture에 없어 파일 해시를 재계산하지 않았다(§3.2와 동일).
 
 Remediation의 Slack 승인·조치 이력(`aiops/remediation/store.py`)은 향후 Gold의 대응 결과 원천 후보지만 v1 범위 밖이며, 별도 진행 중인 Remediation 작업(#35)의 계약이 정해진 뒤 검토한다.

@@ -127,7 +127,7 @@ lake-meta/
 |---|---|---|
 | scope | binding selector만. binding 없으면 `scope_unavailable` 행만 기록 | 같음 |
 | preflight | `/loki/api/v1/series`(창) → 없으면 `[window_start-24h, window_end]` lookback → `present/absent` | `/api/v1/series`(binding selector) |
-| 페이지네이션 | `direction=forward`, `limit=L`(서버 `max_entries_limit_per_query` 이하, 실제값 확인 필요). 다음 `start` = 마지막 entry ns(포함) → 경계 중복은 `record_key`로 제거. `max_pages` 도달 시 `truncated` | `query_range` 단일 요청(11,000점/series 한도 내) |
+| 페이지네이션 | `direction=forward`, `limit=L`(서버 `max_entries_limit_per_query` 이하, 실제값 확인 필요). 다음 `start` = 마지막 entry ns(포함) → 경계 중복은 `record_key`로 제거. `max_pages` 도달 시 `truncated`. 한 페이지가 **모두 같은 ns이고 limit에 도달**하면 커서를 전진할 수 없으므로 받은 행을 보존하고 `truncated` + `status_reason=same_ts_overflow`로 끝낸다(`start`를 ns+1로 옮기면 같은 ns의 나머지를 건너뛰므로 금지) | `query_range` 단일 요청(11,000점/series 한도 내) |
 | 반환 검증 | 모든 stream label이 scope와 `matches()` → 아니면 `source_mismatch`(원문은 보존) | 모든 series label 검증 |
 | 부하 보호 | Airflow pool `loki_read`=1, 요청 timeout 30s, 페이지 간 지연, 요청 창 ≤ 15분 | pool `prom_read`=1 |
 | 실패 | 페이지 일부 실패 → 받은 페이지는 저장하고 `partial` commit, checkpoint 진행 안 함 | `failed`(사유) |

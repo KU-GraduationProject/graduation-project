@@ -94,9 +94,11 @@
 WITH RECURSIVE up AS (
   SELECT child_dataset, child_key, parent_dataset, parent_key, parent_version, 1 AS depth
   FROM edge WHERE child_dataset = 'gold.evidence_network_flow' AND child_key = :evidence_id
+    AND child_version = :gold_build_id          -- 재빌드로 같은 evidence_id가 여러 build에 있으므로 고정
   UNION ALL
   SELECT e.child_dataset, e.child_key, e.parent_dataset, e.parent_key, e.parent_version, up.depth + 1
   FROM edge e JOIN up ON e.child_key = up.parent_key AND e.child_dataset = up.parent_dataset
+    AND e.child_version = up.parent_version     -- 부모가 쓰인 그 버전의 edge만 따라감
 )
 SELECT up.*, a.source_system, a.query_text, a.scope_identity, a.binding_sha256, r.git_sha, r.airflow_run_id
 FROM up

@@ -2,7 +2,7 @@
   {
     "layer": "silver",
     "dataset": "silver.alert_event",
-    "coverage_id": "cov_18c9ae4751d4a33bcb7584f6",
+    "coverage_id": "cov_a1676ee430d5258213352d11",
     "build_id": "sb_20261110T032010Z_34d4f928",
     "manifest_id": "mf_sb_20261110T032010Z_34d4f928",
     "previous_build_id": null,
@@ -12,7 +12,7 @@
   {
     "layer": "silver",
     "dataset": "silver.app_log",
-    "coverage_id": "cov_732acc23abe8c8b0c3c3d3b6",
+    "coverage_id": "cov_91bdddbd4e8f13723d7a45b4",
     "build_id": "sb_20261110T032010Z_d20c83e7",
     "manifest_id": "mf_sb_20261110T032010Z_d20c83e7",
     "previous_build_id": null,
@@ -22,7 +22,7 @@
   {
     "layer": "silver",
     "dataset": "silver.db_log",
-    "coverage_id": "cov_cc05f7b387e782ef50cf50ed",
+    "coverage_id": "cov_82d04064355c716c8d3c62b7",
     "build_id": "sb_20261110T034042Z_c4d90e9a",
     "manifest_id": "mf_sb_20261110T034042Z_c4d90e9a",
     "previous_build_id": "sb_20261110T032010Z_62bad93f",
@@ -32,7 +32,7 @@
   {
     "layer": "silver",
     "dataset": "silver.metric_point",
-    "coverage_id": "cov_3b5d8d7931c77ed0c25d9c5d",
+    "coverage_id": "cov_e03a5101bccd754213b9bfcb",
     "build_id": "sb_20261110T032010Z_6cd8bde3",
     "manifest_id": "mf_sb_20261110T032010Z_6cd8bde3",
     "previous_build_id": null,
@@ -42,7 +42,7 @@
   {
     "layer": "silver",
     "dataset": "silver.network_event",
-    "coverage_id": "cov_3c944c8edb9f8f569ce1072c",
+    "coverage_id": "cov_e99df7eb7d01b35cff802921",
     "build_id": "sb_20261110T032010Z_06fac1f8",
     "manifest_id": "mf_sb_20261110T032010Z_06fac1f8",
     "previous_build_id": null,
@@ -52,7 +52,7 @@
   {
     "layer": "silver",
     "dataset": "silver.rca_result",
-    "coverage_id": "cov_c2050921b73ec92148295802",
+    "coverage_id": "cov_4d7dfbe5fba02327ca68ab90",
     "build_id": "sb_20261110T032010Z_97e579ad",
     "manifest_id": "mf_sb_20261110T032010Z_97e579ad",
     "previous_build_id": null,
@@ -62,7 +62,7 @@
   {
     "layer": "silver",
     "dataset": "silver.transport_issue",
-    "coverage_id": "cov_0541206b265bee8c97997f3c",
+    "coverage_id": "cov_7b4548ac2f563cea40bec2a4",
     "build_id": "sb_20261110T032010Z_c1486845",
     "manifest_id": "mf_sb_20261110T032010Z_c1486845",
     "previous_build_id": null,

@@ -33,8 +33,8 @@
 | `alert_event_id` | `h({"labels": alert_labels, "starts_at": starts_at(C-3 형식)})` | 같은 경보 episode면 같음 |
 | `incident_id` | `"inc_" + alert_event_id[:24]` | v1: **사건 1건 = 경보 episode 1건** (다중 경보 묶음은 DEC-09) |
 | `silver_build_id` / `gold_build_id` | `sb_…` / `gb_…` + `{YYYYMMDDTHHMMSSZ}_{8hex}` | build마다 고유 |
-| `coverage_id` | `"cov_" + h([dataset, plan_id, window_start, window_end])[:24]` | 같은 범위면 같음 |
-| `run_id` | `"run_" + h([orchestrator, dag_id, airflow_run_id, task_id, try_number])[:20]` | task 시도마다 고유 |
+| `coverage_id` | `"cov_" + h([dataset, plan_id, plan_binding_sha256, window_start, window_end])[:24]`. `plan_binding_sha256` = `h(sorted({그 plan의 획득 binding_sha256} - {null}))` | 같은 범위·같은 binding 집합이면 같음. binding이 바뀌면 새 coverage([03](03_LINEAGE.md) §4) — incident `plan_id`에는 binding이 없으므로 이 항이 필요 |
+| `run_id` | `"run_" + h([orchestrator, dag_id, airflow_run_id, task_id, try_number] + ([map_index] if map_index is not None else []))[:20]` | task 시도마다 고유. mapped task는 `map_index`로 구분(미사용 task는 기존 식과 같은 값) |
 | `evidence_id` | `h([kind, incident_id, …자연키])[:32]` (§4) | 재빌드해도 같은 근거면 같음 → 버전 간 비교 가능 |
 
 ### 1.2 시각 필드의 의미
@@ -127,7 +127,7 @@ v1 메트릭 plan은 **실시간 Pipeline과 같은 PromQL·step**(`query_range`
 |---|---|---|
 | `app_log` | binding `logs` (runtime=container) | primary/related |
 | `db_log` | binding `logs` (service=db, runtime=host) | primary/related |
-| `network_event` | `{log_type="network", src_service|dst_service=…} \| json \| observer=… and observer_instance=…` (collector와 동일) | primary/related |
+| `network_event` | `{log_type="network", src_service\|dst_service=…} \| json \| observer=… and observer_instance=…` (collector와 동일) | primary/related |
 | `metric` | binding `metrics` + collector 쿼리 템플릿 | primary/related |
 | `rca_result` | `{job="aiops-llm"}` (+ identity label exact) | global |
 | `rca_error` | `{job="aiops-llm-error"}` | global |
@@ -375,8 +375,9 @@ MAJOR가 `1`이 아니거나 필수 필드가 없으면 quarantine(`unsupported_
 
 | 컬럼 | 타입 | Null | 설명 |
 |---|---|---|---|
-| `evidence_id` | string | N | `h(["flow", incident_id, scope_role, src_service, dst_service, dst_ip, dst_port, protocol])[:32]` |
+| `evidence_id` | string | N | `h(["flow", incident_id, scope_role, scope_identity(객체), src_service, dst_service, dst_ip, dst_port, protocol])[:32]` — 같은 `scope_role`의 related scope가 여럿이어도 구분 |
 | `incident_id`,`gold_build_id`,`scope_role` | string | N | |
+| `scope_identity` | string(JSON) | N | 그 flow를 관측한 scope의 C-5 identity 5필드(`site,source,service,runtime,target`) |
 | `src_service`,`dst_service` | string | N | |
 | `dst_ip` | string | Y | |
 | `dst_port` | int32 | Y | |

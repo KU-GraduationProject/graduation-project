@@ -42,7 +42,7 @@
 
 **완료 조건** — fixture의 모든 ID·해시를 계약 코드로 재계산해 일치, LocalFsStore로 manifest commit·포인터·orphan 시나리오 테스트 PASS, 기존 4개 suite 회귀 PASS.
 
-**테스트 방법** — `python -m unittest discover -s aiops/dataplatform/tests -v` (네트워크·Docker 차단 상태), `python testing/run_isolated.py pipeline`.
+**테스트 방법** — `python -m unittest discover -s aiops/dataplatform/tests -v` (네트워크·Docker 차단 상태). `tests/`와 하위 디렉터리(`tests/contracts/` 등)에 `__init__.py`를 두어 discover가 재귀 탐색하게 한다, `python testing/run_isolated.py pipeline`.
 
 **참고 자료** — 01, 02, 03, 05 §2·§4, 07.
 

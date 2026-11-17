@@ -10,8 +10,8 @@
 | `ok` | 모든 페이지 성공, 행 ≥1, limit 미도달(또는 페이지네이션 완료) | 수집 성공 |
 | `empty_verified` | 성공, 행 0, `series_preflight=present`(창 또는 24h lookback) | **데이터 없음** — scope stream은 존재. 그래도 "정상"의 증명은 아님 |
 | `empty_unverified` | 성공, 행 0, `series_preflight=absent` | 데이터 없음 **또는** 라벨·수집 경로 문제 — 구분 불가 |
-| `truncated` | `max_pages` 도달 또는 페이지네이션 불가로 limit에서 멈춤 | 일부만 수집 |
-| `partial` | 일부 페이지 실패(받은 페이지는 보존). `status_reason` = `page_failed:<사유>` (사유는 `failed`와 같은 어휘, 예: `page_failed:timeout`) | 일부만 수집 |
+| `truncated` | `max_pages` 도달 또는 페이지네이션 불가로 limit에서 멈춤(같은 ns가 limit 이상이면 `status_reason=same_ts_overflow`, [02](02_STORAGE_DESIGN.md) §6) | 일부만 수집 |
+| `partial` | 일부 페이지 실패(받은 페이지는 보존) → `status_reason` = `page_failed:<사유>` (사유는 `failed`와 같은 어휘, 예: `page_failed:timeout`). 또는 원천 응답이 경고를 담음 → `source_warnings` (§1.1) | 일부만 수집되었을 수 있음 |
 | `failed` | 첫 페이지부터 실패. `status_reason` ∈ `api_error`·`timeout`·`connection_error`·`invalid_response`·`auth_error` | **수집 실패** — 데이터 유무 알 수 없음 |
 | `source_mismatch` | 반환 label이 scope selector와 다름 | 다른 출처 데이터. 원문 보존, 하류 사용 금지 |
 | `scope_unavailable` | binding·selector 없음. `status_reason` ∈ `source_unknown`·`collector_unmapped`·`no_matching_series` | **수집 시도 안 함** |
@@ -24,7 +24,8 @@
 | `ok` | `ok` | |
 | `empty` | `empty_verified` / `empty_unverified` | lookback preflight로 분리(신규) |
 | `truncated` | `truncated` | 페이지네이션 후에도 남으면 |
-| `partial` (metrics/network) | `partial` | |
+| `partial` (metrics: 응답 `warnings`/`infos`) | `partial` + `status_reason=source_warnings` | 페이지 실패가 아니다. warnings 원문은 `bronze.acquisition.warnings`에 보존 |
+| `partial` (network: skipped/truncated) | Bronze는 `ok`/`truncated` | skipped는 Bronze가 아니라 Silver quarantine·Gold `skipped`로 표현. 원문은 Bronze에 모두 보존 |
 | `api_error` | `failed` + `api_error` | |
 | `invalid_response` | `failed` + `invalid_response` | |
 | `source_mismatch` | `source_mismatch` | |
@@ -73,12 +74,12 @@
 | 2 | 모든 쿼리 최선 상태가 `scope_unavailable`/`not_attempted` | `unavailable` | 획득 reason |
 | 3 | 모든 쿼리 최선 상태가 `failed`/`source_mismatch` | `failed` | 첫 사유 |
 | 4 | 창 안 행 ≥1, 매칭 0 | `unavailable` | host 대상에서 `target_unresolvable`이 있으면 `host_target_field_absent`, 그 외에는 가장 많은 skipped 사유 이름 |
-| 5 | 어떤 쿼리든 최선 상태가 `partial`/`truncated`/`failed` | `partial` | 해당 상태 |
+| 5 | 어떤 쿼리든 최선 상태가 `partial`/`truncated`/`failed`/`source_mismatch` | `partial` | 해당 상태 |
 | 6 | 매칭 ≥1 | `complete` | null |
-| 7 | 매칭 0, 쿼리 중 `empty_verified` ≥1 | `complete_empty` | null |
-| 8 | 그 외(모두 `empty_unverified`) | `unavailable` | `scope_unverified` |
+| 7 | 매칭 0, **모든** 쿼리가 `empty_verified` | `complete_empty` | null |
+| 8 | 그 외(매칭 0이고 `empty_unverified` 쿼리가 하나라도 있음) | `unavailable` | `scope_unverified` |
 
-`not_applicable`은 identity에 원래 없는 채널(예: producer `unsupported_metrics`만으로 이루어진 쿼리)에만 쓴다. Network의 src/dst처럼 한쪽이 `empty_unverified`인 것은 정상이며, 다른 쪽이 `ok`면 규칙 6이 먼저 적용된다.
+`not_applicable`은 identity에 원래 없는 채널(예: producer `unsupported_metrics`만으로 이루어진 쿼리)에만 쓴다. Network의 src/dst처럼 한쪽이 `empty_unverified`여도 다른 쪽에 매칭이 있으면 규칙 6이 먼저 적용된다. 매칭이 0이면 미검증 쪽 때문에 "기록 없음"을 말할 수 없으므로 규칙 8(`unavailable`)이다(§2 판정표와 같음).
 
 ## 5. 사건 상태 `gold.incident.overall_status`
 
