@@ -1,0 +1,88 @@
+# Leafy Data Platform — Airflow 오케스트레이션 (Issue #38)
+#
+# 기존 docker-compose.yml / docker-compose.aiops.yml 와 독립된 project 다.
+# depends_on·volume·network 를 공유하지 않으므로 이 스택이 멈춰도 실시간 RCA 경로에 영향이 없다.
+# 현재 DAG 는 Mock fixture 기반 stub 이라 Loki/Prometheus 에 접근하지 않는다.
+#
+#   docker compose -f docker-compose.dataplatform.yml up -d
+#   UI: http://127.0.0.1:18080   (loopback 전용, 로컬 개발용으로 로그인 생략)
+#   docker compose -f docker-compose.dataplatform.yml down      # 데이터 유지
+#   docker compose -f docker-compose.dataplatform.yml down -v   # lake·메타DB 삭제
+name: leafy-datalake
+
+x-airflow-env: &airflow-env
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${DP_AIRFLOW_DB_PASSWORD:-airflow}@dp-airflow-db/airflow
+  AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  AIRFLOW__CORE__PARALLELISM: "2"
+  AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+  AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "False"
+  # 로컬 loopback 전용 개발 편의. 공유 환경에서는 제거하고 인증을 켠다.
+  AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
+  PYTHONPATH: /opt/airflow/dataplatform
+  DP_LAKE_ROOT: /opt/airflow/lake
+  DP_FIXTURE_DIR: /opt/airflow/fixtures
+
+services:
+  dp-airflow-db:
+    image: postgres:16.16
+    container_name: dp-airflow-db
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${DP_AIRFLOW_DB_PASSWORD:-airflow}
+      POSTGRES_DB: airflow
+    volumes:
+      - dp_airflow_db:/var/lib/postgresql/data
+    networks: [datalake-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 512m
+    cpus: 0.5
+    restart: unless-stopped
+
+  # Named volume 은 root 소유로 생성되므로 Airflow 사용자(uid 50000)가 쓸 수 있게 한 번만 맞춘다.
+  dp-lake-init:
+    image: apache/airflow:3.3.2-python3.11
+    user: "0:0"
+    entrypoint: ["bash", "-c", "chown -R 50000:0 /opt/airflow/lake"]
+    volumes:
+      - dp_lake:/opt/airflow/lake
+    networks: [datalake-net]
+
+  dp-airflow:
+    image: apache/airflow:3.3.2-python3.11
+    container_name: dp-airflow
+    depends_on:
+      dp-airflow-db:
+        condition: service_healthy
+      dp-lake-init:
+        condition: service_completed_successfully
+    environment: *airflow-env
+    command:
+      - bash
+      - -c
+      - |
+        airflow db migrate &&
+        airflow pools set loki_read 1 "Loki read serialization (02 §6)" &&
+        airflow pools set prom_read 1 "Prometheus read serialization (02 §6)" &&
+        exec airflow standalone
+    ports:
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - ./aiops/dataplatform/airflow/dags:/opt/airflow/dags:ro
+      - ./aiops/dataplatform:/opt/airflow/dataplatform:ro
+      - ./docs/data-platform/examples/db-connection-limit:/opt/airflow/fixtures:ro
+      - dp_lake:/opt/airflow/lake
+    networks: [datalake-net]
+    mem_limit: 3g
+    cpus: 2
+    restart: unless-stopped
+
+volumes:
+  dp_airflow_db:
+  dp_lake:
+
+networks:
+  datalake-net:
