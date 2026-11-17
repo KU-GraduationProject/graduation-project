@@ -26,14 +26,14 @@
 | ID | 형식 | 결정성 |
 |---|---|---|
 | `acquisition_id` | `acq_{YYYYMMDDTHHMMSSZ}_{8hex}` | 시도마다 고유 |
-| `acquisition_key` | `h({plan_id, query_name, query_text, window_start, window_end})[:32]` — 페이징 파라미터(`limit`, `direction`)는 제외 | 같은 논리 요청이면 같음 (재실행·강제 재획득 판정용) |
+| `acquisition_key` | `h({plan_id, binding_sha256, query_name, query_text, window_start, window_end})[:32]` — 페이징 파라미터(`limit`, `direction`)는 제외. binding이 바뀌면 다른 키가 되어 사건 모드도 새 binding으로 다시 획득한다 | 같은 논리 요청이면 같음 (재실행·강제 재획득 판정용) |
 | `bronze_id` | `{acquisition_id}:{page:04d}:{row:06d}` | 획득 내 위치 |
 | `record_key` (Loki) | `h([stream_labels(객체), str(entry_ts_ns), line])` | 내용 동일하면 같음 |
 | `record_key` (Prometheus) | `h([query_text_sha256, series_labels(객체), sample_ts_ms, value_raw])` | 내용 동일하면 같음 |
 | `alert_event_id` | `h({"labels": alert_labels, "starts_at": starts_at(C-3 형식)})` | 같은 경보 episode면 같음 |
 | `incident_id` | `"inc_" + alert_event_id[:24]` | v1: **사건 1건 = 경보 episode 1건** (다중 경보 묶음은 DEC-09) |
 | `silver_build_id` / `gold_build_id` | `sb_…` / `gb_…` + `{YYYYMMDDTHHMMSSZ}_{8hex}` | build마다 고유 |
-| `coverage_id` | `"cov_" + h([dataset, plan_id, plan_binding_sha256, window_start, window_end])[:24]`. `plan_binding_sha256` = `h(sorted({그 plan의 획득 binding_sha256} - {null}))` | 같은 범위·같은 binding 집합이면 같음. binding이 바뀌면 새 coverage([03](03_LINEAGE.md) §4) — incident `plan_id`에는 binding이 없으므로 이 항이 필요 |
+| `coverage_id` | `"cov_" + h([dataset, plan_id, plan_binding_sha256, window_start, window_end])[:24]`. `plan_binding_sha256` = `h(sorted({그 plan 실행의 획득 계획 항목 binding_sha256} - {null}))` — 과거 획득의 누적이 아니라 **이번 실행에 적용한 scope별 binding 집합** | 같은 범위·같은 binding 집합이면 같음. binding이 바뀌면 새 coverage([03](03_LINEAGE.md) §4) — incident `plan_id`에는 binding이 없으므로 이 항이 필요 |
 | `run_id` | `"run_" + h([orchestrator, dag_id, airflow_run_id, task_id, try_number] + ([map_index] if map_index is not None else []))[:20]` | task 시도마다 고유. mapped task는 `map_index`로 구분(미사용 task는 기존 식과 같은 값) |
 | `evidence_id` | `h([kind, incident_id, …자연키])[:32]` (§4) | 재빌드해도 같은 근거면 같음 → 버전 간 비교 가능 |
 
@@ -377,7 +377,7 @@ MAJOR가 `1`이 아니거나 필수 필드가 없으면 quarantine(`unsupported_
 |---|---|---|---|
 | `evidence_id` | string | N | `h(["flow", incident_id, scope_role, scope_identity(객체), src_service, dst_service, dst_ip, dst_port, protocol])[:32]` — 같은 `scope_role`의 related scope가 여럿이어도 구분 |
 | `incident_id`,`gold_build_id`,`scope_role` | string | N | |
-| `scope_identity` | string(JSON) | N | 그 flow를 관측한 scope의 C-5 identity 5필드(`site,source,service,runtime,target`) |
+| `scope_identity` | string(JSON) | N | 그 flow를 관측한 scope의 `ObservationIdentity` 전체(`site,source,service,runtime,target,job,instance,observer`). Bronze `scope_identity`와 같은 값 → observer만 다른 binding도 구분 |
 | `src_service`,`dst_service` | string | N | |
 | `dst_ip` | string | Y | |
 | `dst_port` | int32 | Y | |

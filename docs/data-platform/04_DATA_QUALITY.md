@@ -77,7 +77,7 @@
 | 5 | 어떤 쿼리든 최선 상태가 `partial`/`truncated`/`failed`/`source_mismatch` | `partial` | 해당 상태 |
 | 6 | 매칭 ≥1 | `complete` | null |
 | 7 | 매칭 0, **모든** 쿼리가 `empty_verified` | `complete_empty` | null |
-| 8 | 그 외(매칭 0이고 `empty_unverified` 쿼리가 하나라도 있음) | `unavailable` | `scope_unverified` |
+| 8 | 그 외 모든 경우(매칭 0이고 모든 쿼리가 `empty_verified`는 아님 — `empty_unverified`·`scope_unavailable`·`not_attempted`가 섞임) | `unavailable` | `empty_unverified`가 있으면 `scope_unverified`, 없으면 미수집 쿼리의 획득 reason |
 
 `not_applicable`은 identity에 원래 없는 채널(예: producer `unsupported_metrics`만으로 이루어진 쿼리)에만 쓴다. Network의 src/dst처럼 한쪽이 `empty_unverified`여도 다른 쪽에 매칭이 있으면 규칙 6이 먼저 적용된다. 매칭이 0이면 미검증 쪽 때문에 "기록 없음"을 말할 수 없으므로 규칙 8(`unavailable`)이다(§2 판정표와 같음).
 

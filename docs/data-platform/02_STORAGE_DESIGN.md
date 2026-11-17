@@ -135,7 +135,7 @@ lake-meta/
 ## 7. 부분 실패 처리
 
 - 획득은 **받은 만큼 보존**한다. `partial`/`truncated`도 committed manifest를 가지며 상태로 구분된다.
-- Silver는 coverage 안의 **모든 committed 획득의 합집합**을 입력으로 하고 dedup한다. 채널 상태는 쿼리별 **최선 상태**(어느 한 획득이 `ok`면 `ok`)로 계산한다([04](04_DATA_QUALITY.md) §4).
+- Silver는 coverage 안의 **모든 committed 획득의 합집합**을 입력으로 하고 dedup한다. coverage 안의 획득 = 같은 `plan_id`·창이면서 `binding_sha256`이 그 coverage의 binding 집합(01 §1.1 `plan_binding_sha256`)에 속하거나 null(global)인 획득이다. binding을 A → B → A로 바꾸면 세 번째 실행은 첫 번째와 같은 coverage가 되고 B 획득은 섞이지 않는다. 채널 상태는 쿼리별 **최선 상태**(어느 한 획득이 `ok`면 `ok`)로 계산한다([04](04_DATA_QUALITY.md) §4).
 - Silver/Gold build 실패는 manifest를 쓰지 않는다 → 이전 current가 그대로 유효하다.
 - 재처리는 항상 **새 build**다. 이전 build·manifest·edge는 지우지 않는다(보존 기간 DEC-08).
 

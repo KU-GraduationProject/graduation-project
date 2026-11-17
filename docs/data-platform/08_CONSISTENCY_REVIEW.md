@@ -91,7 +91,12 @@ S-01~S-06 전체는 다시 실행하지 않았다(당시 검증 스크립트 미
 | `source_mismatch`가 섞인 채널이 `complete`가 됨 | 규칙 5에 `source_mismatch` 추가 (04 §4) | 없음 |
 | 미검증 쿼리가 있어도 `complete_empty` | 규칙 7은 모든 쿼리 `empty_verified`일 때만 (04 §4) | 없음 |
 | 표 안 selector의 `\|` 미이스케이프, 테스트 discover 경로, 체크리스트 DEC-18 누락 | 각각 수정 (01 §2.4, 06, README) | 없음 |
+| (2차) `acquisition_key`에 binding이 없어 binding만 바뀌면 사건 모드가 새 binding으로 획득하지 않음 | `binding_sha256` 추가 (01 §1.1) | `acquisition_key` 11개·Bronze manifest 해시 재계산 |
+| (2차) `plan_binding_sha256`을 과거 획득 누적으로 정의해 A → B → A 변경 시 B와 A가 섞임 | 이번 실행의 scope별 binding 집합으로 재정의, coverage 입력 획득 조건 명시 (01 §1.1, 02 §7) | 없음(fixture는 두 정의의 값이 같음) |
+| (2차) flow `scope_identity`가 C-5 5필드뿐이라 observer만 다른 binding을 구분 못 함 | Bronze와 같은 `ObservationIdentity` 전체 8필드 (01 §4.5) | flow `evidence_id`·edge 2개·parity 키 재계산 |
+| (2차) 매칭 0에서 `empty_verified`와 `scope_unavailable`/`not_attempted`가 섞이면 채널 상태 미정 | 규칙 8이 나머지 모든 경우를 받도록 확장 (04 §4) | 없음 |
+| (2차) 기존 4개 suite 회귀 명령이 `pipeline`만 있음 | `remediation`·`network`·`observer` 추가 (06) | 없음 |
 
-검사 결과(2026-11-17, 수정 후): 새 식으로 `coverage_id` 10건·`run_id` 6건·flow `evidence_id`·`edge_id` 전체·현재 build manifest 파일 bytes/sha256 전체 재계산 → 불일치 0. 01 §4.5 컬럼 집합 = fixture 컬럼. 링크·앵커 깨짐 0. 대체된 build(`mf_sb_…62bad93f`, `mf_gb_…edd1b412`)는 행이 fixture에 없어 파일 해시를 재계산하지 않았다(§3.2와 동일).
+검사 결과(2026-11-17, 2차 수정 후): 새 식으로 `acquisition_key` 11건·`coverage_id` 10건·`run_id` 6건·flow `evidence_id`·`edge_id` 전체·현재 build manifest 파일 bytes/sha256 전체 재계산 → 불일치 0. 01 §4.5 컬럼 집합 = fixture 컬럼. 링크·앵커 깨짐 0. 대체된 build(`mf_sb_…62bad93f`, `mf_gb_…edd1b412`)는 행이 fixture에 없어 파일 해시를 재계산하지 않았다(§3.2와 동일).
 
 Remediation의 Slack 승인·조치 이력(`aiops/remediation/store.py`)은 향후 Gold의 대응 결과 원천 후보지만 v1 범위 밖이며, 별도 진행 중인 Remediation 작업(#35)의 계약이 정해진 뒤 검토한다.

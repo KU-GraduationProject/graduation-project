@@ -45,7 +45,7 @@
     "c067b42caffc326a9802d6f019644595": "cpu_usage: latest=0.1180, peak=0.3660, samples=41"
   },
   "rendered_flow_lines": {
-    "c50b0e5061c3ea86f72741d0954be3b8": "- backend -> db tcp/postgres: conns=2 states[closed=2] bytes_sent=216 bytes_recv=194 duration_ms[avg=6 max=6] | dst=192.0.2.254:5432 | allowlist=ok"
+    "cd293cc3125df648cf0878b17ae47aad": "- backend -> db tcp/postgres: conns=2 states[closed=2] bytes_sent=216 bytes_recv=194 duration_ms[avg=6 max=6] | dst=192.0.2.254:5432 | allowlist=ok"
   },
   "llm_result_model_dump": {
     "root_cause": "PostgreSQL host fixture-pg17 rejected new connections with FATAL 53300 (too many clients). The server connection slots were exhausted, so new sessions could not be opened.",
