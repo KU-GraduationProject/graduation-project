@@ -60,6 +60,7 @@
 | `legacy_unversioned` | 신규 | Silver | 버전 없는 과거 RCA envelope |
 | `window_open` | 신규 | Silver/Gold | 닫히지 않은 창에서만 획득됨 |
 | `partial_acquisition` | 신규 | Silver | `partial`/`truncated` 획득에서만 나온 행 |
+| `reacquisition_incomplete` | 신규 | Gold(채널) | 같은 쿼리의 앞선 획득은 `ok`라 채널 상태는 최선 상태를 따르지만, 나중 재획득이 `partial`/`truncated`/`failed`로 끝남 ([02](02_STORAGE_DESIGN.md) §7) |
 | `masked` | 신규 | Gold | `mask_secrets` 적용 전후의 렌더 결과가 다름(비밀값 패턴이 실제로 치환됨) |
 
 `truncated`와 `skipped`는 레코드 플래그가 아니라 **집계 값**이다: `truncated`는 `bronze.acquisition.limit_hit`/`status`와 `gold.incident_channel.truncated`, `skipped`는 `gold.incident_channel.skipped`(+`skipped_reasons`)와 manifest `quality.skipped`(Silver 파싱 단계의 quarantine 수). 기존 Network collector의 `skipped`(파싱 실패 + scope 불일치)는 이 계약에서 **파싱 실패 = quarantine**, **scope 불일치 = Gold `skipped`**로 나뉜다.
@@ -74,10 +75,10 @@
 | 2 | 모든 쿼리 최선 상태가 `scope_unavailable`/`not_attempted` | `unavailable` | 획득 reason |
 | 3 | 모든 쿼리 최선 상태가 `failed`/`source_mismatch` | `failed` | 첫 사유 |
 | 4 | 창 안 행 ≥1, 매칭 0 | `unavailable` | host 대상에서 `target_unresolvable`이 있으면 `host_target_field_absent`, 그 외에는 가장 많은 skipped 사유 이름 |
-| 5 | 어떤 쿼리든 최선 상태가 `partial`/`truncated`/`failed`/`source_mismatch` | `partial` | 해당 상태 |
+| 5 | 어떤 쿼리든 최선 상태가 `partial`/`truncated`/`failed`/`source_mismatch`/`scope_unavailable`/`not_attempted` | `partial` | 해당 상태(미수집 쿼리는 그 획득 reason) — 매칭이 있어도 일부 쿼리를 받지 못했으면 `complete`가 아니다 |
 | 6 | 매칭 ≥1 | `complete` | null |
-| 7 | 매칭 0, **모든** 쿼리가 `empty_verified` | `complete_empty` | null |
-| 8 | 그 외 모든 경우(매칭 0이고 모든 쿼리가 `empty_verified`는 아님 — `empty_unverified`·`scope_unavailable`·`not_attempted`가 섞임) | `unavailable` | `empty_unverified`가 있으면 `scope_unverified`, 없으면 미수집 쿼리의 획득 reason |
+| 7 | 매칭 0, 창 안 행 0, **모든** 쿼리의 최선 상태가 `empty_verified` 또는 `ok` | `complete_empty` | null — `ok`는 획득 창(패딩 포함)에 행이 있어 stream 존재가 확인된 것이므로 "사건 창에 기록 없음"의 근거로 충분하다 |
+| 8 | 그 외 모든 경우(규칙 5·7을 거친 뒤에는 매칭 0이고 `empty_unverified` 쿼리가 있는 경우만 남음) | `unavailable` | `scope_unverified` |
 
 `not_applicable`은 identity에 원래 없는 채널(예: producer `unsupported_metrics`만으로 이루어진 쿼리)에만 쓴다. Network의 src/dst처럼 한쪽이 `empty_unverified`여도 다른 쪽에 매칭이 있으면 규칙 6이 먼저 적용된다. 매칭이 0이면 미검증 쪽 때문에 "기록 없음"을 말할 수 없으므로 규칙 8(`unavailable`)이다(§2 판정표와 같음).
 
@@ -99,7 +100,7 @@ related 채널은 overall에 반영하지 않고 채널 행으로만 보고한�
 |---|---|---|---|
 | DQ-B01 | Bronze | 실행한 모든 질의는 `bronze.acquisition` 행을 가진다(실패 포함) | BLOCK |
 | DQ-B02 | Bronze | manifest rows = Parquet rows = `row_count`, raw `raw_sha256` 재계산 일치 | BLOCK |
-| DQ-B03 | Bronze | 반환 label ⊇ scope selector (불일치 시 상태 `source_mismatch`) | WARN |
+| DQ-B03 | Bronze | 반환 stream label ⊇ scope의 stream selector label, `\| json \|` 본문 필터 조건(Network `observer`·`observer_instance`)은 파싱한 본문이 일치 (불일치 시 상태 `source_mismatch`) | WARN |
 | DQ-B04 | Bronze | `entry_ts_ns`/`sample_ts_ms`가 요청 창 안 | WARN |
 | DQ-B05 | Bronze | `window_closed=false`면 `window_open` 전파 | WARN |
 | DQ-B06 | Bronze | 금지 스트림(`network-experiment`, Heldout) 미포함 | BLOCK |

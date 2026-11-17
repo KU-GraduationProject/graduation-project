@@ -34,7 +34,7 @@
 | `incident_id` | `"inc_" + alert_event_id[:24]` | v1: **사건 1건 = 경보 episode 1건** (다중 경보 묶음은 DEC-09) |
 | `silver_build_id` / `gold_build_id` | `sb_…` / `gb_…` + `{YYYYMMDDTHHMMSSZ}_{8hex}` | build마다 고유 |
 | `coverage_id` | `"cov_" + h([dataset, plan_id, plan_binding_sha256, window_start, window_end])[:24]`. `plan_binding_sha256` = `h(sorted({그 plan 실행의 획득 계획 항목 binding_sha256} - {null}))` — 과거 획득의 누적이 아니라 **이번 실행에 적용한 scope별 binding 집합** | 같은 범위·같은 binding 집합이면 같음. binding이 바뀌면 새 coverage([03](03_LINEAGE.md) §4) — incident `plan_id`에는 binding이 없으므로 이 항이 필요 |
-| `run_id` | `"run_" + h([orchestrator, dag_id, airflow_run_id, task_id, try_number] + ([map_index] if map_index is not None else []))[:20]` | task 시도마다 고유. mapped task는 `map_index`로 구분(미사용 task는 기존 식과 같은 값) |
+| `run_id` | `"run_" + h([orchestrator, dag_id, airflow_run_id, task_id, try_number] + ([map_index] if map_index is not None and map_index >= 0 else []))[:20]` | task 시도마다 고유. mapped task는 `map_index`(0 이상)로 구분. unmapped task는 Airflow가 `-1`을 주므로 `null`과 같이 취급해 해시에서 뺀다(기존 식과 같은 값) |
 | `evidence_id` | `h([kind, incident_id, …자연키])[:32]` (§4) | 재빌드해도 같은 근거면 같음 → 버전 간 비교 가능 |
 
 ### 1.2 시각 필드의 의미

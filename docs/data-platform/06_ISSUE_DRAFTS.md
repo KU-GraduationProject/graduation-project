@@ -40,7 +40,7 @@
 
 **구현 범위** — `aiops/dataplatform/{contracts,storage}/`, `tests/fixtures/`(docs 예시를 읽는 로더), `tests/contracts/`, `requirements.txt`, `.gitignore`에 `.lake/`. **제외:** Bronze/Silver/Gold 로직, Airflow, MinIO 기동.
 
-**완료 조건** — fixture의 모든 ID·해시를 계약 코드로 재계산해 일치, LocalFsStore로 manifest commit·포인터·orphan 시나리오 테스트 PASS, 기존 4개 suite 회귀 PASS.
+**완료 조건** — fixture의 모든 ID·해시를 계약 코드로 재계산해 일치, `run_id`의 `map_index` = `null`·`-1`(같은 값)·`0`·`1`(서로 다른 값) 계약 테스트, LocalFsStore로 manifest commit·포인터·orphan 시나리오 테스트 PASS, 기존 4개 suite 회귀 PASS.
 
 **테스트 방법** — `python -m unittest discover -s aiops/dataplatform/tests -v` (네트워크·Docker 차단 상태). `tests/`와 하위 디렉터리(`tests/contracts/` 등)에 `__init__.py`를 두어 discover가 재귀 탐색하게 한다. 기존 suite 회귀: `python testing/run_isolated.py pipeline`, `… remediation`, `… network`, `… observer` (suite당 1회 실행).
 

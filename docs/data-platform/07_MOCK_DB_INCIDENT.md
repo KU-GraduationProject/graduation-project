@@ -82,7 +82,7 @@
 
 | scope | 채널 | status | 근거 |
 |---|---|---|---|
-| primary | log | `complete` | 획득 `ok`+`partial` → 최선 `ok`, 6행 매칭 |
+| primary | log | `complete` | 획득 `ok`+`partial` → 최선 `ok`, 6행 매칭. 나중 재획득이 `partial`이라 채널 플래그 `reacquisition_incomplete` |
 | primary | metric | `unavailable` / `collector_unmapped` | 규칙 2 |
 | primary | network | `unavailable` / `host_target_field_absent` | 창 안 2행, 모두 `target_unresolvable`(Canonical schema에 `dst_target` 없음) + quarantine 1. 실시간 collector도 accepted 0 / skipped 3 ([60](examples/db-connection-limit/60_realtime_parity.json)) |
 | related | log / metric / network | `complete` | 같은 Network 이벤트가 backend(container, `src_container` 일치)에서는 매칭 → flow 1건 |

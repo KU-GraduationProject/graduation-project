@@ -96,7 +96,13 @@ S-01~S-06 전체는 다시 실행하지 않았다(당시 검증 스크립트 미
 | (2차) flow `scope_identity`가 C-5 5필드뿐이라 observer만 다른 binding을 구분 못 함 | Bronze와 같은 `ObservationIdentity` 전체 8필드 (01 §4.5) | flow `evidence_id`·edge 2개·parity 키 재계산 |
 | (2차) 매칭 0에서 `empty_verified`와 `scope_unavailable`/`not_attempted`가 섞이면 채널 상태 미정 | 규칙 8이 나머지 모든 경우를 받도록 확장 (04 §4) | 없음 |
 | (2차) 기존 4개 suite 회귀 명령이 `pipeline`만 있음 | `remediation`·`network`·`observer` 추가 (06) | 없음 |
+| (3차) Airflow unmapped task의 `map_index=-1`이 해시에 들어가면 기존 `run_id`와 달라짐 | `-1`을 `null`로 정규화, 계약 테스트 항목 추가 (01 §1.1, 03 §2, 06) | 없음 |
+| (3차) 매칭이 있어도 `scope_unavailable`/`not_attempted` 쿼리가 있으면 `complete` | 규칙 5에 미수집 상태 추가, 규칙 8은 `empty_unverified` 경우만 남음 (04 §4) | 없음 |
+| (3차) 획득은 `ok`인데 사건 창만 빈 경우 판정·사유 미정 | 규칙 7을 `ok`/`empty_verified` 전부일 때 `complete_empty`로 확장 (04 §4) | 없음 |
+| (3차) 앞선 `ok`가 나중 불완전 재획득을 가림 | 최선 상태 유지를 명시하고 채널 플래그 `reacquisition_incomplete` 추가 (02 §7, 04 §3) | primary log 채널 플래그·Gold manifest 해시 1개 |
+| (3차) DQ-B03이 Network 본문 필터(`observer`·`observer_instance`)를 stream label로 검증 | stream selector는 label, 본문 필터는 파싱한 본문으로 검증 (02 §6, 04 DQ-B03) | 없음(fixture 본문에 값 있음) |
+| (3차) primary binding만 바뀌는 경우의 coverage 입력이 불명확 | 02 §7에 {B, R} 사례와 "binding 집합은 plan 실행 시점에 고정" 명시 | 없음 |
 
-검사 결과(2026-11-17, 2차 수정 후): 새 식으로 `acquisition_key` 11건·`coverage_id` 10건·`run_id` 6건·flow `evidence_id`·`edge_id` 전체·현재 build manifest 파일 bytes/sha256 전체 재계산 → 불일치 0. 01 §4.5 컬럼 집합 = fixture 컬럼. 링크·앵커 깨짐 0. 대체된 build(`mf_sb_…62bad93f`, `mf_gb_…edd1b412`)는 행이 fixture에 없어 파일 해시를 재계산하지 않았다(§3.2와 동일).
+검사 결과(2026-11-17, 3차 수정 후): 새 식으로 `acquisition_key` 11건·`coverage_id` 10건·`run_id` 6건·flow `evidence_id`·`edge_id` 전체·현재 build manifest 파일 bytes/sha256 전체 재계산 → 불일치 0. 01 §4.5 컬럼 집합 = fixture 컬럼. 링크·앵커 깨짐 0. 대체된 build(`mf_sb_…62bad93f`, `mf_gb_…edd1b412`)는 행이 fixture에 없어 파일 해시를 재계산하지 않았다(§3.2와 동일).
 
 Remediation의 Slack 승인·조치 이력(`aiops/remediation/store.py`)은 향후 Gold의 대응 결과 원천 후보지만 v1 범위 밖이며, 별도 진행 중인 Remediation 작업(#35)의 계약이 정해진 뒤 검토한다.

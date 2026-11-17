@@ -23,7 +23,7 @@
 | `orchestrator` | string | N | `airflow` · `local_cli` · `test` |
 | `dag_id`,`airflow_run_id`,`task_id` | string | Y | Airflow가 아니면 null (`local_cli`는 `airflow_run_id`에 UUID) |
 | `try_number` | int32 | Y | |
-| `map_index` | int32 | Y | dynamic task mapping |
+| `map_index` | int32 | Y | dynamic task mapping. unmapped task의 Airflow 값 `-1`은 `null`로 정규화해 저장 |
 | `code_version` | string | N | `aiops/dataplatform` 패키지 semver |
 | `git_sha` | string | N | 40자. 이미지 빌드 시 주입. 알 수 없으면 실행 거부(`unknown` 저장 금지) |
 | `git_dirty` | bool | N | 미커밋 변경으로 만든 이미지면 true → 운영 DAG는 거부 |

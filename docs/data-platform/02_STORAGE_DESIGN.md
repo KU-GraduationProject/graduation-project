@@ -128,14 +128,14 @@ lake-meta/
 | scope | binding selector만. binding 없으면 `scope_unavailable` 행만 기록 | 같음 |
 | preflight | `/loki/api/v1/series`(창) → 없으면 `[window_start-24h, window_end]` lookback → `present/absent` | `/api/v1/series`(binding selector) |
 | 페이지네이션 | `direction=forward`, `limit=L`(서버 `max_entries_limit_per_query` 이하, 실제값 확인 필요). 다음 `start` = 마지막 entry ns(포함) → 경계 중복은 `record_key`로 제거. `max_pages` 도달 시 `truncated`. 한 페이지가 **모두 같은 ns이고 limit에 도달**하면 커서를 전진할 수 없으므로 받은 행을 보존하고 `truncated` + `status_reason=same_ts_overflow`로 끝낸다(`start`를 ns+1로 옮기면 같은 ns의 나머지를 건너뛰므로 금지) | `query_range` 단일 요청(11,000점/series 한도 내) |
-| 반환 검증 | 모든 stream label이 scope와 `matches()` → 아니면 `source_mismatch`(원문은 보존) | 모든 series label 검증 |
+| 반환 검증 | stream selector 조건은 반환 stream label로, `\| json \|` 본문 필터 조건(Network `observer`·`observer_instance`)은 파싱한 본문으로 `matches()` → 아니면 `source_mismatch`(원문은 보존). 기존 `NetworkCollector`의 body 재검증과 같다 | 모든 series label 검증 |
 | 부하 보호 | Airflow pool `loki_read`=1, 요청 timeout 30s, 페이지 간 지연, 요청 창 ≤ 15분 | pool `prom_read`=1 |
 | 실패 | 페이지 일부 실패 → 받은 페이지는 저장하고 `partial` commit, checkpoint 진행 안 함 | `failed`(사유) |
 
 ## 7. 부분 실패 처리
 
 - 획득은 **받은 만큼 보존**한다. `partial`/`truncated`도 committed manifest를 가지며 상태로 구분된다.
-- Silver는 coverage 안의 **모든 committed 획득의 합집합**을 입력으로 하고 dedup한다. coverage 안의 획득 = 같은 `plan_id`·창이면서 `binding_sha256`이 그 coverage의 binding 집합(01 §1.1 `plan_binding_sha256`)에 속하거나 null(global)인 획득이다. binding을 A → B → A로 바꾸면 세 번째 실행은 첫 번째와 같은 coverage가 되고 B 획득은 섞이지 않는다. 채널 상태는 쿼리별 **최선 상태**(어느 한 획득이 `ok`면 `ok`)로 계산한다([04](04_DATA_QUALITY.md) §4).
+- Silver는 coverage 안의 **모든 committed 획득의 합집합**을 입력으로 하고 dedup한다. coverage 안의 획득 = 같은 `plan_id`·창이면서 `binding_sha256`이 그 coverage의 binding 집합(01 §1.1 `plan_binding_sha256`)에 속하거나 null(global)인 획득이다. binding을 A → B → A로 바꾸면 세 번째 실행은 첫 번째와 같은 coverage가 되고 B 획득은 섞이지 않는다. primary만 A → B로 바뀌고 related R은 그대로면 새 coverage의 binding 집합은 {B, R}이고, 입력은 B 획득과 (이전 실행 것을 포함한) R 획득이며 A 획득은 빠진다. binding 집합은 각 plan 실행 시점에 고정되고, 획득은 자기 `binding_sha256`으로 그 집합에 연결된다. 채널 상태는 쿼리별 **최선 상태**(어느 한 획득이 `ok`면 `ok`)로 계산한다([04](04_DATA_QUALITY.md) §4). 앞선 `ok` 획득이 닫힌 창을 이미 덮었으므로 최선 상태를 쓰는 것이 의도이며, 같은 쿼리의 나중 재획득이 `partial`/`truncated`/`failed`로 끝난 사실은 채널 `_quality_flags`의 `reacquisition_incomplete`로 남긴다(창이 닫힌 뒤 도착한 데이터의 유실 가능성은 `transport_loss_suspected`가 따로 다룬다).
 - Silver/Gold build 실패는 manifest를 쓰지 않는다 → 이전 current가 그대로 유효하다.
 - 재처리는 항상 **새 build**다. 이전 build·manifest·edge는 지우지 않는다(보존 기간 DEC-08).
 
