@@ -102,6 +102,7 @@ S-01~S-06 전체는 다시 실행하지 않았다(당시 검증 스크립트 미
 | (3차) 앞선 `ok`가 나중 불완전 재획득을 가림 | 최선 상태 유지를 명시하고 채널 플래그 `reacquisition_incomplete` 추가 (02 §7, 04 §3) | primary log 채널 플래그·Gold manifest 해시 1개 |
 | (3차) DQ-B03이 Network 본문 필터(`observer`·`observer_instance`)를 stream label로 검증 | stream selector는 label, 본문 필터는 파싱한 본문으로 검증 (02 §6, 04 DQ-B03) | 없음(fixture 본문에 값 있음) |
 | (3차) primary binding만 바뀌는 경우의 coverage 입력이 불명확 | 02 §7에 {B, R} 사례와 "binding 집합은 plan 실행 시점에 고정" 명시 | 없음 |
+| (4차) 3차에서 추가한 채널 플래그가 Gold manifest `quality.flag_counts`에 집계되지 않음 | Silver·Gold 현재 build의 `flag_counts`를 출력 행 기준으로 다시 집계해 확인 | Gold manifest `reacquisition_incomplete: 1` 추가 |
 
 검사 결과(2026-11-17, 3차 수정 후): 새 식으로 `acquisition_key` 11건·`coverage_id` 10건·`run_id` 6건·flow `evidence_id`·`edge_id` 전체·현재 build manifest 파일 bytes/sha256 전체 재계산 → 불일치 0. 01 §4.5 컬럼 집합 = fixture 컬럼. 링크·앵커 깨짐 0. 대체된 build(`mf_sb_…62bad93f`, `mf_gb_…edd1b412`)는 행이 fixture에 없어 파일 해시를 재계산하지 않았다(§3.2와 동일).
 
