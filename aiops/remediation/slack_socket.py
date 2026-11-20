@@ -16,6 +16,7 @@ class SlackSettings:
     team_id: str = ""
     allowed_users: frozenset = frozenset()
     approval_ttl: int = 900
+    channel_id: str = ""
 
     @classmethod
     def from_env(cls):
@@ -28,14 +29,14 @@ class SlackSettings:
         config = cls(mode, os.getenv("SLACK_APP_TOKEN", "").strip(),
                      os.getenv("SLACK_TEAM_ID", "").strip(),
                      frozenset(x.strip() for x in os.getenv("SLACK_ALLOWED_USER_IDS", "").split(",") if x.strip()),
-                     ttl)
-        if mode == "socket_mode" and config.app_token:
-            if not config.app_token.startswith("xapp-"):
+                     ttl, os.getenv("SLACK_CHANNEL_ID", "").strip())
+        if mode in {"socket_mode", "http"} and (config.app_token or config.team_id or config.channel_id):
+            if config.app_token and not config.app_token.startswith("xapp-"):
                 raise ValueError("SLACK_APP_TOKEN must be an app-level xapp token")
             if not re.fullmatch(r"T[A-Z0-9]+", config.team_id):
                 raise ValueError("SLACK_TEAM_ID is required for Socket Mode")
-            if not config.allowed_users or any(not re.fullmatch(r"[UW][A-Z0-9]+", u) for u in config.allowed_users):
-                raise ValueError("SLACK_ALLOWED_USER_IDS must contain Slack member IDs")
+            if not re.fullmatch(r"[CG][A-Z0-9]+", config.channel_id):
+                raise ValueError("SLACK_CHANNEL_ID is required for interactive approvals")
         return config
 
 

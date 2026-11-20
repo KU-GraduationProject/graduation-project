@@ -1,0 +1,11 @@
+# PC2 operator-only override, in addition to compose.yml + compose.live.yml.
+# This file mounts no Docker socket itself; live override is required explicitly.
+# Prepare a verified PC2 private deployment config, env files, rollback images and
+# backup artifacts. Paths below must match immutable plan file references.
+services:
+  remediation-agent:
+    environment:
+      AGENT_DEPLOYMENT_CONFIG_PATH: /app/config/deployment.yml
+    volumes:
+      - ${AGENT_DEPLOYMENT_CONFIG_LOCAL_PATH:?absolute private deployment config required}:/app/config/deployment.yml:ro
+      - ${AGENT_DEPLOYMENT_PRIVATE_LOCAL_PATH:?absolute private deployment artifacts directory required}:/run/leafy-deployment:ro

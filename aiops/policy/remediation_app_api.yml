@@ -1,0 +1,4 @@
+# No verified Leafy admin API contract is currently included in this repository.
+# A real, operator-verified contract is required; no endpoint defaults are invented.
+version: 1
+targets: {}

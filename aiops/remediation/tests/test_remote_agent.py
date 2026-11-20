@@ -1,6 +1,7 @@
 """All HTTP is in-process; all Docker objects are FakeDocker. Run with isolated runner."""
 from concurrent.futures import ThreadPoolExecutor
 import copy
+from datetime import datetime, timezone
 import json
 import os
 import tempfile
@@ -25,10 +26,14 @@ KEY = "agent-test-key-" + "1" * 40
 CID = "a" * 64
 IMAGE = "sha256:" + "b" * 64
 TARGET = "leafy-backend"
+IDENTITY = {"site": "gc", "service": "backend", "source": "gc-host",
+            "runtime": "container", "target": TARGET}
+AGENT_ID = "gc-agent"
 
 
 def config():
-    return AgentConfig.model_validate({"controller_id": "pc1", "targets": {TARGET: {
+    return AgentConfig.model_validate({"controller_id": "pc1", "agent_id": AGENT_ID,
+        "site": IDENTITY["site"], "source": IDENTITY["source"], "targets": {TARGET: {
         "container_id": CID, "image_id": IMAGE,
         "labels": {"io.leafy.remediation": "workload", "com.docker.compose.service": "backend",
                    "com.docker.compose.project": "leafy-test"},
@@ -36,11 +41,20 @@ def config():
         "isolate_networks": ["leafy-net"], "preserve_networks": ["mgmt-net"]}}})
 
 
+def target_binding(executor="remote"):
+    return {"identity": dict(IDENTITY), "executor": executor, "agent_id": AGENT_ID,
+            "agent_url": "https://pc2.test.ts.net" if executor == "remote" else "",
+            "container": config().targets[TARGET].model_dump()}
+
+
 def command(action="ISOLATE", rid="r1", **kw):
     reversible = action in ("ISOLATE", "PAUSE", "THROTTLE")
     values = {"remediation_id": rid, "action_type": action, "target": TARGET,
               "authorization": {"decision_id": rid, "approval_id": "approval:" + rid,
                                 "approved_by": "operator", "kind": "manual"},
+              "identity": dict(IDENTITY), "agent_id": AGENT_ID,
+              "approved_target": {k: getattr(config().targets[TARGET], k)
+                                  for k in ("container_id", "image_id", "labels")},
               "expires_at": int(time.time()) + 120,
               "ttl_seconds": 60 if reversible else None,
               "recovery_mode": ("auto" if action == "THROTTLE" else "require_approval") if reversible else "none"}
@@ -479,6 +493,10 @@ class RemoteExecutorTest(unittest.TestCase):
         self.record = store.RemediationRecord("r1", "alert", "ISOLATE", targets=[TARGET],
                                              approved_by="operator", ttl_seconds=60,
                                              recovery_mode="require_approval", executor_name="remote")
+        self.record.identity = dict(IDENTITY)
+        self.record.target_bindings = {TARGET: target_binding()}
+        self.record.approval_expires_at = datetime.fromtimestamp(time.time() + 900, timezone.utc).isoformat()
+        self.record.recovery_approval_expires_at = self.record.approval_expires_at
 
     def test_reply_lost_queries_status_without_reexecuting(self):
         self.timeout_after_post = True
@@ -505,6 +523,23 @@ class RemoteExecutorTest(unittest.TestCase):
         result = self.remote.execute("RESTART", TARGET, {})
         self.assertEqual(result.status, "BLOCKED")
         self.assertEqual(self.requests, [])
+
+    def test_command_ttl_never_extends_stored_approval_or_recovery_deadline(self):
+        deadline = int(time.time()) + 30
+        self.record.approval_expires_at = datetime.fromtimestamp(deadline, timezone.utc).isoformat()
+        self.assertTrue(self.remote.execute_record(self.record, TARGET).ok)
+        self.assertEqual(self.ledger.get("r1", TARGET)["request"]["expires_at"], deadline)
+        recovery_deadline = int(time.time()) + 20
+        self.record.recovery_approval_expires_at = datetime.fromtimestamp(recovery_deadline, timezone.utc).isoformat()
+        self.assertTrue(self.remote.execute_record(self.record, TARGET, "operator", "RECONNECT").ok)
+        self.assertEqual(self.ledger.get("r1", TARGET)["recovery_request"]["expires_at"], recovery_deadline)
+
+    def test_expired_or_missing_stored_approval_never_dispatches(self):
+        for expiry in (None, "invalid", datetime.fromtimestamp(time.time() - 1, timezone.utc).isoformat()):
+            self.record.approval_expires_at = expiry
+            self.assertEqual(self.remote.execute_record(self.record, TARGET).status, "BLOCKED")
+        self.assertEqual(self.requests, [])
+        self.assertEqual(self.fake.calls, [])
 
     def test_no_plaintext_or_public_origin(self):
         for url in ("http://pc2.test.ts.net", "https://example.com", "https://pc2.test.ts.net/path",
@@ -533,7 +568,7 @@ class RemoteExecutorTest(unittest.TestCase):
         self.assertTrue(self.remote.execute_record(self.record, TARGET, "operator", "RECONNECT").ok)
         reconcile(s, self.remote, self.record)
         self.assertEqual(s.get("r1").state, store.RECOVERED)
-        self.assertIsNotNone(s.get("r1").mttr())
+        self.assertIsNone(s.get("r1").mttr())
 
     def test_controller_does_not_recover_remote_record_using_local_docker(self):
         import recovery

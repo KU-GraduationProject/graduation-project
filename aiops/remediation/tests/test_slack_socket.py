@@ -29,7 +29,7 @@ class SettingsTests(unittest.TestCase):
 
     def test_valid_config_uses_ids_and_hides_token_in_repr(self):
         cfg = self.config(SLACK_APP_TOKEN="xapp-fixture", SLACK_TEAM_ID="TTEST",
-                          SLACK_ALLOWED_USER_IDS="UTEST, WOTHER")
+                          SLACK_ALLOWED_USER_IDS="UTEST, WOTHER", SLACK_CHANNEL_ID="CTEST")
         self.assertEqual(cfg.allowed_users, {"UTEST", "WOTHER"})
         self.assertNotIn("xapp-fixture", repr(cfg))
 
@@ -209,7 +209,7 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
 class SocketActionTests(phase2.Phase2Base):
     def setUp(self):
         super().setUp()
-        self.main.slack_settings = SlackSettings(team_id="TTEST", allowed_users=frozenset({"UTEST"}))
+        self.main.slack_settings = SlackSettings(team_id="TTEST", channel_id="CTEST")
         update = patch.object(self.main, "_update_slack_message", new=AsyncMock())
         update.start()
         self.addCleanup(update.stop)
@@ -220,7 +220,7 @@ class SocketActionTests(phase2.Phase2Base):
         return response.json()["remediation_id"]
 
     def payload(self, rid, action_id="approve_action"):
-        return {"type": "block_actions", "team": {"id": "TTEST"}, "user": {"id": "UTEST"},
+        return {"type": "block_actions", "team": {"id": "TTEST"}, "channel": {"id": "CTEST"}, "user": {"id": "UTEST"},
                 "actions": [{"action_id": action_id, "value": json.dumps({
                     "alertname": "UnauthorizedDataTransfer", "action_type": "RESTART",
                     "action_targets": ["leafy-backend"], "remediation_id": rid})}]}
@@ -232,9 +232,9 @@ class SocketActionTests(phase2.Phase2Base):
         self.assertEqual(self.post_slack(phase2.approve_form("RESTART")).status_code, 410)
         self.assertEqual(self.docker_actions(), [])
 
-    def test_workspace_and_user_allowlist_deny_before_execution(self):
+    def test_workspace_and_channel_deny_before_execution(self):
         rid = self.propose()
-        for field, value in (("team", {"id": "TOTHER"}), ("user", {"id": "UOTHER"}),
+        for field, value in (("team", {"id": "TOTHER"}), ("channel", {"id": "COTHER"}),
                              ("user", {"name": "UTEST"}), ("type", "shortcut")):
             payload = self.payload(rid)
             payload[field] = value
@@ -314,7 +314,8 @@ class SocketActionTests(phase2.Phase2Base):
         rid = self.propose()
         self.main.record_store.update(rid, state=self.main.store_mod.RECOVERY_APPROVAL_REQUIRED,
                                       approval_requested_at="2000-01-01T00:00:00Z",
-                                      recovery_approval_requested_at=self.main.store_mod.utcnow())
+                                      recovery_approval_requested_at=self.main.store_mod.utcnow(),
+                                      recovery_approval_expires_at=self.main._expires_at())
         with patch.object(self.main.recovery_mod, "recover", return_value=([], "RECOVERED")) as recover:
             self.assertEqual(self.dispatch(self.payload(rid, "approve_recovery")).status_code, 200)
         recover.assert_called_once()

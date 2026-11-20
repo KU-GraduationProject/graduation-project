@@ -1,4 +1,5 @@
 """Signed Pipeline -> policy -> signed Slack -> RemoteExecutor -> in-memory Agent."""
+import asyncio
 import json
 import os
 import time
@@ -30,6 +31,12 @@ class RemoteControllerTest(unittest.TestCase):
         self.addCleanup(self.http.close)
         self.main = phase2.load_main("disabled", os.path.join(self.tmp.name, "pc1"))
         self.main.executor = RemoteExecutor("https://pc2.test.ts.net", agent_tests.KEY, client=self.http)
+        binding_path = os.path.join(self.tmp.name, "bindings.json")
+        with open(binding_path, "w", encoding="utf-8") as fh:
+            json.dump({"version": 1, "bindings": [agent_tests.target_binding()]}, fh)
+        env = patch.dict(os.environ, {"REMEDIATION_TARGET_BINDINGS_PATH": binding_path})
+        env.start()
+        self.addCleanup(env.stop)
         self.events = []
         async def record(job, event):
             self.events.append(event)
@@ -45,11 +52,13 @@ class RemoteControllerTest(unittest.TestCase):
     post_action = phase2.Phase2Base.post_action
     post_slack = phase2.Phase2Base.post_slack
 
-    def propose_approve(self, action="ISOLATE"):
+    def propose_approve(self, action="ISOLATE", outage_on_approval=False):
         response = self.post_action(phase2.analysis_body(action))
         self.assertEqual(response.json()["status"], "pending_approval")
         rid = response.json()["remediation_id"]
         self.assertEqual(self.fake.calls, [])
+        if outage_on_approval:
+            self.offline = True
         self.post_slack(phase2.approve_form(action, rid))
         return self.main.record_store.get(rid)
 
@@ -75,30 +84,45 @@ class RemoteControllerTest(unittest.TestCase):
         self.client.post("/slack/action", content=phase2.approve_form("ISOLATE"))
         self.factory.assert_not_called()
 
-    def test_unknown_is_not_logged_as_failed_and_can_be_retried(self):
-        self.offline = True
-        record = self.propose_approve()
+    def test_preexecution_outage_blocks_without_mutation(self):
+        record = self.propose_approve(outage_on_approval=True)
+        self.assertEqual(record.state, "BLOCKED")
+        self.assertEqual(self.fake.calls, [])
+
+    def test_unknown_is_not_logged_as_failed_and_is_not_blindly_retried(self):
+        response = self.post_action(phase2.analysis_body("ISOLATE"))
+        rid = response.json()["remediation_id"]
+        # Target inspection still works; execution POST and subsequent ledger
+        # query fail, which is a genuinely uncertain execution outcome.
+        original = self.main.executor.execute
+        def lose_response(*args):
+            self.offline = True
+            return original(*args)
+        with patch.object(self.main.executor, "execute", side_effect=lose_response):
+            self.post_slack(phase2.approve_form("ISOLATE", rid))
+        record = self.main.record_store.get(rid)
         self.assertEqual(record.state, "UNKNOWN")
         self.assertIsNone(record.action_verified_at)
         executions = [e for e in self.events if e.get("event") == "manual_approval_executed"]
         self.assertEqual(executions[0]["status"], "UNKNOWN")
         self.offline = False
-        self.assertEqual(self.sync(record, retry=True).status_code, 200)
-        self.assertEqual(record.state, "RECOVERY_PENDING")
-        self.assertEqual(len(self.fake.calls), 1)
+        self.assertEqual(self.sync(record, retry=True).status_code, 409)
+        self.assertEqual(record.state, "UNKNOWN")
+        self.assertEqual(self.fake.calls, [])
 
     def test_ttl_marks_isolate_for_approval_then_signed_recovery_restores(self):
         record = self.propose_approve()
         import recovery
         processed = recovery.run_due(self.main.record_store, self.main.executor, now=time.time()+10000)
         self.assertEqual(processed[0][2], "RECOVERY_APPROVAL_REQUIRED")
+        asyncio.run(self.main._on_ttl_event(record, [], "RECOVERY_APPROVAL_REQUIRED"))
         self.assertEqual(len(self.fake.calls), 1)
         result = self.post_slack(phase2.approve_form("ISOLATE", record.remediation_id,
                                                   action_id="approve_recovery"), nonce=1)
         self.assertEqual(result.status_code, 200)
         self.assertEqual(record.state, "RECOVERED")
         self.assertEqual(len(self.fake.calls), 2)
-        self.assertIsNotNone(record.mttr())
+        self.assertIsNone(record.mttr())
 
     def test_throttle_policy_candidate_still_requires_manual_approval(self):
         record = self.propose_approve("THROTTLE")
@@ -110,19 +134,20 @@ class RemoteControllerTest(unittest.TestCase):
         response = self.post_action(phase2.analysis_body("ISOLATE"))
         rid = response.json()["remediation_id"]
         self.post_slack(phase2.approve_form("RESTART", rid))
-        self.factory.assert_not_called()
+        self.assertEqual(self.fake.calls, [])
 
-    def test_recovery_timeout_before_delivery_retains_intent_for_retry(self):
+    def test_recovery_timeout_before_delivery_retains_intent_without_blind_retry(self):
         record = self.propose_approve()
+        asyncio.run(self.main._on_ttl_event(record, [], "RECOVERY_APPROVAL_REQUIRED"))
         self.post_offline = True
         self.post_slack(phase2.approve_form("ISOLATE", record.remediation_id,
                                           action_id="approve_recovery"), nonce=1)
         # GET can reach the agent, but original execution success is not recovery success.
         self.assertEqual(record.state, "RECOVERY_UNKNOWN")
         self.post_offline = False
-        self.sync(record, retry=True)
-        self.assertEqual(record.state, "RECOVERED")
-        self.assertEqual(len(self.fake.calls), 2)
+        self.assertEqual(self.sync(record, retry=True).status_code, 409)
+        self.assertEqual(record.state, "RECOVERY_UNKNOWN")
+        self.assertEqual(len(self.fake.calls), 1)
 
     def test_remote_configuration_never_creates_local_docker_client(self):
         with patch.dict(os.environ, {"REMEDIATION_AGENT_URL": "https://pc2.test.ts.net",

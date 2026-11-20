@@ -22,8 +22,9 @@ from store import utcnow
 
 logger = logging.getLogger(__name__)
 
-# 이 조치들은 되돌리기 위해 조치 전 상태가 반드시 필요하다.
-EVIDENCE_REQUIRED_ACTIONS = ("ISOLATE", "PAUSE", "THROTTLE")
+# 재시작은 되돌릴 수 없으므로 사전 상태를 잃기 전에 보존한다. 가역 조치는
+# 이 증거를 복구에도 사용한다. 환경변수·원시 로그는 snapshot 계약에 포함하지 않는다.
+EVIDENCE_REQUIRED_ACTIONS = ("RESTART", "ISOLATE", "PAUSE", "THROTTLE")
 # 격리는 네트워크 IP·alias 까지 있어야 복구 가능하다.
 RESTORABLE_REQUIRED_ACTIONS = ("ISOLATE",)
 

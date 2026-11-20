@@ -1,0 +1,4 @@
+# No trusted targets by default. Follow docs/remote/REMEDIATION_IMPROVEMENTS.md
+# and verify exact PC/Agent/container identity before adding real bindings.
+version: 1
+bindings: []

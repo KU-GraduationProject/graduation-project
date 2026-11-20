@@ -92,8 +92,8 @@ Agent 이미지에는 LLM·Slack notifier·정책 설정/엔진을 넣지 않는
 
 PC 1의 `POST /remote/reconcile`은 기존 Pipeline→Controller HMAC을 요구한다.
 서명 본문 `{"operation":"reconcile_remote","remediation_id":"...","retry":false}`로
-조회 동기화하며, `retry:true`는 **이미 승인되어 저장된 UNKNOWN 레코드만** 현재 정책과
-저장된 승인자를 재확인한 후 동일 ID로 재전송한다. 새 조치를 생성하거나 승인을 생략하지 않는다.
+조회 동기화한다. 개선 작업 #35부터 `retry:true`는 409로 거부하며 UNKNOWN 레코드를
+재전송하지 않는다. 먼저 Agent 영속 기록을 조회하고, 여전히 불확실하면 수동 확인한다.
 GET 404 또한 뒤늦게 도착할 요청의 부재를 증명하지 않으므로 실패로 단정하지 않는다.
 
 ## 4. 인증과 인가

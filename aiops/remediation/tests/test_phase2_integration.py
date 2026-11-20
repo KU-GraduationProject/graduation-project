@@ -26,6 +26,7 @@ import time
 import unittest
 import urllib.parse
 from unittest import mock
+from tests.safety_fixtures import IDENTITY, configure_local_binding, enrich_doc
 
 from fastapi.testclient import TestClient
 
@@ -49,13 +50,13 @@ TARGET = "leafy-backend"
 
 
 def full_doc():
-    return inspect_doc({BUSINESS: {"ip": "10.210.0.7", "aliases": ["backend"]},
-                        MGMT: {"ip": "10.211.0.7"}}, resources={"CpuQuota": 0})
+    return enrich_doc(inspect_doc({BUSINESS: {"ip": "10.210.0.7", "aliases": ["backend"]},
+                        MGMT: {"ip": "10.211.0.7"}}, resources={"CpuQuota": 0}))
 
 
 def load_main(mode="docker", state_dir=None, ttl_scan="0"):
     """TTL 스캐너는 테스트에서 끄고(run_due 를 직접 호출) 상태는 임시 디렉터리에 둔다."""
-    env = {"SLACK_WEBHOOK_URL": "", "SLACK_TRANSPORT": "http", "REMEDIATION_MODE": mode,
+    env = {"SLACK_WEBHOOK_URL": "", "SLACK_TRANSPORT": "http", "SLACK_TEAM_ID": "TTEST", "SLACK_CHANNEL_ID": "CTEST", "REMEDIATION_MODE": mode,
            "SLACK_SIGNING_SECRET": SLACK_SECRET, "REMEDIATION_API_KEY": API_KEY,
            "REMEDIATION_TTL_SCAN_SEC": ttl_scan}
     if state_dir:
@@ -76,8 +77,8 @@ def analysis_body(action_type, threat_level="high", confidence=0.9,
     if llm_risk is not None:
         analysis["action_risk"] = llm_risk
     return json.dumps({
-        "alert": {"labels": {"alertname": "UnauthorizedDataTransfer"},
-                  "startsAt": starts_at},
+        "alert": {"labels": {"alertname": "UnauthorizedDataTransfer", **IDENTITY},
+                  "fingerprint": "fixture-incident", "startsAt": starts_at},
         "analysis": analysis}, ensure_ascii=False).encode("utf-8")
 
 
@@ -89,7 +90,8 @@ def approve_form(action_type, remediation_id=None, targets=(TARGET,),
         value["remediation_id"] = remediation_id
     return "payload=" + urllib.parse.quote(json.dumps({
         "actions": [{"action_id": action_id, "value": json.dumps(value)}],
-        "user": {"name": "tester"}}))
+        "type": "block_actions", "team": {"id": "TTEST"}, "channel": {"id": "CTEST"},
+        "user": {"id": "UTEST", "name": "tester"}}))
 
 
 class Phase2Base(unittest.TestCase):
@@ -97,11 +99,13 @@ class Phase2Base(unittest.TestCase):
     docker_flags = {}
 
     def setUp(self):
+        self.signed_timestamp = int(time.time())
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.main = load_main(self.mode, state_dir=self.tmp.name)
 
         self.doc = full_doc()
+        configure_local_binding(self, self.tmp.name, self.doc)
         self.fake = FakeDocker(self.doc, **self.docker_flags)
         if self.mode == "docker":
             self.main.executor = LocalDockerExecutor(
@@ -129,7 +133,9 @@ class Phase2Base(unittest.TestCase):
     def post_slack(self, form, nonce=0):
         # 같은 바이트의 요청은 리플레이로 막히므로, 중복 승인은 다른 timestamp 로 보낸다
         body = form.encode("utf-8")
-        ts = str(int(time.time()) - nonce)
+        if not hasattr(self, "signed_timestamp"):
+            self.signed_timestamp = int(time.time())
+        ts = str(self.signed_timestamp - nonce)
         return self.client.post("/slack/action", content=body, headers={
             slack_signature.TIMESTAMP_HEADER: ts,
             slack_signature.SIGNATURE_HEADER: signing.sign(SLACK_SECRET, ts, body),
@@ -165,20 +171,19 @@ class IdempotentApprovalTest(Phase2Base):
         first = self.post_slack(approve_form("RESTART", rid), nonce=0)
         second = self.post_slack(approve_form("RESTART", rid), nonce=1)
         third = self.post_slack(approve_form("RESTART", rid), nonce=2)
-        for r in (first, second, third):
-            self.assertEqual(r.status_code, 200)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 409)
+        self.assertEqual(third.status_code, 409)
 
         self.assertEqual(self.docker_actions().count("restart"), 1)
-        self.assertGreaterEqual(len(self.events_named("duplicate_execution_suppressed")), 2)
-        self.assertIn("Not executed", second.json()["results"][0])
+        self.assertEqual(second.json()["error"], "approval_no_longer_pending")
 
-    def test_duplicate_approval_without_id_still_collapses(self):
-        """과거 메시지·주기 스캔 버튼에는 remediation_id 가 없다 — 유도 ID 로 합친다."""
+    def test_legacy_button_requires_fresh_incident_approval(self):
         first = self.post_slack(approve_form("RESTART"), nonce=0)
         second = self.post_slack(approve_form("RESTART"), nonce=1)
-        self.assertEqual(first.status_code, 200)
-        self.assertEqual(second.status_code, 200)
-        self.assertEqual(self.docker_actions().count("restart"), 1)
+        self.assertEqual(first.status_code, 404)
+        self.assertEqual(second.status_code, 404)
+        self.assertEqual(self.docker_actions(), [])
 
     def test_idempotency_survives_restart(self):
         resp = self.post_action(analysis_body("RESTART"))
@@ -204,10 +209,11 @@ class IdempotentApprovalTest(Phase2Base):
             "Content-Type": "application/x-www-form-urlencoded"})
         self.assertEqual(self.docker_actions().count("restart"), 1)
 
-    def test_different_targets_are_different_remediations(self):
-        self.post_slack(approve_form("RESTART", targets=("leafy-backend",)), nonce=0)
-        self.post_slack(approve_form("RESTART", targets=("leafy-db",)), nonce=1)
-        self.assertEqual(self.docker_actions().count("restart"), 2)
+    def test_different_incident_start_creates_another_record(self):
+        first = self.post_action(analysis_body("RESTART"))
+        second = self.post_action(analysis_body("RESTART", starts_at="2026-10-29T01:00:00Z"))
+        self.assertNotEqual(first.json()["remediation_id"], second.json()["remediation_id"])
+        self.assertEqual(self.docker_actions(), [])
 
 
 class IsolateFlowTest(Phase2Base):
@@ -249,6 +255,8 @@ class IsolateFlowTest(Phase2Base):
         recovery_mod.run_due(self.main.record_store, self.main.executor,
                              now=time.time() + 10_000)
 
+        self.main.record_store.update(rid, recovery_approval_requested_at=store_mod.utcnow(),
+            recovery_approval_expires_at=self.main._expires_at())
         recovered = self.post_slack(
             approve_form("ISOLATE", rid, action_id="approve_recovery"), nonce=3)
         self.assertEqual(recovered.status_code, 200)
@@ -261,7 +269,7 @@ class IsolateFlowTest(Phase2Base):
 
         record = self.record(rid)
         self.assertEqual(record.state, store_mod.RECOVERED)
-        self.assertIsNotNone(record.timings()["mttr_sec"])
+        self.assertIsNone(record.timings()["mttr_sec"])
         self.assertIsNotNone(record.timings()["time_to_contain_sec"])
 
     def test_recovery_for_unknown_id_is_rejected(self):
@@ -273,17 +281,12 @@ class IsolateFlowTest(Phase2Base):
 class EvidenceGateEndpointTest(Phase2Base):
     docker_flags = {"missing_container": True}
 
-    def test_isolate_blocked_when_evidence_cannot_be_collected(self):
+    def test_isolate_blocked_before_approval_when_target_snapshot_unavailable(self):
         resp = self.post_action(analysis_body("ISOLATE"))
-        rid = resp.json()["remediation_id"]
-        approve = self.post_slack(approve_form("ISOLATE", rid))
-        self.assertEqual(approve.status_code, 200)
-        self.assertIn("Not executed", approve.json()["results"][0])
-        self.assertEqual(self.docker_actions().count("disconnect"), 0)
-        blocked = self.events_named("evidence_gate_blocked")
-        self.assertEqual(len(blocked), 1)
-        self.assertIn("snapshot_failed", blocked[0]["reason"])
-        self.assertEqual(self.record(rid).state, store_mod.BLOCKED)
+        self.assertEqual(resp.json()["status"], "blocked")
+        self.assertEqual(resp.json()["reason"], "target_snapshot_unavailable")
+        self.assertEqual(self.docker_actions(), [])
+        self.assertEqual(self.record(resp.json()["remediation_id"]).state, store_mod.BLOCKED)
 
 
 class FailureIsNotSuccessTest(Phase2Base):
@@ -330,7 +333,7 @@ class ThrottleAutoExecuteTest(Phase2Base):
                                          now=time.time() + 10_000)
         self.assertEqual(processed[0][2], store_mod.RECOVERED)
         self.assertEqual(self.main.executor.snapshot(TARGET)["resources"]["cpu_quota"], 0)
-        self.assertIsNotNone(self.record(rid).timings()["mttr_sec"])
+        self.assertIsNone(self.record(rid).timings()["mttr_sec"])
 
     def test_throttle_below_threshold_is_not_executed(self):
         resp = self.post_action(analysis_body("THROTTLE", threat_level="medium",
@@ -342,18 +345,20 @@ class ThrottleAutoExecuteTest(Phase2Base):
 class PolicyBypassTest(Phase2Base):
     def test_unsupported_action_cannot_be_approved(self):
         resp = self.post_slack(approve_form("SCALE"))
-        self.assertIn("blocked by policy", resp.json()["results"][0])
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.json()["error"], "stored_remediation_required")
         self.assertEqual(self.docker_actions(), [])
 
     def test_undefined_action_cannot_be_approved(self):
         resp = self.post_slack(approve_form("WIPE_DISK"))
-        self.assertIn("blocked by policy", resp.json()["results"][0])
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.json()["error"], "stored_remediation_required")
         self.assertEqual(self.docker_actions(), [])
 
     def test_high_risk_action_is_never_auto_executed(self):
-        for action in ("RESTART", "PAUSE", "ISOLATE"):
+        for i, action in enumerate(("RESTART", "PAUSE", "ISOLATE")):
             resp = self.post_action(analysis_body(action, threat_level="critical",
-                                                  confidence=1.0, llm_risk="low"))
+                starts_at=f"2026-10-29T00:0{i}:00Z", confidence=1.0, llm_risk="low"))
             self.assertEqual(resp.json()["status"], "pending_approval", action)
         self.assertEqual(self.docker_actions(), [])
 
@@ -401,6 +406,8 @@ class AuditTimingTest(Phase2Base):
         self.post_slack(approve_form("ISOLATE", rid))
         recovery_mod.run_due(self.main.record_store, self.main.executor,
                              now=time.time() + 10_000)
+        self.main.record_store.update(rid, recovery_approval_requested_at=store_mod.utcnow(),
+            recovery_approval_expires_at=self.main._expires_at())
         self.post_slack(approve_form("ISOLATE", rid, action_id="approve_recovery"),
                         nonce=4)
 
@@ -409,7 +416,7 @@ class AuditTimingTest(Phase2Base):
                     "action_started_at", "action_verified_at",
                     "recovery_started_at", "recovery_verified_at"):
             self.assertIsNotNone(t[key], key)
-        self.assertGreaterEqual(t["mttr_sec"], t["time_to_contain_sec"])
+        self.assertIsNone(t["mttr_sec"])  # Container restoration is not service health proof.
 
     def test_audit_events_use_existing_job_label(self):
         resp = self.post_action(analysis_body("ISOLATE"))

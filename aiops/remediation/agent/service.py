@@ -4,6 +4,8 @@ import hashlib
 import logging
 import os
 import time
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from agent.contract import Authorization, Command
 from agent.ledger import Conflict
@@ -51,11 +53,102 @@ class PinnedDockerExecutor(LocalDockerExecutor):
 
 
 class AgentService:
-    def __init__(self, config, ledger, mode="disabled", client_factory=None):
+    def __init__(self, config, ledger, mode="disabled", client_factory=None, deployment_executor=None):
         if mode not in ("disabled", "live"):
             raise ValueError("AGENT_MODE must be disabled or live")
         self.config, self.ledger, self.mode = config, ledger, mode
         self.client_factory = client_factory or self._docker
+        self._deployment_executor = deployment_executor
+
+    def deployment(self):
+        if self._deployment_executor is None:
+            from executor.deployment import DeploymentExecutor
+            path = os.getenv("AGENT_DEPLOYMENT_CONFIG_PATH")
+            if not path:
+                raise Denied("agent_deployment_not_configured")
+            self._deployment_executor = DeploymentExecutor(config_path=path)
+        return self._deployment_executor
+
+    def authorize_deployment(self, request):
+        from executor.identity import normalized_identity
+        identity = normalized_identity(request.identity.model_dump())
+        rule = self.config.targets.get(request.target)
+        if (rule is None or request.target not in ("leafy-backend", "leafy-frontend")
+                or request.action_type not in rule.actions
+                or request.agent_id != self.config.agent_id
+                or self.config.agent_id == "unconfigured"
+                or identity["site"] != self.config.site or identity["source"] != self.config.source
+                or identity["target"] != request.target
+                or identity["service"] != rule.labels.get("com.docker.compose.service")
+                or request.expected_target.model_dump() != {k: getattr(rule, k) for k in ("container_id", "image_id", "labels")}
+                or rule.labels.get("io.leafy.remediation") != "workload"):
+            raise Denied("remote_deployment_identity_or_allowlist_mismatch")
+        return rule
+
+    def plan_deployment(self, request):
+        rule = self.authorize_deployment(request)
+        if self.mode != "live":
+            raise Denied("agent_deployment_disabled")
+        plan = self.deployment().plan_record(request.identity.model_dump(), [request.target],
+                                             request.action_type, request.parameters)[request.target]
+        if (plan["pre_snapshot"]["container_id"] != rule.container_id
+                or plan["pre_snapshot"]["image_id"] != rule.image_id
+                or plan["operator_config"]["labels"] != rule.labels):
+            raise Denied("agent_deployment_config_differs_from_allowlist")
+        return {"agent_id": self.config.agent_id, "identity": request.identity.model_dump(),
+                "target": request.target, "plan": plan}
+
+    def execute_deployment(self, command):
+        from executor.deployment import valid_plan_digest, deadline
+        self.authorize_deployment(command)
+        now = time.time()
+        if (command.authorization.kind != "manual"
+                or command.authorization.decision_id != command.remediation_id
+                or command.authorization.approval_id != hashlib.sha256(("execute:" + command.remediation_id).encode()).hexdigest()
+                or command.authorization.approved_by != command.approval.approved_by
+                or command.expires_at <= now or command.expires_at > now + 300
+                or not valid_plan_digest(command.plan)
+                or command.plan["identity"] != command.identity.model_dump()
+                or command.plan["target"] != command.target
+                or command.plan["action_type"] != command.action_type
+                or command.plan["parameters"] != command.parameters):
+            raise Denied("remote_deployment_approval_or_plan_invalid")
+        approval = command.approval.model_dump()
+        # An outbound transport TTL can shorten, never extend, the human approval.
+        approval["approval_expires_at"] = datetime.fromtimestamp(
+            min(command.expires_at, deadline(approval["approval_expires_at"])), timezone.utc).isoformat()
+        local_record = SimpleNamespace(
+            remediation_id=command.remediation_id, action_type=command.action_type,
+            identity=command.identity.model_dump(), targets=[command.target],
+            action_parameters=command.parameters, target_bindings={command.target: command.plan},
+            evidence={"targets": {command.target: command.plan}}, state="EXECUTING", requires_approval=True,
+            executor_name="deployment", ttl_seconds=None, recovery_mode="none", **approval)
+        native = self.deployment()
+        native._check(local_record)  # Timestamp ordering and canonical action hash, no IO.
+        record, claimed = self.ledger.claim(command)
+        if not claimed:
+            return record
+        try:
+            if self.mode != "live":
+                result = skipped(command.action_type, command.target, "AGENT_MODE=disabled")
+            else:
+                reason = native.validate_record(local_record)
+                if reason:
+                    raise Denied(reason)
+                record["evidence"] = command.plan
+                self.ledger.save(record)  # Full immutable plan durable before any deployment mutation.
+                result = native.execute_record(local_record, command.target, command.approval.approved_by)
+        except (Denied, ValueError) as exc:
+            result = blocked(command.action_type, command.target, "agent_deployment_preflight_rejected")
+        except Exception:
+            result = ExecutionResult(command.action_type, command.target, "UNKNOWN",
+                                     detail="agent_deployment_result_unconfirmed_no_retry")
+        record.update(execution=result.as_dict(), state=result.status,
+                      verified_at=time.time() if result.ok else None)
+        if result.ok:
+            record["observation"] = "awaiting_new_container_binding"
+        self.ledger.save(record, release=result.ok or result.status in ("BLOCKED", "SKIPPED"))
+        return record
 
     @staticmethod
     def _docker():
@@ -73,6 +166,19 @@ class AgentService:
                 or rule.labels.get("com.docker.compose.service") not in ("backend", "frontend", "minio")
                 or rule.labels.get("com.docker.compose.service", "").lower() in PROTECTED):
             raise Denied("target_not_allowed")
+        identity = command.identity
+        expected = command.approved_target
+        unknown = {"", "unknown", "none", "n/a", "stdout", "stderr"}
+        if (not self.config.site or not self.config.source or self.config.agent_id == "unconfigured"
+                or any(value != value.strip() or value.lower() in unknown
+                       for value in identity.model_dump().values())
+                or command.agent_id != self.config.agent_id
+                or identity.site != self.config.site or identity.source != self.config.source
+                or identity.runtime != "container" or identity.target != command.target
+                or identity.service != rule.labels.get("com.docker.compose.service")
+                or expected.container_id != rule.container_id or expected.image_id != rule.image_id
+                or expected.labels != rule.labels):
+            raise Denied("approved_identity_mismatch_reapproval_required")
         if command.action_type not in rule.actions:
             raise Denied("action_not_allowed")
         if not recovery and command.action_type in RECOVERY_ACTION and RECOVERY_ACTION[command.action_type] not in rule.actions:
@@ -99,6 +205,30 @@ class AgentService:
             if command.action_type == "THROTTLE" and command.ttl_seconds > 1800:
                 raise Denied("throttle_ttl_too_long")
         return rule
+
+    def target_snapshot(self, target):
+        """Authenticated, read-only preapproval check, independent of Controller labels."""
+        rule = self.config.targets.get(target)
+        if (rule is None or target.lower() in PROTECTED or target.startswith("aiops-")
+                or not self.config.site or not self.config.source
+                or self.config.agent_id == "unconfigured"
+                or rule.labels.get("io.leafy.remediation") != "workload"
+                or rule.labels.get("com.docker.compose.service") not in ("backend", "frontend", "minio")):
+            raise Denied("target_not_allowed")
+        document = {"target": target, "available": False,
+                    "agent_id": self.config.agent_id,
+                    "identity": {"site": self.config.site, "source": self.config.source,
+                                 "runtime": "container", "target": target,
+                                 "service": rule.labels["com.docker.compose.service"]}}
+        if self.mode != "live":
+            return document
+        executor = self.executor(target, rule)
+        try:
+            return {**executor.snapshot(rule.container_id), **document, "available": True}
+        finally:
+            close = getattr(executor.client, "close", None)
+            if close:
+                close()
 
     def executor(self, target, rule):
         return PinnedDockerExecutor(target, rule, self.client_factory())
@@ -144,6 +274,7 @@ class AgentService:
                 self.ledger.save(record)  # Durable evidence and deadline BEFORE mutation.
                 if command.expires_at <= time.time():
                     raise Denied("request_expired_before_mutation")
+                executor.approval_deadline = command.expires_at
                 may_have_mutated = True
                 result = executor.execute(command.action_type, rule.container_id, snapshot)
                 result = replace(result, target=command.target)
@@ -171,6 +302,9 @@ class AgentService:
         original = self.ledger.get(command.remediation_id, command.target)
         if original is None or RECOVERY_ACTION.get(original["request"]["action_type"]) != command.action_type:
             raise Conflict("recovery_action_does_not_match_original")
+        if any(original["request"].get(k) != command.model_dump().get(k)
+               for k in ("identity", "agent_id", "approved_target")):
+            raise Denied("recovery_approval_does_not_match_original_target")
         if automatic and original["request"]["action_type"] != "THROTTLE":
             raise Denied("automatic_reconnect_or_unpause_forbidden")
         if self.mode != "live":
@@ -188,6 +322,7 @@ class AgentService:
             executor = self.executor(command.target, rule)
             if command.expires_at <= time.time():
                 raise Denied("recovery_request_expired_before_mutation")
+            executor.approval_deadline = command.expires_at
             result = executor.execute(command.action_type, rule.container_id, evidence)
             result = replace(result, target=command.target)
         except (Denied, ExecutorError) as exc:
@@ -230,6 +365,9 @@ class AgentService:
                 continue
             command = Command(remediation_id=record["remediation_id"], target=record["target"],
                               action_type="UNTHROTTLE", expires_at=int(time.time()) + 60,
+                              identity=record["request"]["identity"],
+                              agent_id=record["request"]["agent_id"],
+                              approved_target=record["request"]["approved_target"],
                               authorization=Authorization(kind="policy", approved_by="agent-ttl",
                                   decision_id=record["remediation_id"],
                                   approval_id=hashlib.sha256(("ttl:" + record["remediation_id"]).encode()).hexdigest()))

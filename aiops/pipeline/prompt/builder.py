@@ -34,18 +34,29 @@ SYSTEM_PROMPT = """You are an AIOps engineer. Analyze Docker container anomaly d
 SCHEMA (all fields required):
 {
   "root_cause": "<2 sentences>",
-  "action_type": "<RESTART|ISOLATE|PAUSE|THROTTLE|NOTIFY|NONE>",
+  "action_type": "<RESTART|ISOLATE|PAUSE|THROTTLE|KILL_SESSIONS|ROLLBACK|RECREATE|LOCK_ACCOUNT|REVOKE_SESSION|DISABLE_FEATURE|NOTIFY|NONE>",
   "action_targets": ["<container name from ALERT>"],
   "action_description": "<one sentence>",
   "threat_level": "<low|medium|high|critical>",
   "evidence": ["<metric observation>", ...],
-  "confidence": <0.0-1.0>
+  "confidence": <0.0-1.0>,
+  "action_parameters": {},
+  "remediation_steps": []
 }
 
 RULES:
 - action_type: RESTART=CPU spike/memory leak (service down), ISOLATE=active network attack/data exfil, PAUSE=container compromise requiring forensic preservation, THROTTLE=transient CPU/memory pressure with service still alive, NOTIFY=ambiguous/needs human review, NONE=false positive or already recovered
 - action_targets: MUST match Container field in ALERT. Always an array.
 - evidence: 3-5 numeric values from metrics.
+- action_parameters: never include commands, SQL, URLs, credentials, image names or policy settings.
+  KILL_SESSIONS requires operation=terminate_idle_sessions|cancel_long_queries (optional min_age_seconds/max_sessions).
+  LOCK_ACCOUNT requires an explicitly observed account_id and duration_seconds (1..86400).
+  REVOKE_SESSION requires an explicitly observed account_id. DISABLE_FEATURE requires an explicitly observed feature_id.
+  ROLLBACK accepts only an optional operator-known version. RECREATE and Docker actions use {}.
+  Missing identity or required resource facts means NOTIFY; never invent an account, feature, version or target.
+- remediation_steps: optional ordered list of at most three actions with action_type/action_targets/action_parameters.
+  The first step must match the top-level action. All steps concern the same observed target and require separate manual approval.
+  Never recommend UNLOCK_ACCOUNT or ENABLE_FEATURE; restoration requires a previously verified action and a new human request.
 
 EXAMPLES (few-shot):
 
