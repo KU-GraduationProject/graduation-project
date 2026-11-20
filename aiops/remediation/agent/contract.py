@@ -16,27 +16,71 @@ class Authorization(StrictModel):
     approved_by: str = Field(min_length=1, max_length=128)
 
 
+class ObservationIdentity(StrictModel):
+    site: str = Field(min_length=1, max_length=128)
+    service: str = Field(min_length=1, max_length=128)
+    source: str = Field(min_length=1, max_length=128)
+    runtime: Literal["container", "host"]
+    target: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
+
+class ApprovedTarget(StrictModel):
+    container_id: str = Field(pattern=r"^[a-f0-9]{64}$")
+    image_id: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    labels: dict[str, str] = Field(min_length=1)
+
+
 class Command(StrictModel):
     remediation_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,128}$")
     action_type: Literal["RESTART", "PAUSE", "ISOLATE", "THROTTLE",
                          "UNPAUSE", "RECONNECT", "UNTHROTTLE"]
     target: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
     authorization: Authorization
+    identity: ObservationIdentity
+    agent_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    approved_target: ApprovedTarget
     expires_at: int
     ttl_seconds: int | None = Field(default=None, ge=1, le=86400)
     recovery_mode: Literal["none", "auto", "require_approval"] = "none"
 
 
-class Target(StrictModel):
-    container_id: str = Field(pattern=r"^[a-f0-9]{64}$")
-    image_id: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
-    labels: dict[str, str] = Field(min_length=1)
+class Target(ApprovedTarget):
     actions: list[Literal["RESTART", "PAUSE", "ISOLATE", "THROTTLE",
-                          "UNPAUSE", "RECONNECT", "UNTHROTTLE"]]
+                          "UNPAUSE", "RECONNECT", "UNTHROTTLE", "RECREATE", "ROLLBACK"]]
     isolate_networks: list[str] = Field(default_factory=list)
     preserve_networks: list[str] = Field(default_factory=list)
 
 
 class AgentConfig(StrictModel):
     controller_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    agent_id: str = Field(default="unconfigured", pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    site: str = ""
+    source: str = ""
     targets: dict[str, Target] = Field(default_factory=dict)
+
+
+class DeploymentPlanRequest(StrictModel):
+    action_type: Literal["RECREATE", "ROLLBACK"]
+    target: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+    identity: ObservationIdentity
+    agent_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    expected_target: ApprovedTarget
+    parameters: dict = Field(default_factory=dict)
+
+
+class DeploymentApproval(StrictModel):
+    incident_key: str = Field(pattern=r"^[a-f0-9]{64}$")
+    action_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    approval_requested_at: str
+    approval_expires_at: str
+    approved_at: str
+    action_started_at: str
+    approved_by: str = Field(min_length=1, max_length=128)
+
+
+class DeploymentCommand(DeploymentPlanRequest):
+    remediation_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,128}$")
+    authorization: Authorization
+    approval: DeploymentApproval
+    plan: dict
+    expires_at: int

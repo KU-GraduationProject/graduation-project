@@ -1,0 +1,3 @@
+# Empty by default: command success does not establish service recovery or MTTR.
+version: 1
+profiles: []

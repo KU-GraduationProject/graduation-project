@@ -15,6 +15,8 @@ def reconcile(store, executor, record):
             doc = executor.status(record.remediation_id, target)
             if doc is None:
                 return record  # Not found is not proof an in-flight request won't arrive.
+            if record.action_type in ("RECREATE", "ROLLBACK"):
+                executor.verify_deployment_status(doc, record, target)
             documents.append(doc)
             results.append(executor.result_from_status(doc, record.action_type, target, record.remediation_id))
             if doc.get("recovery_state"):

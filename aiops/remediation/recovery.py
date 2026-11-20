@@ -22,7 +22,9 @@ from datetime import datetime, timedelta, timezone
 
 import evidence as evidence_mod
 import store as store_mod
-from executor.base import RECOVERY_ACTION, SUCCESS
+from executor.base import RECOVERY_ACTION, SUCCESS, ExecutionResult
+from executor.identity import validate_bindings
+from executor.router import route_action
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +95,17 @@ def recover(store, executor, record, approved_by: str | None = None,
                     record.action_type, record.targets)
         return [], store_mod.RECOVERY_APPROVAL_REQUIRED
 
+    allowed, reason = route_action(recovery_action, record.identity.get("runtime"), executor)
+    if allowed:
+        reason = validate_bindings(record, executor)
+        allowed = reason is None
+    if not allowed:
+        return [], record.state
+    if force and not store_mod.approval_valid(record, recovery=True):
+        return [], record.state
+    if force and not store.update(record.remediation_id, recovery_approved_by=approved_by):
+        return [], record.state
+
     if not store.claim_recovery(record.remediation_id, approved=force):
         return [], record.state
     store.update(record.remediation_id, state=store_mod.RECOVERING,
@@ -102,11 +115,21 @@ def recover(store, executor, record, approved_by: str | None = None,
 
     results = []
     for target in record.targets:
-        target_evidence = evidence_mod.for_target(record.evidence, target)
-        if executor.name == "remote":
-            results.append(executor.execute_record(record, target, approved_by, recovery_action))
-        else:
-            results.append(executor.execute(recovery_action, target, target_evidence))
+        if not store.writable or (force and not store_mod.approval_valid(record, recovery=True)):
+            return results, record.state
+        target_evidence = dict(evidence_mod.for_target(record.evidence, target))
+        target_evidence["target_binding"] = record.target_bindings.get(target)
+        if force:
+            target_evidence["approval_expires_at"] = record.recovery_approval_expires_at
+        try:
+            if executor.name == "remote":
+                result = executor.execute_record(record, target, approved_by, recovery_action)
+            else:
+                result = executor.execute(recovery_action, target, target_evidence)
+        except Exception as exc:
+            result = ExecutionResult(recovery_action, target, store_mod.UNKNOWN,
+                                     detail="recovery_result_unconfirmed:" + type(exc).__name__)
+        results.append(result)
 
     if any(r.status == "UNKNOWN" for r in results):
         store.update(record.remediation_id, state=store_mod.RECOVERY_UNKNOWN,
@@ -120,9 +143,11 @@ def recover(store, executor, record, approved_by: str | None = None,
             timestamps = [r.after.get("remote", {}).get("recovery_verified_at") for r in results]
             if all(timestamps):
                 verified_at = executor.iso(max(timestamps))
-        store.update(record.remediation_id, state=store_mod.RECOVERED,
-                     recovery_verified_at=verified_at,
-                     recovery_results=[r.as_dict() for r in results])
+        saved = store.update(record.remediation_id, state=store_mod.RECOVERED,
+                             recovery_verified_at=verified_at,
+                             recovery_results=[r.as_dict() for r in results])
+        if saved is None or not store.writable:
+            return results, store_mod.RECOVERY_UNKNOWN
         return results, store_mod.RECOVERED
 
     # 확인되지 않은 복구는 성공으로 기록하지 않는다. recovery_verified_at 을
@@ -138,13 +163,22 @@ def run_due(store, executor, now: float | None = None) -> list:
     auto 는 복구하고, require_approval 은 승인 요청 상태로만 바꾼다.
     """
     processed = []
-    if executor.name == "remote":
-        from executor.remote_sync import reconcile
-        for record in store.all():
-            if record.executor_name == "remote" and record.state not in (store_mod.RECOVERED, store_mod.SKIPPED, store_mod.BLOCKED):
-                reconcile(store, executor, record)
+    from executor.remote_sync import reconcile
+    for record in store.all():
+        selected = executor.for_record(record) if hasattr(executor, "for_record") else executor
+        if (selected.name == "remote" and record.executor_name == "remote"
+                and record.state not in (store_mod.RECOVERED, store_mod.SKIPPED, store_mod.BLOCKED)):
+            reconcile(store, selected, record)
+    # Agent reconciliation and restart reconciliation can move a record to this
+    # state before due_recoveries() sees it. The scanner must still issue the
+    # first durable recovery-approval window; never renew an expired old one.
+    for record in store.all():
+        if (record.state == store_mod.RECOVERY_APPROVAL_REQUIRED
+                and not record.recovery_approval_requested_at):
+            processed.append((record, [], store_mod.RECOVERY_APPROVAL_REQUIRED))
     for record in store.due_recoveries(now=now):
-        results, state = recover(store, executor, record)
+        selected = executor.for_record(record) if hasattr(executor, "for_record") else executor
+        results, state = recover(store, selected, record)
         processed.append((record, results, state))
     return processed
 
@@ -176,6 +210,13 @@ class TtlScanner:
                         await self.on_event(record, results, state)
             except Exception as exc:   # 루프가 죽으면 복구가 영구히 멈춘다
                 logger.error("[Recovery] TTL 스캔 실패 (계속): %s", exc)
+            try:
+                import service_verification
+                for record in await asyncio.to_thread(service_verification.run_due, self.store):
+                    if record.service_verification.get("state") == "RECOVERED" and self.on_event:
+                        await self.on_event(record, [], "SERVICE_RECOVERED")
+            except Exception as exc:
+                logger.error("[Recovery] 서비스 확인 실패 (계속): %s", type(exc).__name__)
             await asyncio.sleep(self.interval_sec)
 
 

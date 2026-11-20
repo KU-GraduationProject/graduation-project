@@ -1,5 +1,8 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Any, Literal
+from schemas.actions import ActionType, RECOMMENDED_ACTIONS
+from schemas.remediation_plan import sanitize_llm_recommendation
+import math
 # ── 파일 상단 import 바로 아래에 추가 ──
 _KNOWN_CONTAINERS = [
     "leafy-backend", "leafy-frontend", "leafy-db", "leafy-minio",
@@ -30,9 +33,9 @@ class LLMAnalysisResult(BaseModel):
     )
     
     # ★ action을 구조화 필드로 분리
-    action_type: Literal["RESTART", "ISOLATE", "SCALE", "PAUSE", "THROTTLE", "NOTIFY", "NONE"] = Field(
+    action_type: ActionType = Field(
         default="NONE",
-        description="Action type for automated remediation"
+        description="Recommended action; Controller policy independently verifies execution support"
     )
     action_targets: list[str] = Field(
         default=[],
@@ -46,6 +49,10 @@ class LLMAnalysisResult(BaseModel):
     threat_level: Literal["low", "medium", "high", "critical"] = Field(default="medium")
     evidence: list[str] = Field(default=[])
     confidence: float = Field(default=0.0)
+    action_parameters: dict[str, Any] = Field(default_factory=dict)
+    remediation_steps: list[dict[str, Any]] = Field(default_factory=list)
+    analysis_status: Literal["valid", "invalid"] = "invalid"
+    analysis_errors: list[str] = Field(default_factory=list)
 
     # ─── Validators ────────────────────────────────
     # ★ 이거 추가 (맨 위 validator로)
@@ -54,6 +61,7 @@ class LLMAnalysisResult(BaseModel):
     def handle_legacy_action(cls, values: Any) -> Any:
         if not isinstance(values, dict):
             return values
+        values = sanitize_llm_recommendation(values)
         if not values.get("action_type") and values.get("action"):
             action_text = str(values["action"]).lower()
             if "restart" in action_text:
@@ -83,7 +91,7 @@ class LLMAnalysisResult(BaseModel):
         if v is None:
             return "NONE"
         s = str(v).upper().strip()
-        return s if s in ("RESTART", "ISOLATE", "SCALE", "PAUSE", "THROTTLE", "NOTIFY", "NONE") else "NONE"
+        return s if s in RECOMMENDED_ACTIONS else "NONE"
     
     @field_validator("action_targets", mode="before")
     @classmethod
@@ -118,7 +126,8 @@ class LLMAnalysisResult(BaseModel):
         if v is None:
             return 0.0
         try:
-            return max(0.0, min(1.0, float(v)))
+            value = float(v)
+            return max(0.0, min(1.0, value)) if math.isfinite(value) else 0.0
         except (TypeError, ValueError):
             return 0.0
 

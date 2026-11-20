@@ -16,6 +16,8 @@ Mock 으로 검증한다.
 from __future__ import annotations
 
 import logging
+import time
+from datetime import datetime
 
 from executor.base import (
     ISOLATE,
@@ -38,6 +40,10 @@ logger = logging.getLogger(__name__)
 # THROTTLE 기본값: cpu_period 100ms 중 50ms -> 코어 0.5개
 DEFAULT_CPU_PERIOD = 100_000
 DEFAULT_CPU_QUOTA = 50_000
+
+
+class ApprovalExpired(ExecutorError):
+    pass
 
 
 # ────────────────────────────────────────────────────────────────────────────── #
@@ -199,6 +205,8 @@ class LocalDockerExecutor(Executor):
         self.preserve_networks = tuple(preserve_networks)
         self.cpu_quota = cpu_quota
         self.cpu_period = cpu_period
+        self.approval_deadline = None
+        self._mutation_started = False
 
     @staticmethod
     def _connect():
@@ -234,12 +242,14 @@ class LocalDockerExecutor(Executor):
 
     # ── 증거 수집 ─────────────────────────────────────────────────────────────
     def snapshot(self, target: str) -> dict:
-        inspect = self._inspect(target)
+        inspect = self._reload_inspect(target)
         return {
             "target": target,
             "container_id": inspect.get("Id"),
             "container_name": (inspect.get("Name") or "").lstrip("/"),
             "image": (inspect.get("Config") or {}).get("Image"),
+            "image_id": inspect.get("Image"),
+            "labels": dict((inspect.get("Config") or {}).get("Labels") or {}),
             "state": parse_state(inspect),
             "networks": parse_networks(inspect),
             "resources": parse_resources(inspect),
@@ -247,8 +257,36 @@ class LocalDockerExecutor(Executor):
             "available": True,
         }
 
+    def _before_mutation(self):
+        # A slow inspect must not turn a valid dispatch into an expired approval
+        # at the actual Docker boundary. Recheck for each network operation too.
+        if self.approval_deadline is not None and time.time() >= self.approval_deadline:
+            raise ApprovalExpired("approval_expired_before_mutation")
+        self._mutation_started = True
+
+    def _mutation_container(self, target):
+        container = self._container(target)
+        self._before_mutation()
+        return container
+
     # ── 조치 ──────────────────────────────────────────────────────────────────
     def execute(self, action: str, target: str, evidence: dict) -> ExecutionResult:
+        if (evidence or {}).get("target_binding"):
+            from dataclasses import replace
+            binding = evidence["target_binding"]
+            if (binding.get("identity", {}).get("target") != target
+                    or binding.get("executor") != self.name
+                    or action not in binding.get("container", {}).get("actions", [])):
+                return blocked(action, target, "approved_target_binding_mismatch")
+            try:
+                pinned = BoundDockerExecutor(self, binding, evidence.get("approval_expires_at"))
+                pinned._container(target)  # Revalidate before entering a mutating handler.
+            except ApprovalExpired:
+                return blocked(action, target, "approval_expired_before_mutation")
+            except ExecutorError:
+                return blocked(action, target, "target_replaced_or_identity_changed_reapproval_required")
+            clean = {k: v for k, v in evidence.items() if k != "target_binding"}
+            return replace(pinned.execute(action, binding["container"]["container_id"], clean), target=target)
         handler = {
             RESTART: self._restart,
             PAUSE: self._pause,
@@ -262,16 +300,22 @@ class LocalDockerExecutor(Executor):
             return blocked(action, target, f"no_executor_for_action:{action}")
         try:
             return handler(target, evidence or {})
+        except ApprovalExpired:
+            if self._mutation_started:
+                return ExecutionResult(action, target, "UNKNOWN", detail="approval_expired_during_partial_mutation")
+            return blocked(action, target, "approval_expired_before_mutation")
         except ExecutorError as exc:
+            if self._mutation_started:
+                return ExecutionResult(action, target, "UNKNOWN", detail="mutation_verification_unavailable")
             return failed(action, target, str(exc))
         except Exception as exc:   # Docker API 오류 등
-            logger.error("[Executor] %s %s 실패: %s", action, target, exc)
-            return failed(action, target, f"{type(exc).__name__}: {exc}")
+            logger.error("[Executor] %s %s result uncertain (%s)", action, target, type(exc).__name__)
+            return ExecutionResult(action, target, "UNKNOWN", detail="mutation_result_uncertain_manual_reconciliation_required")
 
     # RESTART — 비가역. 사후 상태만 확인한다.
     def _restart(self, target: str, evidence: dict) -> ExecutionResult:
         before = evidence.get("state") or parse_state(self._inspect(target))
-        self._container(target).restart()
+        self._mutation_container(target).restart()
         after = parse_state(self._reload_inspect(target))
         if not after.get("running"):
             return failed(RESTART, target, f"not_running_after_restart:{after.get('status')}",
@@ -289,7 +333,7 @@ class LocalDockerExecutor(Executor):
             return succeeded(PAUSE, target, "already_paused", before=before, after=before)
         if not before.get("running"):
             return blocked(PAUSE, target, f"not_running:{before.get('status')}", before=before)
-        self._container(target).pause()
+        self._mutation_container(target).pause()
         after = parse_state(self._reload_inspect(target))
         if not after.get("paused"):
             return failed(PAUSE, target, f"not_paused_after_call:{after.get('status')}",
@@ -301,7 +345,7 @@ class LocalDockerExecutor(Executor):
         if not before.get("paused"):
             return succeeded(UNPAUSE, target, "not_paused_nothing_to_do",
                              before=before, after=before)
-        self._container(target).unpause()
+        self._mutation_container(target).unpause()
         after = parse_state(self._reload_inspect(target))
         if after.get("paused"):
             return failed(UNPAUSE, target, "still_paused", before=before, after=after)
@@ -324,12 +368,16 @@ class LocalDockerExecutor(Executor):
         # Validate every network before changing any of them.
         resolved = {}
         for name in targets:
-            net = self.client.networks.get(name)
+            try:
+                net = self.client.networks.get(name)
+            except Exception:
+                raise ExecutorError("network_not_found_before_mutation") from None
             if getattr(net, "id", None) != networks[name].get("network_id"):
                 return blocked(ISOLATE, target, f"network_identity_changed:{name}")
             resolved[name] = net
         for name in targets:
             net = resolved[name]
+            self._before_mutation()
             net.disconnect(target)
             disconnected.append(name)
 
@@ -352,7 +400,10 @@ class LocalDockerExecutor(Executor):
         todo = {n: cfg for n, cfg in expected.items() if n not in current}
         resolved = {}
         for name, cfg in todo.items():
-            net = self.client.networks.get(name)
+            try:
+                net = self.client.networks.get(name)
+            except Exception:
+                raise ExecutorError("network_not_found_before_mutation") from None
             if not cfg.get("network_id") or getattr(net, "id", None) != cfg["network_id"]:
                 return blocked(RECONNECT, target, f"network_identity_changed:{name}")
             resolved[name] = net
@@ -361,6 +412,7 @@ class LocalDockerExecutor(Executor):
             if not ip:
                 return blocked(RECONNECT, target, f"evidence_missing_ip:{name}")
             net = resolved[name]
+            self._before_mutation()
             net.connect(target, ipv4_address=ip, aliases=list(cfg.get("aliases") or ()))
 
         after = parse_networks(self._reload_inspect(target))
@@ -373,7 +425,7 @@ class LocalDockerExecutor(Executor):
 
     def _throttle(self, target: str, evidence: dict) -> ExecutionResult:
         before = evidence.get("resources") or parse_resources(self._inspect(target))
-        self._container(target).update(cpu_quota=self.cpu_quota, cpu_period=self.cpu_period)
+        self._mutation_container(target).update(cpu_quota=self.cpu_quota, cpu_period=self.cpu_period)
         after = parse_resources(self._reload_inspect(target))
         if after.get("cpu_quota") != self.cpu_quota or after.get("cpu_period") != self.cpu_period:
             return failed(THROTTLE, target,
@@ -395,7 +447,7 @@ class LocalDockerExecutor(Executor):
         if original_period is None:
             return blocked(UNTHROTTLE, target, "evidence_missing_cpu_period")
         before = parse_resources(self._inspect(target))
-        self._container(target).update(cpu_quota=original_quota, cpu_period=original_period)
+        self._mutation_container(target).update(cpu_quota=original_quota, cpu_period=original_period)
         after = parse_resources(self._reload_inspect(target))
         if (after.get("cpu_quota") != original_quota
                 or after.get("cpu_period") != original_period):
@@ -404,3 +456,42 @@ class LocalDockerExecutor(Executor):
                           before=before, after=after)
         return succeeded(UNTHROTTLE, target, f"cpu_quota restored to {original_quota}",
                          before=before, after=after)
+
+
+class BoundDockerExecutor(LocalDockerExecutor):
+    """A per-call immutable-ID adapter; never mutate a name-resolved replacement."""
+    def __init__(self, source, binding, approval_expires_at=None):
+        self.binding = binding
+        super().__init__(client=source.client, isolate_networks=source.isolate_networks,
+                         preserve_networks=source.preserve_networks,
+                         cpu_quota=source.cpu_quota, cpu_period=source.cpu_period)
+        if approval_expires_at is not None:
+            try:
+                self.approval_deadline = datetime.fromisoformat(
+                    str(approval_expires_at).replace("Z", "+00:00")).timestamp()
+            except (TypeError, ValueError):
+                raise ApprovalExpired("invalid_approval_deadline") from None
+
+    def _container(self, target):
+        rule = self.binding["container"]
+        name = self.binding["identity"]["target"]
+        if target not in (name, rule["container_id"]):
+            raise ExecutorError("target_identity_mismatch")
+        try:
+            obj = self.client.containers.get(rule["container_id"])
+            obj.reload()
+            doc = obj.attrs or {}
+        except Exception:
+            raise ExecutorError("approved_container_unavailable") from None
+        labels = (doc.get("Config") or {}).get("Labels") or {}
+        host = doc.get("HostConfig") or {}
+        if (doc.get("Id") != rule["container_id"] or (doc.get("Name") or "").lstrip("/") != name
+                or doc.get("Image") != rule["image_id"]
+                or any(labels.get(k) != v for k, v in rule["labels"].items())
+                or labels.get("io.leafy.remediation") != "workload"
+                or host.get("Privileged") or host.get("NetworkMode") == "host"
+                or host.get("PidMode") == "host"
+                or any("docker.sock" in str(m) or "docker_engine" in str(m)
+                       for m in doc.get("Mounts", []))):
+            raise ExecutorError("runtime_identity_or_privilege_mismatch")
+        return obj

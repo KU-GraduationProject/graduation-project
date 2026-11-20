@@ -63,7 +63,9 @@ class PolicyFileTest(unittest.TestCase):
     def test_risk_table_matches_confirmed_design(self):
         e = engine()
         expected = {"NONE": "low", "NOTIFY": "low", "THROTTLE": "medium",
-                    "RESTART": "high", "PAUSE": "high", "ISOLATE": "high"}
+                    "RESTART": "high", "PAUSE": "high", "ISOLATE": "high",
+                    "KILL_SESSIONS": "medium", "ROLLBACK": "high", "RECREATE": "high",
+                    "LOCK_ACCOUNT": "medium", "REVOKE_SESSION": "high", "DISABLE_FEATURE": "medium", "UNLOCK_ACCOUNT": "high", "ENABLE_FEATURE": "high"}
         self.assertEqual({k: v.action_risk for k, v in e.config.actions.items()}, expected)
 
     def test_throttle_confirmed_parameters(self):

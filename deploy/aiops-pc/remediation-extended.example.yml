@@ -1,0 +1,8 @@
+# Explicit operator opt-in after real resource/API contracts and acceptance tests.
+# DB/API TCP access needs no Docker socket. Deployment calls require this service
+# to run at the verified Docker host with its local Unix socket explicitly mounted.
+services:
+  remediation:
+    environment:
+      REMEDIATION_MODE: extended
+      REMEDIATION_EXTENDED_DOCKER_MODE: ${REMEDIATION_EXTENDED_DOCKER_MODE:-disabled}
