@@ -8,10 +8,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import math
 import re
-from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from schemas.actions import ACTION_TYPES, NO_TARGET_ACTIONS
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from schemas.actions import ACCOUNT_TARGET_PREFIX, ACTION_TYPES, NO_TARGET_ACTIONS
 
 # LLM 이 고를 수 있는 조치 중 시스템을 바꾸는 것. 수동 승인 제안으로만 보낸다.
 FORWARD_ACTIONS = frozenset(ACTION_TYPES) - frozenset(NO_TARGET_ACTIONS)
@@ -33,37 +32,13 @@ class NoParameters(StrictParameters):
     pass
 
 
-class SessionsParameters(StrictParameters):
-    operation: Literal["terminate_idle_sessions", "cancel_long_queries"]
-    min_age_seconds: int | None = Field(default=None, ge=1, le=86400)
-    max_sessions: int | None = Field(default=None, ge=1, le=20)
-
-
-class RollbackParameters(StrictParameters):
-    version: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
-
-
-class ReasonParameters(StrictParameters):
-    reason: str | None = Field(default=None, min_length=1, max_length=256)
-
-    @field_validator("reason")
-    @classmethod
-    def no_controls(cls, value):
-        if value is not None and any(ord(c) < 32 or ord(c) == 127 for c in value):
-            raise ValueError("control_character")
-        return value
-
-
-class AccountParameters(ReasonParameters):
+class AccountParameters(StrictParameters):
     account_id: str = Field(pattern=RESOURCE)
 
 
-class LockParameters(AccountParameters):
-    duration_seconds: int = Field(ge=1, le=86400)
-
-
-PARAMETERS = {"KILL_SESSIONS": SessionsParameters, "ROLLBACK": RollbackParameters,
-              "LOCK_ACCOUNT": LockParameters}
+# Pipeline 이 보내는 값은 대상 자원 식별자뿐이다. 잠금 시간·세션 정리 방식 같은 실행 세부값은
+# Controller 정책(remediation_policy.yml execution_parameters)이 채운다.
+PARAMETERS = {"LOCK_ACCOUNT": AccountParameters}
 
 
 def typed_parameters(action, parameters):
@@ -125,7 +100,7 @@ def build_proposal(alert, result, identity, identity_status, min_confidence=0.8)
     """Return one manually approved wire proposal for the observed target.
 
     LLM 은 무엇을(action_type)·어디에(action_targets)만 정한다. 실행 세부값(잠금 시간, 세션
-    정리 방식 등)과 다단계 계획은 LLM 출력에 없다 — 세부값이 필요한 조치는 아직 제안하지 않는다.
+    정리 방식 등)은 Controller 정책이 채우고, 다단계 계획은 LLM 출력에 없다.
     """
     if not math.isfinite(min_confidence) or not .8 <= min_confidence <= 1:
         raise PlanError("invalid_proposal_confidence_setting")
@@ -142,15 +117,25 @@ def build_proposal(alert, result, identity, identity_status, min_confidence=0.8)
         raise PlanError("low_confidence")
     if not step["evidence"]:
         raise PlanError("analysis_evidence_required")
-    if step["action_targets"] != [canonical["target"]]:
-        raise PlanError("action_targets_do_not_match_observation")
+    targets = step["action_targets"]
+    accounts = [t[len(ACCOUNT_TARGET_PREFIX):] for t in targets if t.startswith(ACCOUNT_TARGET_PREFIX)]
+    if action == "LOCK_ACCOUNT":
+        # 계정 대상은 관측 대상(서비스)과 별개다. 잠금은 관측된 서비스의 앱 API 로 보낸다.
+        if len(targets) != 1 or len(accounts) != 1:
+            raise PlanError("account_target_required")
+        parameters = typed_parameters(action, {"account_id": accounts[0]})
+    else:
+        if accounts:
+            raise PlanError("account_target_not_allowed")
+        if targets != [canonical["target"]]:
+            raise PlanError("action_targets_do_not_match_observation")
+        parameters = typed_parameters(action, {})
     if action in CONTAINER_ACTIONS and canonical["runtime"] != "container":
         raise PlanError("unsupported_action_runtime")
     if action == "KILL_SESSIONS" and (canonical["runtime"] not in {"host", "container"} or canonical["service"] != "db"):
         raise PlanError("postgres_identity_required")
-    parameters = typed_parameters(action, {})
     analysis = {k: step[k] for k in REQUIRED_FIELDS}
-    analysis.update(action_parameters=parameters, analysis_status="valid",
+    analysis.update(action_targets=[canonical["target"]], action_parameters=parameters, analysis_status="valid",
                     action_description="manual review required")
     wire = {"version": 1, "action_type": action, "targets": [canonical["target"]],
             "parameters": parameters, "identity": canonical, "incident": incident}

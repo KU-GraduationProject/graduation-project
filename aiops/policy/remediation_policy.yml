@@ -145,6 +145,8 @@ actions:
     notify: approval_request
     evidence_required: [validated_session_selection, cluster_identity]
     operations: [terminate_idle_sessions, cancel_long_queries]
+    execution_parameters:          # 노션: LLM 이 아니라 정책이 실행 방식을 정한다
+      operation: terminate_idle_sessions
 
   ROLLBACK:
     action_risk: high
@@ -178,6 +180,8 @@ actions:
     recovery_mode: none
     notify: approval_request
     evidence_required: [verified_admin_contract, account_identity, bounded_lock_expiry]
+    execution_parameters:          # 시간 제한 잠금. 만료되면 앱이 해제한다 (노션: TTL 만료 시 자동 해제)
+      duration_seconds: 1800
 
   REVOKE_SESSION:
     action_risk: high

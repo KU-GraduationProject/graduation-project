@@ -505,6 +505,11 @@ async def _propose_action(request, previous=None, link_kind=None, steps=None,
         parameters = analysis.get("action_parameters", analysis.get("parameters", {}))
         if not isinstance(parameters, dict):
             raise ValueError("invalid_action_parameters")
+        # 실행 세부값은 정책이 정한다 (노션). 요청이 정책 소유 값을 보내면 덮어쓰지 않고 거부한다.
+        policy_parameters = policy_engine.execution_parameters(decision.action_type)
+        if set(parameters) & set(policy_parameters):
+            raise ValueError("policy_owned_action_parameter")
+        parameters = {**parameters, **policy_parameters}
         _extension_parameters(decision.action_type, parameters)
         digest = store_mod.action_hash(decision.action_type, list(decision.targets),
                                        decision.ttl_seconds, decision.recovery_mode,

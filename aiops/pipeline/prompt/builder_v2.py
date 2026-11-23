@@ -25,7 +25,8 @@ from datetime import datetime, timezone
 from correlation import to_instant
 from prompt.log_line import is_priority, pattern_key, render_compact
 from prompt.network_section import build_network_section_v2
-from schemas.actions import ACTION_TARGETS, ACTION_TYPES, INCIDENT_CLASSES, NO_TARGET_ACTIONS, THREAT_LEVELS
+from schemas.actions import (ACCOUNT_TARGET_PREFIX, ACTION_TARGETS, ACTION_TYPES, INCIDENT_CLASSES,
+                             NO_TARGET_ACTIONS, THREAT_LEVELS)
 
 # 섹션별 토큰 예산 (num_ctx 4096 - num_predict 400 = 3696 안에 system 포함)
 SECTION_BUDGETS = {"alert": 300, "metrics": 350, "logs": 1300, "network": 500}
@@ -41,7 +42,7 @@ FIELDS (all required):
 - root_cause: at most 2 sentences (max 400 characters): the cause and why the chosen action fits.
 - incident_class: one of {" | ".join(INCIDENT_CLASSES)}. benign = normal activity or a false positive.
 - action_type: one of {" | ".join(ACTION_TYPES)}.
-- action_targets: container names from {", ".join(ACTION_TARGETS)}. Must be [] when action_type is {" or ".join(NO_TARGET_ACTIONS)}.
+- action_targets: target names from {", ".join(ACTION_TARGETS)}. For LOCK_ACCOUNT use ["{ACCOUNT_TARGET_PREFIX}<account id seen in the input>"] instead. Must be [] when action_type is {" or ".join(NO_TARGET_ACTIONS)}.
 - threat_level: one of {" | ".join(THREAT_LEVELS)}.
 - evidence: the IDs (1 to 5) of the input items you relied on, e.g. ["A1","L2"]. Only IDs that appear in the input.
 - confidence: number from 0.0 to 1.0.
@@ -63,7 +64,8 @@ Input marked "truncated", "omitted" or "value lookup failed" is incomplete: say 
 
 # 관측 대상이 호스트(예: 호스트 PostgreSQL)일 때. Docker 조치 대상이 아니다.
 HOST_NOTE = ("\n\nThe alert target is a host, not a Docker container: action_targets must be [] and "
-             "action_type must be NONE or NOTIFY. Missing evidence is unknown, never healthy.")
+             "action_type must be NONE or NOTIFY, except KILL_SESSIONS with action_targets [\"leafy-db\"] "
+             "when the database connection pool is exhausted. Missing evidence is unknown, never healthy.")
 
 
 def est_tokens(text: str) -> int:

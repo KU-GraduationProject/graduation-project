@@ -65,6 +65,8 @@ class ActionPolicy:
     executor_blocked_reason: str | None = None
     recovery_mode: str = RECOVERY_NONE
     operations: tuple = ()
+    # 정책이 정하는 실행 세부값 ((이름, 값) 쌍). LLM·요청이 아니라 운영자가 고정한다.
+    execution_parameters: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -155,6 +157,19 @@ def _as_tuple(value, where: str) -> tuple:
     return tuple(str(v) for v in value)
 
 
+def _execution_parameters(value, operations: tuple, where: str) -> tuple:
+    if value is None:
+        return ()
+    if not isinstance(value, dict) or not value:
+        raise PolicyError(f"{where}: 비어 있지 않은 매핑이어야 한다")
+    for key, item in value.items():
+        if not isinstance(key, str) or isinstance(item, bool) or not isinstance(item, (int, str)):
+            raise PolicyError(f"{where}.{key}: 정수나 문자열이어야 한다")
+    if "operation" in value and value["operation"] not in operations:
+        raise PolicyError(f"{where}.operation: operations {list(operations)} 중 하나여야 한다")
+    return tuple(sorted(value.items()))
+
+
 def parse_action_policy(action_type: str, raw) -> ActionPolicy:
     if not isinstance(raw, dict):
         raise PolicyError(f"actions.{action_type}: 매핑이어야 한다")
@@ -213,6 +228,7 @@ def parse_action_policy(action_type: str, raw) -> ActionPolicy:
         raise PolicyError(f"actions.{action_type}: recovery_mode 가 {recovery_mode} 면 "
                           f"ttl_seconds 가 필요하다")
 
+    operations = _as_tuple(raw.get("operations"), f"actions.{action_type}.operations")
     return ActionPolicy(
         action_type=action_type,
         action_risk=risk,
@@ -235,7 +251,9 @@ def parse_action_policy(action_type: str, raw) -> ActionPolicy:
         executor_blocked_reason=(str(raw["executor_blocked_reason"])
                                  if raw.get("executor_blocked_reason") else None),
         recovery_mode=recovery_mode,
-        operations=_as_tuple(raw.get("operations"), f"actions.{action_type}.operations"),
+        operations=operations,
+        execution_parameters=_execution_parameters(
+            raw.get("execution_parameters"), operations, f"actions.{action_type}.execution_parameters"),
     )
 
 

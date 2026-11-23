@@ -20,17 +20,18 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Literal
+from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from schemas.actions import ACTION_TARGETS, ACTION_TYPES, INCIDENT_CLASSES, NO_TARGET_ACTIONS, THREAT_LEVELS
+from schemas.actions import (ACCOUNT_TARGET_PATTERN, ACTION_TARGETS, ACTION_TYPES, INCIDENT_CLASSES,
+                             NO_TARGET_ACTIONS, THREAT_LEVELS)
 
 ROOT_CAUSE_MAX = 400
 MAX_EVIDENCE = 5
 
 ActionType = Literal[ACTION_TYPES]
-ActionTarget = Literal[ACTION_TARGETS]
+ActionTarget = Union[Literal[ACTION_TARGETS], Annotated[str, Field(pattern=ACCOUNT_TARGET_PATTERN)]]
 IncidentClass = Literal[INCIDENT_CLASSES]
 ThreatLevel = Literal[THREAT_LEVELS]
 
@@ -84,7 +85,9 @@ def output_schema(evidence_ids: list[str] | None = None) -> dict:
             "root_cause": {"type": "string", "maxLength": ROOT_CAUSE_MAX},
             "incident_class": {"type": "string", "enum": list(INCIDENT_CLASSES)},
             "action_type": {"type": "string", "enum": list(ACTION_TYPES)},
-            "action_targets": {"type": "array", "items": {"type": "string", "enum": list(ACTION_TARGETS)}},
+            "action_targets": {"type": "array", "items": {"anyOf": [
+                {"type": "string", "enum": list(ACTION_TARGETS)},
+                {"type": "string", "pattern": ACCOUNT_TARGET_PATTERN}]}},
             "threat_level": {"type": "string", "enum": list(THREAT_LEVELS)},
             "evidence": {"type": "array", "items": evidence_item, "maxItems": MAX_EVIDENCE},
             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
@@ -99,7 +102,7 @@ def _reason(err: dict) -> str:
     kind = err.get("type", "")
     if kind == "missing":
         return f"missing_field:{field}"
-    if kind in ("literal_error", "enum"):
+    if kind in ("literal_error", "enum", "string_pattern_mismatch"):
         return f"invalid_enum:{field}"
     return f"invalid_type:{field}"
 
