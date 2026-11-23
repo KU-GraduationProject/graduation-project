@@ -57,6 +57,7 @@ Agent 이미지에는 LLM·Slack notifier·정책 설정/엔진을 넣지 않는
 | `POST /v1/executions` | HMAC 필수 | 승인 요청 검증 → 선점 → 증거 저장 → 실행·검증 |
 | `GET /v1/executions/{remediation_id}/{target}` | HMAC 필수 | 원 실행과 복구 상태·증거·시각 반환; Docker 호출 없음 |
 | `POST /v1/recoveries` | HMAC 필수 | 기존 레코드/증거로만 UNPAUSE·RECONNECT·UNTHROTTLE |
+| `GET /v1/targets/{target}/capture` | HMAC 필수 | (#51) live 모드·허용 목록의 고정 컨테이너만 읽기 전용 증거 수집: 로그 마지막 500줄(256KB)·`docker top`(200개), 비밀값 마스킹. exec·변경 없음 |
 
 요청 예시(설명용이며 실행하지 않음):
 

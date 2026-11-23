@@ -7,7 +7,7 @@
 
 | 우선순위 | 조치 | 위험도 | 비용 | 기존 기능과의 관계 / 필요한 구현 |
 |---|---|---|---|---|
-| 1 | CAPTURE | low | 중 | Docker 변경 전 상태 스냅샷은 있음. 독립적인 제한된 로그·프로세스·연결 수집, 마스킹·보관 한도 없음 |
+| 1 | CAPTURE | low | 중 | (#51 구현) PAUSE·ISOLATE·RECREATE·ROLLBACK 정책 선행 단계로 로그·프로세스·Loki 네트워크 이벤트를 크기 제한·마스킹해 state `captures/`에 0600 저장(기본 14일). LLM 이 고르는 조치로는 여전히 차단 |
 | 1 | RECORD_INCIDENT | low | 소 | JSON 감사 레코드·Loki 기록 있음. GitHub 사건 생성·중복 키·민감정보 제거·실패 복구 없음 |
 | 1 | SILENCE_ALERT | high | 중 | Pipeline 분석 중복 제거와 다름. Alertmanager 범위·만료·해제 검증 없음 |
 | 2 | BACKUP_DB | medium | 중 | 배포 전 기존 백업 파일 해시/목록 검사는 있음. 직접 백업 생성·복원 가능성 검증 없음 |

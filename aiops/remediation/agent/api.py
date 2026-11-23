@@ -163,6 +163,16 @@ def create_app(service=None, secret=None):
             raise HTTPException(404, "unknown_remediation_id")
         return record
 
+    @app.get("/v1/targets/{target}/capture")
+    async def target_capture(target: str, request: Request):
+        await authenticated_body(request)
+        try:
+            return await run_in_threadpool(service.target_capture, target)
+        except Denied as exc:
+            raise HTTPException(403, str(exc)) from None
+        except Exception:
+            raise HTTPException(409, "target_capture_unavailable") from None
+
     @app.get("/v1/targets/{target}")
     async def target_snapshot(target: str, request: Request):
         await authenticated_body(request)

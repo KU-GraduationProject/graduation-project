@@ -79,6 +79,14 @@ class FakeContainer:
     def reload(self):
         self.fake.reloads += 1
 
+    # 증거 보존(CAPTURE)용 읽기 전용 조회. 조치 호출 수(calls)에는 넣지 않는다.
+    def logs(self, **kw):
+        self.fake.captures = getattr(self.fake, "captures", 0) + 1
+        return b"2026-11-11T01:00:00Z fixture log line\n"
+
+    def top(self):
+        return {"Titles": ["PID", "CMD"], "Processes": [["1", "java -jar app.jar"]]}
+
     def restart(self):
         self.fake.calls.append("restart")
         if self.fake.restart_effect is not None:

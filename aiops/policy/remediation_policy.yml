@@ -118,6 +118,7 @@ actions:
     recovery_mode: require_approval  # 포렌식 동결 — TTL 만으로 자동 해제하지 않는다
     notify: approval_request
     description: 포렌식 보존용 프로세스 동결 — 승인 필수
+    prerequisite_steps: [capture]   # 노션: 파괴적 조치 앞 증거 보존 (로그·프로세스·네트워크)
 
   ISOLATE:
     action_risk: high
@@ -132,6 +133,7 @@ actions:
     recovery_mode: require_approval  # TTL 만료 자동 재연결 금지 — 공격 재개 위험
     notify: approval_request
     description: 네트워크 분리 — 연결 정보(IP·alias) 보존이 실행 전제조건
+    prerequisite_steps: [capture]   # 노션: 파괴적 조치 앞 증거 보존 (로그·프로세스·네트워크)
 
 # Actual extension executors require explicit REMEDIATION_MODE=extended and operator config.
   KILL_SESSIONS:
@@ -160,6 +162,7 @@ actions:
     recovery_mode: none
     notify: approval_request
     evidence_required: [immutable_deployment_plan, verified_backup, schema_compatibility]
+    prerequisite_steps: [capture]   # 노션: 파괴적 조치 앞 증거 보존 (로그·프로세스·네트워크)
 
   RECREATE:
     action_risk: high
@@ -171,6 +174,7 @@ actions:
     recovery_mode: none
     notify: approval_request
     evidence_required: [immutable_deployment_plan, original_config]
+    prerequisite_steps: [capture]   # 노션: 파괴적 조치 앞 증거 보존 (로그·프로세스·네트워크)
 
   LOCK_ACCOUNT:
     action_risk: medium

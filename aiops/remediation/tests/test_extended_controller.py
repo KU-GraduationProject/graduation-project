@@ -26,6 +26,9 @@ class FamilyFixture:
                 "action_type": action_type, "parameters": parameters, "plan_digest": "fixture-plan",
                 "sessions": [{"pid": 123, "backend_start": "2026-11-11T00:00:00Z"}]}}
 
+    def capture_record(self, record, target):
+        return {"log_lines": [], "processes": []}
+
     def validate_record(self, record):
         return "resource_changed_reapproval_required" if self.changed else None
 

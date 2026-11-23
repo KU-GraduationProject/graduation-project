@@ -31,6 +31,13 @@ class Container:
     def reload(self):
         pass
 
+    # 증거 보존(CAPTURE)용 읽기 전용 조회. 변경 호출 기록(calls)에는 넣지 않는다.
+    def logs(self, **kw):
+        return b"fixture deployment log\n"
+
+    def top(self):
+        return {"Titles": ["PID", "CMD"], "Processes": [["1", "app"]]}
+
     def update(self, **kw):
         self.fake.calls.append(("update", self.id))
         self.attrs["HostConfig"]["RestartPolicy"] = kw["restart_policy"]

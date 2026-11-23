@@ -37,7 +37,9 @@ class RemoteDeploymentFlowTests(unittest.TestCase):
                 "container_id":fixture.OLD, "image_id":fixture.CURRENT, "labels":labels,
                 "actions":["RECREATE", "ROLLBACK"]}}})
         self.ledger = Ledger(os.path.join(self.fixture.tmp.name, "agent.sqlite3"))
-        self.service = AgentService(self.agent_config, self.ledger, mode="live", deployment_executor=self.fixture.executor)
+        # 증거 보존(CAPTURE) 읽기 전용 조회도 같은 FakeDocker 를 쓴다.
+        self.service = AgentService(self.agent_config, self.ledger, mode="live", deployment_executor=self.fixture.executor,
+                                    client_factory=lambda: self.fixture.fake)
         self.agent = TestClient(create_app(self.service, KEY))
         self.addCleanup(self.agent.close)
         path = Path(self.fixture.tmp.name) / "bindings.json"
