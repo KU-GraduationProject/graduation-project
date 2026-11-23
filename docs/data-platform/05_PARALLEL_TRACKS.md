@@ -66,7 +66,7 @@ deploy/dataplatform/             Track D (MinIO 정책·Airflow env 예시, 비�
 | `aiops/dataplatform/bronze/**`, `tests/bronze/**` | **A** | 금지 |
 | `aiops/dataplatform/silver/**`, `tests/silver/**` | **B** | 금지 |
 | `aiops/dataplatform/gold/**`, `lineage/**`, `tests/gold/**`, `tests/lineage/**` | **C** | 금지 |
-| `aiops/dataplatform/orchestration/**`, `airflow/**`, `tests/orchestration/**`, `tests/e2e/**`, `docker-compose.dataplatform.yml`, `deploy/dataplatform/**` | **D** | 금지 |
+| `aiops/dataplatform/orchestration/**`, `airflow/**`, `tests/test_orchestration.py`, `tests/e2e/**`, `docker-compose.dataplatform.yml`, `deploy/dataplatform/**` | **D** | 금지 |
 
 ### 3.1 공유 기존 파일 — 동시 수정 금지
 
@@ -153,7 +153,7 @@ validate(store: ObjectStore, manifests: list[ManifestRef]) -> ValidationReport
 | 항목 | 내용 |
 |---|---|
 | 책임 | DAG, task 래퍼, 설정 주입, pool·동시성, `dp_validate`, 통합 E2E, 데이터 플랫폼 Compose(신규), CI/공유 파일 PR |
-| DAG | `dp_incident_build`(conf=IncidentRequest 또는 discovery) · `dp_incident_discover`(Silver `rca_result`에서 새 사건 찾기, 기본 off) · `dp_reprocess`(수동, 범위·사건 지정) · `dp_validate`(일 1회: manifest 무결성, orphan, DQ 규칙, 리니지 커버리지) |
+| DAG | **Phase별 DAG 4개를 Asset으로 연결**(#38): `dp_bronze_acquire`(conf=IncidentRequest, 수동/외부 trigger) → `dp_bronze` → `dp_silver_transform` → `dp_silver` → `dp_gold_build` → `dp_gold` → `dp_validate`(manifest·포인터·lineage 검사, orphan 경고). Phase마다 DAG를 나눠 Track A~C가 자기 Phase의 진입점만 교체하고, 한 Phase만 다시 실행하면 하위 Phase가 Asset으로 이어진다. `dp_incident_discover`·`dp_reprocess`·일 1회 `dp_validate` 스케줄은 후속 |
 | 입력 | 각 Track 진입점, 설정(엔드포인트·버킷·binding 경로·지연값) |
 | 출력 | `lineage.run`, 검증 보고서, Airflow 실행 기록 |
 | 의존 | STEP 0.5 시그니처. A~C 구현 전에는 **stub 진입점**(fixture manifest를 그대로 commit)으로 DAG 구조를 개발 |
