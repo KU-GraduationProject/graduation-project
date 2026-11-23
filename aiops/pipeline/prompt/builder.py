@@ -34,7 +34,7 @@ SYSTEM_PROMPT = """You are an AIOps engineer. Analyze Docker container anomaly d
 SCHEMA (all fields required):
 {
   "root_cause": "<2 sentences>",
-  "action_type": "<RESTART|ISOLATE|PAUSE|THROTTLE|NOTIFY|NONE>",
+  "action_type": "<RESTART|ISOLATE|PAUSE|THROTTLE|KILL_SESSIONS|LOCK_ACCOUNT|RECREATE|ROLLBACK|NOTIFY|NONE>",
   "action_targets": ["<container name from ALERT>"],
   "action_description": "<one sentence>",
   "threat_level": "<low|medium|high|critical>",
@@ -46,6 +46,8 @@ RULES:
 - action_type: RESTART=CPU spike/memory leak (service down), ISOLATE=active network attack/data exfil, PAUSE=container compromise requiring forensic preservation, THROTTLE=transient CPU/memory pressure with service still alive, NOTIFY=ambiguous/needs human review, NONE=false positive or already recovered
 - action_targets: MUST match Container field in ALERT. Always an array.
 - evidence: 3-5 numeric values from metrics.
+- KILL_SESSIONS=database connection pool exhausted by idle sessions or long queries, LOCK_ACCOUNT=credential attack on one application account, RECREATE=container must be replaced from its approved image, ROLLBACK=failure began right after a deployment or configuration change.
+- Recommend only what and where. Never include commands, SQL, URLs, credentials, durations or multi-step plans; the policy engine decides how to execute.
 
 EXAMPLES (few-shot):
 

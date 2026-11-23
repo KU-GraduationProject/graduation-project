@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from actions.notify import Notifier  # noqa: E402
 from policy.engine import PolicyEngine  # noqa: E402
 from policy.schema import AUTO_EXECUTE_CANDIDATE, AWAITING_APPROVAL, NOTIFY  # noqa: E402
-from tests.test_policy_integration import PolicyEndpointBase  # noqa: E402
+from tests.test_policy_integration import IDENTITY, PolicyEndpointBase  # noqa: E402
 
 POLICY = os.path.join(os.path.dirname(__file__), "..", "..", "policy", "remediation_policy.yml")
 
@@ -43,7 +43,10 @@ INVALID = {
 
 
 def body(analysis):
-    return json.dumps({"alert": {"labels": {"alertname": "UnauthorizedDataTransfer"}},
+    # Controller 는 사건 identity(5개 필드)·fingerprint·startsAt 가 있어야 조치 레코드를 만든다.
+    return json.dumps({"alert": {"labels": {"alertname": "UnauthorizedDataTransfer", **IDENTITY},
+                                 "fingerprint": "fixture-llm-output-contract",
+                                 "startsAt": "2026-11-11T01:00:00Z"},
                        "analysis": analysis}, ensure_ascii=False).encode("utf-8")
 
 
@@ -83,7 +86,7 @@ class EndpointContractTest(PolicyEndpointBase):
 
 
 class SlackContractTest(unittest.TestCase):
-    def _payload(self, method, analysis):
+    def _payload(self, method, analysis, *args):
         sent = {}
 
         async def fake_send(alert_name, payload):
@@ -92,11 +95,12 @@ class SlackContractTest(unittest.TestCase):
 
         n = Notifier()
         with mock.patch.object(n, "_send_slack", side_effect=fake_send):
-            asyncio.run(getattr(n, method)({"labels": {"alertname": "X"}}, analysis))
+            asyncio.run(getattr(n, method)({"labels": {"alertname": "X"}}, analysis, *args))
         return json.dumps(sent["payload"], ensure_ascii=False)
 
     def test_approval_message_without_action_description(self):
-        text = self._payload("send_approval_request", VALID)
+        # 승인 버튼은 저장된 레코드 ID 가 있을 때만 붙는다 (없으면 ALERT ONLY 로 내려간다).
+        text = self._payload("send_approval_request", VALID, "fixture-record-id")
         self.assertNotIn("N/A", text.split("*Action*")[1][:40])
         self.assertIn("ISOLATE → leafy-backend", text)
         self.assertIn("A1", text)

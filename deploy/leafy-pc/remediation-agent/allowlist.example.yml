@@ -1,5 +1,8 @@
 # Copy to allowlist.yml. Empty means deny all. Do not commit runtime IDs or secrets.
 controller_id: pc1
+agent_id: gc-agent
+site: gc
+source: gc-backend
 targets: {}
 
 # Phase 4 example (replace full immutable IDs from local Docker inspect):

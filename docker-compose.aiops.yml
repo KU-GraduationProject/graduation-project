@@ -154,8 +154,11 @@ services:
       OLLAMA_URL: http://ollama:11434
       ALERTMANAGER_URL: http://alertmanager:9093
       REMEDIATION_URL: http://remediation:8001
+      REMEDIATION_NOTIFICATION_ENABLED: ${REMEDIATION_NOTIFICATION_ENABLED:-false}
+      REMEDIATION_APPROVAL_ENABLED: ${REMEDIATION_APPROVAL_ENABLED:-false}
+      REMEDIATION_PROPOSAL_MIN_CONFIDENCE: ${REMEDIATION_PROPOSAL_MIN_CONFIDENCE:-0.8}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
-      # Remediation /action 서명 공유키 (remediation 과 같은 값). 미설정이면 전달 생략.
+      # Remediation /notify 및 /action 서명 공유키 (remediation 과 같은 값). 미설정이면 전달 생략.
       REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
       # alert annotation의 대상 이름 -> canonical service. Leafy가 다른 PC에 있어 로컬 Docker로 해석할 수 없다.
       # db는 Windows 호스트 PostgreSQL 17 (runtime=host). Loki의 {service="db", runtime="host"}와 같은 identity
@@ -177,18 +180,37 @@ services:
   remediation:
     build: ./aiops/remediation
     container_name: aiops-remediation
+    stop_grace_period: 60s
     environment:
       PIPELINE_URL: http://pipeline:8000
       LOKI_URL: http://loki:3100
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
       # Phase 0 인증. 없으면 해당 엔드포인트가 모든 요청을 거부한다 (fail closed).
       SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      # Outbound Socket Mode; no public Slack callback/tunnel is required.
+      SLACK_TRANSPORT: ${SLACK_TRANSPORT:-socket_mode}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      SLACK_TEAM_ID: ${SLACK_TEAM_ID:-}
+      SLACK_CHANNEL_ID: ${SLACK_CHANNEL_ID:-}
+      SLACK_APPROVAL_TTL_SEC: ${SLACK_APPROVAL_TTL_SEC:-900}
       REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
       # Phase 1: 조치 위험도·실행 정책의 단일 소스 (아래 volumes 로 마운트)
       REMEDIATION_POLICY_PATH: /app/config/remediation_policy.yml
+      REMEDIATION_TARGET_BINDINGS_PATH: /app/config/remediation_targets.yml
+      REMEDIATION_POSTGRES_CONFIG_PATH: /app/config/remediation_postgres.yml
+      REMEDIATION_DEPLOYMENT_CONFIG_PATH: /app/config/remediation_deployment.yml
+      REMEDIATION_APP_API_CONFIG_PATH: /app/config/remediation_app_api.yml
+      REMEDIATION_SERVICE_VERIFICATION_PATH: /app/config/remediation_service_verification.yml
+      REMEDIATION_REMOTE_DEPLOYMENT_ENABLED: ${REMEDIATION_REMOTE_DEPLOYMENT_ENABLED:-false}
+      LEAFY_HEALTH_READ_TOKEN: ${LEAFY_HEALTH_READ_TOKEN:-}
+      REMEDIATION_PGHOST: ${REMEDIATION_PGHOST:-}
+      REMEDIATION_PGPORT: ${REMEDIATION_PGPORT:-5432}
+      REMEDIATION_PGDATABASE: ${REMEDIATION_PGDATABASE:-}
+      REMEDIATION_PGUSER: ${REMEDIATION_PGUSER:-}
+      REMEDIATION_PGPASSWORD: ${REMEDIATION_PGPASSWORD:-}
       # Phase 2: 조치 레코드(멱등성·TTL 복구 근거) 영속 경로
       REMEDIATION_STATE_DIR: /app/state
-      REMEDIATION_TTL_SCAN_SEC: "60"
+      REMEDIATION_TTL_SCAN_SEC: ${REMEDIATION_TTL_SCAN_SEC:-60}
       # Phase 3 구현 후에도 기본 disabled. PC 1에는 Docker socket을 마운트하지 않는다.
       REMEDIATION_MODE: disabled
     ports:
@@ -196,6 +218,11 @@ services:
     volumes:
       # 정책만 읽기 전용으로 마운트한다 (Docker socket 은 여전히 마운트하지 않는다).
       - ./aiops/policy/remediation_policy.yml:/app/config/remediation_policy.yml:ro
+      - ${REMEDIATION_TARGET_BINDINGS_LOCAL_PATH:-./aiops/policy/remediation_targets.yml}:/app/config/remediation_targets.yml:ro
+      - ${REMEDIATION_POSTGRES_CONFIG_LOCAL_PATH:-./aiops/policy/remediation_postgres.yml}:/app/config/remediation_postgres.yml:ro
+      - ${REMEDIATION_DEPLOYMENT_CONFIG_LOCAL_PATH:-./aiops/policy/remediation_deployment.yml}:/app/config/remediation_deployment.yml:ro
+      - ${REMEDIATION_APP_API_CONFIG_LOCAL_PATH:-./aiops/policy/remediation_app_api.yml}:/app/config/remediation_app_api.yml:ro
+      - ${REMEDIATION_SERVICE_VERIFICATION_LOCAL_PATH:-./aiops/policy/remediation_service_verification.yml}:/app/config/remediation_service_verification.yml:ro
       - remediation_state:/app/state
     networks:
       - aiops-net

@@ -26,7 +26,11 @@ class ActionTypesTest(unittest.TestCase):
     def test_policy_file_defines_exactly_these_actions(self):
         with open(POLICY, encoding="utf-8") as fh:
             policy = yaml.safe_load(fh)
-        self.assertEqual(set(policy["actions"]), set(ACTION_TYPES))
+        # LLM 이 고르는 1차 조치는 모두 정책에 있다. 정책에만 있는 것은 2차 조치(REVOKE_SESSION,
+        # DISABLE_FEATURE)와 사람 요청 복구(UNLOCK_ACCOUNT, ENABLE_FEATURE)다.
+        self.assertLessEqual(set(ACTION_TYPES), set(policy["actions"]))
+        self.assertEqual(set(policy["actions"]) - set(ACTION_TYPES),
+                         {"REVOKE_SESSION", "DISABLE_FEATURE", "UNLOCK_ACCOUNT", "ENABLE_FEATURE"})
         self.assertIn("SCALE", policy["unsupported"])
         self.assertNotIn("SCALE", ACTION_TYPES)
 
@@ -34,9 +38,9 @@ class ActionTypesTest(unittest.TestCase):
         self.assertEqual(output_schema()["properties"]["action_type"]["enum"], list(ACTION_TYPES))
 
     def test_prompts_list_the_same_actions(self):
-        listed = re.search(r"action_type: one of ([A-Z |]+)\.", SYSTEM_PROMPT_V2).group(1)
+        listed = re.search(r"action_type: one of ([A-Z_ |]+)\.", SYSTEM_PROMPT_V2).group(1)
         self.assertEqual([a.strip() for a in listed.split("|")], list(ACTION_TYPES))
-        legacy = re.search(r'"action_type": "<([A-Z|]+)>"', LEGACY_SYSTEM_PROMPT).group(1)
+        legacy = re.search(r'"action_type": "<([A-Z_|]+)>"', LEGACY_SYSTEM_PROMPT).group(1)
         self.assertEqual(set(legacy.split("|")), set(ACTION_TYPES))
         self.assertNotIn("SCALE", SYSTEM_PROMPT_V2)
 

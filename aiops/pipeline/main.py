@@ -351,15 +351,16 @@ async def analyze_alerts(alerts: list[Alert], received_at: datetime | None = Non
                 "identity": identity.to_dict(), "identity_status": identity_status,
                 "alert_labels": labels, "alert_annotations": alert.annotations,
                 "evidence_sources": evidence_sources, "result": result.model_dump(),
-                "handoff_status": "deferred_source_aware_consumer_required",
+                "handoff_status": "notification_disabled",
                 "remediation_dispatched": False, "notification_dispatched": False,
             }
+            if settings.remediation_notification_enabled or settings.remediation_approval_enabled:
+                handoff = await forward_to_remediation(alert, result, identity, identity_status)
+                entry.update(handoff)
             analysis_history.append(entry)
             entry["storage_status"] = "stored" if await push_to_loki(entry) else "api_error"
-            # Remediation currently addresses containers by name only. It cannot consume v2
-            # site/source identity safely; retain RCA, defer handoff until that consumer is upgraded.
-            logger.info("[Pipeline] RCA identity=%s storage=%s; name-only remediation handoff deferred",
-                        identity_status, entry["storage_status"])
+            logger.info("[Pipeline] RCA identity=%s storage=%s handoff=%s",
+                        identity_status, entry["storage_status"], entry["handoff_status"])
         except Exception as e:
             logger.error(f"[Pipeline] 분석 실패 ({alert.labels.alertname}): {e}")
 
@@ -713,8 +714,7 @@ async def send_periodic_slack(
     source: str,
 ) -> None:
     """
-    주기적 스캔 이상 감지 시 Slack Block Kit 버튼 알림 전송.
-    source 필드를 버튼 value에 포함 → remediation이 출처 구분 가능.
+    주기적 스캔·헬스체크의 정보성 알림. Controller 레코드가 없으므로 승인 버튼은 없다.
     """
     if not settings.slack_webhook_url:
         logger.debug("[Periodic] SLACK_WEBHOOK_URL 미설정, 스킵")
@@ -723,17 +723,8 @@ async def send_periodic_slack(
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     threat_level  = raw_result.get("threat_level", "unknown")
     action_type   = raw_result.get("action_type", "NOTIFY")
-    action_targets = raw_result.get("action_targets", [container])
     confidence    = raw_result.get("confidence", 0.0)
     recommendation = raw_result.get("recommendation", "-")
-
-    # 버튼 value — source 포함하여 remediation이 출처 구분
-    action_payload = json.dumps({
-        "alertname":      issue_key,
-        "action_type":    action_type,
-        "action_targets": action_targets,
-        "source":         source,  # "periodic_log_scan" | "llm_health_check"
-    }, ensure_ascii=False)
 
     source_label = {
         "periodic_log_scan": "🔍 정기 로그 스캔",
@@ -748,7 +739,7 @@ async def send_periodic_slack(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f":rotating_light: *[APPROVAL REQUIRED]* `{container}` — {source_label}",
+                    "text": f":warning: *[ALERT ONLY]* `{container}` — {source_label}",
                 }
             },
             {
@@ -759,40 +750,8 @@ async def send_periodic_slack(
                     {"type": "mrkdwn", "text": f"*Confidence*\n{confidence:.2f}"},
                     {"type": "mrkdwn", "text": f"*Container*\n{container}"},
                     {"type": "mrkdwn", "text": f"*권고 조치*\n{recommendation}"},
+                    {"type": "mrkdwn", "text": f"*조치 후보*\n{action_type} (수동 검토)"},
                     {"type": "mrkdwn", "text": f"*Issues*\n{issue_text}"},
-                ],
-            },
-            {"type": "divider"},
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "✅ Approve", "emoji": True},
-                        "style": "primary",
-                        "action_id": "approve_action",
-                        "value": action_payload,
-                        "confirm": {
-                            "title": {"type": "plain_text", "text": "조치를 승인하시겠습니까?"},
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": (
-                                    f"*{action_type}* 조치를 실행합니다.\n"
-                                    f"대상: `{'`, `'.join(action_targets) if action_targets else 'N/A'}`\n"
-                                    f"출처: {source_label}"
-                                ),
-                            },
-                            "confirm": {"type": "plain_text", "text": "승인"},
-                            "deny":    {"type": "plain_text", "text": "취소"},
-                        },
-                    },
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "❌ Reject", "emoji": True},
-                        "style": "danger",
-                        "action_id": "reject_action",
-                        "value": action_payload,
-                    },
                 ],
             },
         ]
@@ -942,29 +901,84 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
     return result
 
 
-async def forward_to_remediation(alert: Alert, result: LLMAnalysisResult):
+async def forward_to_remediation(alert: Alert, result: LLMAnalysisResult,
+                                 identity=None, identity_status: str | None = None) -> dict:
     """
-    Remediation Agent에 분석 결과 전달 → 여기서 Slack 전송 결정됨.
-
-    /action 은 HMAC 서명을 요구한다. 서명 범위가 본문 전체이므로 직렬화한 바이트를
-    그대로 전송한다(httpx 가 다시 직렬화하면 바이트가 달라져 검증이 깨진다).
+    Source-aware notification or explicitly enabled, strictly manual approval proposal.
+    /notify never creates an executable record; new proposal operations fail closed on old Controllers.
+    실제 Slack 수신은 Controller dispatch.sent 로 확인하며 HTTP 200 만으로 성공 처리하지 않는다.
     """
+    status = {"handoff_status": "notification_disabled", "remediation_dispatched": False,
+              "notification_dispatched": False}
+    if not settings.remediation_notification_enabled and not settings.remediation_approval_enabled:
+        return status
     if not settings.remediation_api_key:
-        logger.error(
-            "[Pipeline] REMEDIATION_API_KEY 미설정 — /action 전달 생략 "
-            "(서명 없는 요청은 Remediation 이 거부한다)"
-        )
-        return
+        logger.error("[Pipeline] REMEDIATION_API_KEY 미설정 — /notify 전달 생략")
+        return {**status, "handoff_status": "notification_auth_unconfigured"}
+
+    raw_alert = alert.model_dump()
+    if identity is None:
+        identity, _, identity_status = resolve_identity(
+            raw_alert["labels"], alert.annotations, _observation_bindings, _target_map)
+    observation = identity.to_dict()
+    raw_alert["identity"] = observation
+    raw_alert["identity_status"] = identity_status
+    # Labels are enriched only by a verified observation binding. Original producer labels
+    # are retained so a metadata conflict is never silently rewritten as a verified source.
+    raw_alert["raw_labels"] = dict(raw_alert["labels"])
+    if identity_status == "resolved":
+        raw_alert["labels"].update({k: observation[k] for k in ("site", "service", "source", "runtime", "target")})
+
+    if settings.remediation_approval_enabled:
+        from schemas.remediation_plan import build_proposal, PlanError
+        try:
+            proposal = build_proposal(alert, result, identity, identity_status,
+                                      settings.remediation_proposal_min_confidence)
+        except PlanError as exc:
+            status["proposal_reason"] = str(exc)
+        else:
+            payload = {"operation": "propose_manual_action", "force_manual": True,
+                       "alert": raw_alert, **proposal}
+            body = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
+            headers = build_service_auth_headers(settings.remediation_api_key, body)
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    response = await client.post(f"{settings.remediation_url.rstrip('/')}/action",
+                                                 content=body, headers=headers)
+                    response.raise_for_status()
+                    answer = response.json()
+                if (not isinstance(answer, dict) or answer.get("status") not in {"pending_approval", "existing"}
+                        or not isinstance(answer.get("remediation_id"), str)):
+                    return {**status, "handoff_status": "approval_proposal_not_accepted"}
+                return {**status, "handoff_status": "approval_pending", "remediation_dispatched": True,
+                        "remediation_id": answer["remediation_id"], "execution_attempted": False,
+                        "approval_notification_dispatched": (answer.get("dispatch") or {}).get("sent") is True}
+            except (httpx.HTTPError, ValueError, TypeError):
+                # Delivery may have succeeded. Do not submit a different operation
+                # or fabricate a new incident: a redelivery reuses the stored plan.
+                return {**status, "handoff_status": "approval_proposal_unconfirmed"}
+
+    if not settings.remediation_notification_enabled:
+        return {**status, "handoff_status": "manual_review_required"}
 
     body = json.dumps(
-        {"alert": alert.model_dump(), "analysis": result.model_dump()},
+        {"operation": "notify_only", "alert": raw_alert, "analysis": result.model_dump(),
+         "identity": observation, "identity_status": identity_status},
         ensure_ascii=False,
     ).encode("utf-8")
     headers = build_service_auth_headers(settings.remediation_api_key, body)
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        await client.post(
-            f"{settings.remediation_url}/action",
-            content=body,
-            headers=headers,
-        )
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                f"{settings.remediation_url.rstrip('/')}/notify", content=body, headers=headers)
+            response.raise_for_status()
+            payload = response.json()
+        dispatch = payload.get("dispatch", {}) if isinstance(payload, dict) else {}
+        sent = isinstance(dispatch, dict) and dispatch.get("sent") is True
+        return {**status, "handoff_status": "notification_sent" if sent else "notification_not_sent",
+                "notification_dispatched": sent}
+    except (httpx.HTTPError, ValueError, TypeError):
+        # URLs and response content may contain credentials; record only the delivery outcome.
+        logger.warning("[Pipeline] /notify 전달 실패 — RCA 보존, 수동 확인 필요")
+        return {**status, "handoff_status": "notification_failed"}

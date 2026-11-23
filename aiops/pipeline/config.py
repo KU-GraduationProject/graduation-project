@@ -15,7 +15,12 @@ class Settings:
     # 비우면 호출에 seed 를 넣지 않는다 (Ollama 가 매번 무작위 seed 사용).
     llm_seed: int | None = int(os.getenv("LLM_SEED")) if os.getenv("LLM_SEED") else None
     slack_webhook_url: str = os.getenv("SLACK_WEBHOOK_URL", "")
-    # Remediation /action 서명 공유키. 미설정이면 조치 전달을 생략한다 (fail closed).
+    # RCA 알림은 /notify 로만 보낸다. 운영 전환은 명시 opt-in 이며 /action 을 열지 않는다.
+    remediation_notification_enabled: bool = os.getenv("REMEDIATION_NOTIFICATION_ENABLED", "false").lower() == "true"
+    # Propose manual approval records only. The new operation is rejected by older Controllers.
+    remediation_approval_enabled: bool = os.getenv("REMEDIATION_APPROVAL_ENABLED", "false").lower() == "true"
+    remediation_proposal_min_confidence: float = float(os.getenv("REMEDIATION_PROPOSAL_MIN_CONFIDENCE", "0.8"))
+    # Remediation 서명 공유키. 미설정이면 알림 전달을 생략한다 (fail closed).
     remediation_api_key: str = os.getenv("REMEDIATION_API_KEY", "")
     # 원격 대상 이름 -> canonical service. 형식은 correlation.parse_target_map 참고. 비우면 Docker metadata만 쓴다.
     target_service_map: str = os.getenv("TARGET_SERVICE_MAP", "")

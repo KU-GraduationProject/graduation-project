@@ -253,3 +253,6 @@ scenarios/v2/heldout/
 scenarios/v2/fixtures_data/
 # pipeline CONTEXT_CAPTURE_DIR 기본 위치(실측 로그 포함, 커밋 금지)
 aiops/pipeline/results/context/
+
+## 데이터 플랫폼 로컬 lake (LocalFsStore 기본 경로) ##
+.lake/

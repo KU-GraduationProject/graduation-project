@@ -52,6 +52,12 @@ def _print_list() -> None:
 
 def run(scenario_id: str, dry_run: bool, variant_id: str | None = None,
         seed: int | None = None) -> int:
+    """Dispatch a scenario or dry-run plan and optionally apply a seeded variant.
+
+    F2-c always uses its complete lifecycle and propagates its exit code, with
+    variant strength/hold duration forwarded. Other scenarios keep their existing
+    main/inject dispatch behavior. Unknown or unsupported IDs return 2.
+    """
     row = _row(scenario_id)
     if row is None or scenario_id not in _MODULES:
         print(f"알 수 없거나 미구현 id: {scenario_id}\n")
@@ -83,6 +89,15 @@ def run(scenario_id: str, dry_run: bool, variant_id: str | None = None,
     started = datetime.now(timezone.utc)
     status = "error"
     try:
+        if scenario_id == "f2_c_db_pool_exhaustion":
+            # Both entry paths own the entire inject -> verified hold -> cleanup lifecycle.
+            kw = ({k: inst.params[k] for k in ("strength", "hold_seconds") if k in inst.params}
+                  if inst is not None else {})
+            code = mod.main(**kw)
+            # 0 만 검증된 주입·복구다. 3(압박만)·1·130 은 픽스처 짝짓기에서 빠지도록 error 로 남긴다.
+            status = "ok" if code == 0 else "error"
+            return code
+
         # 변형 파라미터 중 기존 주입기가 받는 축(strength/mode)만 전달. 나머지 축(타이밍 등)은
         # 측정 PC 런타임에서 처리한다(VARIANTS 참조).
         if inst is not None and hasattr(mod, "inject"):

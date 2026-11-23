@@ -53,6 +53,10 @@ ACTION GUIDE:
 - RESTART: the service failed or is degraded and a restart is expected to restore it.
 - PAUSE: a compromised container whose state must be frozen for forensics.
 - ISOLATE: active data exfiltration or network attack from a container.
+- KILL_SESSIONS: the database connection pool is exhausted by idle sessions or long-running queries.
+- LOCK_ACCOUNT: a credential attack against one application account.
+- RECREATE: the container must be replaced by a clean copy of its approved image.
+- ROLLBACK: the failure began right after a deployment or configuration change.
 
 Input marked "truncated", "omitted" or "value lookup failed" is incomplete: say so and lower confidence instead of guessing."""
 

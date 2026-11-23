@@ -1,0 +1,3 @@
+# Deny-all default. See deploy/aiops-pc/remediation-postgres.example.yml.
+version: 1
+targets: {}

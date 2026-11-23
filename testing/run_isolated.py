@@ -61,6 +61,17 @@ def install_guard(allow_http_fixtures=False):
     docker.DockerClient.__init__ = deny
     docker.APIClient.__init__ = deny
 
+    # libpq opens sockets in native code, outside Python's socket audit hook.
+    # Block the real driver entry point before discovering DB executor tests.
+    try:
+        import psycopg
+    except ImportError:
+        pass
+    else:
+        def deny_database(*args, **kwargs):
+            raise PermissionError("ISOLATED_TEST: PostgreSQL access forbidden; inject FakeDatabase")
+        psycopg.connect = deny_database
+
     def audit(event, args):
         if event == "socket.connect" and getattr(internal, "pair", None) == args:
             return

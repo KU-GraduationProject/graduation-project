@@ -15,9 +15,8 @@ scenarios-v2 정답 레이블 — 단일 소스 (one place only).
   label                   : 사람이 읽는 이름 (프롬프트에 넣지 않는다)
   incident_class          : attack | failure | benign  (평가 정답. benign = 정상 활동·오탐)
   threat_level            : low | medium | high | critical  (평가 정답)
-  expected_action         : 현재 대체 조치. 반드시 정책 6개 중 하나
-                            (NONE|NOTIFY|THROTTLE|RESTART|PAUSE|ISOLATE,
-                             aiops/policy/remediation_policy.yml)
+  expected_action         : 현재 대체 조치. 반드시 LLM 허용 조치 10개 중 하나
+                            (aiops/pipeline/schemas/actions.py ACTION_TYPES 와 같다)
   expected_action_ideal   : 이상적 조치. 정책에 아직 없는 조치일 수 있으며
                             평가 메타(라벨)로만 쓰고 실행 경로에 넣지 않는다.
   targets                 : 조치 대상 (컨테이너/계정/경로 등 서술)
@@ -39,7 +38,9 @@ from __future__ import annotations
 
 import importlib
 
-POLICY_ACTIONS = ("NONE", "NOTIFY", "THROTTLE", "RESTART", "PAUSE", "ISOLATE")
+# LLM 이 고를 수 있는 조치 (aiops/pipeline/schemas/actions.py ACTION_TYPES, Notion 1차 범위)
+POLICY_ACTIONS = ("NONE", "NOTIFY", "THROTTLE", "RESTART", "PAUSE", "ISOLATE",
+                  "KILL_SESSIONS", "LOCK_ACCOUNT", "RECREATE", "ROLLBACK")
 INCIDENT_CLASSES = ("attack", "failure", "benign")
 EVIDENCE_CHANNELS = ("app_log", "nginx_log", "metric", "network")
 
@@ -234,7 +235,7 @@ def _validate(registry=SCENARIO_REGISTRY_V2) -> None:
         ids.add(row["id"])
         if row["expected_action"] not in POLICY_ACTIONS:
             raise ValueError(
-                f"{row['id']}: expected_action={row['expected_action']} 은 정책 6개에 없다 "
+                f"{row['id']}: expected_action={row['expected_action']} 은 LLM 허용 조치에 없다 "
                 f"{POLICY_ACTIONS}")
         for ch in row.get("evidence", []):
             if ch not in EVIDENCE_CHANNELS:

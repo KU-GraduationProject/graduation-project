@@ -74,6 +74,26 @@ class Notifier:
                 "action_id": "approve_recovery", "value": value}]}]})
 
     def _extract_analysis(self, alert: dict, analysis: dict) -> dict:
+        confidence = analysis.get("confidence", 0.0)
+        try:
+            confidence = float(confidence)
+        except (TypeError, ValueError):
+            confidence = 0.0
+        identity = alert.get("identity")
+        if not isinstance(identity, dict) or not identity:
+            identity = alert.get("labels", {})
+        if not isinstance(identity, dict):
+            identity = {}
+        targets = analysis.get("action_targets")
+        if isinstance(targets, str):
+            targets = [targets]
+        if not isinstance(targets, (list, tuple)):
+            targets = []
+        # Match the policy engine's supported legacy single-target input. Button
+        # values must contain the normalized list that the durable record stores.
+        targets = [str(t).strip() for t in targets if str(t).strip()]
+        observation = " | ".join(f"{k}: {identity.get(k) or 'UNKNOWN'}"
+                                 for k in ("site", "service", "source", "runtime", "target"))
         return {
             "alertname":      alert.get("labels", {}).get("alertname", "unknown"),
             "threat_level":   analysis.get("threat_level", "unknown"),
@@ -84,11 +104,13 @@ class Notifier:
             "analysis_invalid": str(analysis.get("analysis_status", "")).lower() == "invalid",
             "invalid_reasons":  analysis.get("invalid_reasons") or [],
             "action_type":    analysis.get("action_type", "NONE"),       # [추가]
-            "action_targets": analysis.get("action_targets", []),        # [추가]
+            "action_targets": targets,
             "root_cause":     analysis.get("root_cause", "N/A"),
-            "confidence":     analysis.get("confidence", 0.0),
+            "confidence":     confidence,
             "evidence":       analysis.get("evidence", []),
-            "timestamp":      datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "timestamp":      alert.get("startsAt") or datetime.now(timezone.utc).isoformat(),
+            "observation":    observation,
+            "identity_status": alert.get("identity_status", "not_verified"),
         }
 
     async def send_approval_request(self, alert: dict, analysis: dict,
@@ -99,6 +121,10 @@ class Notifier:
         remediation_id 를 버튼 value 에 실어 보낸다 — 같은 조치에 대한 승인이 여러 번
         도착해도 수신측이 한 건으로 합쳐 한 번만 실행한다 (멱등성, Phase 2).
         """
+        if not remediation_id:
+            # Legacy callers have no durable approval record. They can inform people,
+            # but must not manufacture executable buttons from an alert/action name.
+            return await self.send_alert_only(alert, analysis)
         data = self._extract_analysis(alert, analysis)
 
         logger.warning(
@@ -119,7 +145,7 @@ class Notifier:
             "remediation_id": remediation_id,
         }, ensure_ascii=False)
 
-        return await self._send_slack(data["alertname"], {
+        message = {
             "blocks": [
                 # ── 헤더 ──────────────────────────────────────────
                 {
@@ -139,6 +165,7 @@ class Notifier:
                         {"type": "mrkdwn", "text": f"*Confidence*\n{data['confidence']:.2f}"},
                         {"type": "mrkdwn", "text": f"*Root Cause*\n{data['root_cause']}"},
                         {"type": "mrkdwn", "text": f"*Action*\n{data['action']}"},
+                        {"type": "mrkdwn", "text": f"*관측 대상*\n{data['observation']}"},
                         {
                             "type": "mrkdwn",
                             "text": "*Evidence*\n" + (
@@ -158,7 +185,7 @@ class Notifier:
                             "type": "button",
                             "text": {"type": "plain_text", "text": "✅ Approve", "emoji": True},
                             "style": "primary",
-                            "action_id": "approve_action",
+                            "action_id": "approve_recovery" if analysis.get("app_recovery") is True else "approve_action",
                             "value": action_payload,
                             "confirm": {
                                 "title": {"type": "plain_text", "text": "조치를 승인하시겠습니까?"},
@@ -185,14 +212,27 @@ class Notifier:
                     ]
                 },
             ]
-        })
+        }
+        plan = analysis.get("approval_plan")
+        parameters = analysis.get("approval_parameters")
+        stage = analysis.get("approval_stage")
+        if stage:
+            message["blocks"].insert(1, {"type": "section", "text": {
+                "type": "plain_text", "text": "승인 범위 (각 단계 별도 승인)\n" + json.dumps(stage, ensure_ascii=False)[:2900]}})
+        if plan:
+            # Server-generated summary of the exact approved resource/operation.
+            # Connection credentials and full operator configuration never enter Slack.
+            summary = json.dumps({"parameters": parameters or {}, "plan": plan}, ensure_ascii=False)
+            message["blocks"].insert(2, {"type": "section", "text": {
+                "type": "plain_text", "text": "승인 대상과 실행 계획\n" + summary[:2900]}})
+        return await self._send_slack(data["alertname"], message)
 
     async def send_alert_only(self, alert: dict, analysis: dict) -> dict:
-        """Log a medium-risk action with low threat level — notify only, no action taken."""
+        """RCA 정보와 권고 조치를 알린다. 승인 버튼·실행 경로는 만들지 않는다."""
         data = self._extract_analysis(alert, analysis)
 
         logger.info(
-            "[ALERT ONLY] Medium-risk action skipped due to low threat level:\n"
+            "[ALERT ONLY] RCA notification, manual investigation or action review:\n"
             f"  Alert      : {data['alertname']}\n"
             f"  Threat     : {data['threat_level']}\n"
             f"  Root cause : {data['root_cause']}\n"
@@ -217,6 +257,10 @@ class Notifier:
                         {"type": "mrkdwn", "text": f"*Threat Level*\n{data['threat_level']}"},
                         {"type": "mrkdwn", "text": f"*Confidence*\n{data['confidence']:.2f}"},
                         {"type": "mrkdwn", "text": f"*Root Cause*\n{data['root_cause']}"},
+                        {"type": "mrkdwn", "text": f"*관측 대상*\n{data['observation']}"},
+                        {"type": "mrkdwn", "text": f"*대상 확인*\n{data['identity_status']}"},
+                        {"type": "mrkdwn", "text": f"*권고 조치 (수동 검토)*\n{data['action_type']}: {data['action']}"},
+                        {"type": "mrkdwn", "text": "*권고 대상*\n" + ", ".join(str(t) for t in data['action_targets'])},
                         {
                             "type": "mrkdwn",
                             "text": "*Evidence*\n" + (
@@ -264,12 +308,13 @@ class Notifier:
                     "dispatched_at": dispatched_at,
                 }
         except httpx.HTTPError as e:
-            logger.error(f"[Notifier] Failed to send Slack notification: {e}")
-            _push_loki_slack_event(alert_name, "FAILED", None, str(e))
+            error_type = type(e).__name__
+            logger.error("[Notifier] Failed to send Slack notification (%s)", error_type)
+            _push_loki_slack_event(alert_name, "FAILED", None, error_type)
             return {
                 "sent": False,
                 "status": "FAILED",
                 "response_code": None,
-                "response_text": str(e),
+                "response_text": error_type,
                 "dispatched_at": dispatched_at,
             }

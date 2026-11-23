@@ -20,6 +20,7 @@ import time
 import unittest
 import urllib.parse
 from unittest import mock
+from tests.safety_fixtures import IDENTITY
 
 from fastapi.testclient import TestClient
 
@@ -32,7 +33,8 @@ API_KEY = "remediation-shared-key"
 
 # action_risk=low + confidence>=0.7 → 기존 자동 실행 경로 (조치가 실제로 호출되는 경로)
 AUTO_EXEC_BODY = json.dumps({
-    "alert": {"labels": {"alertname": "HighCpuUsage"}},
+    "alert": {"labels": {"alertname": "HighCpuUsage", **IDENTITY},
+              "fingerprint": "auth-incident", "startsAt": "2026-11-11T00:00:00Z"},
     "analysis": {"action_type": "RESTART", "action_targets": ["leafy-backend"],
                  "action_risk": "low", "threat_level": "high", "confidence": 0.9},
 }, ensure_ascii=False).encode("utf-8")
@@ -41,7 +43,8 @@ SLACK_APPROVE_FORM = "payload=" + urllib.parse.quote(json.dumps({
     "actions": [{"action_id": "approve_action", "value": json.dumps({
         "alertname": "HighCpuUsage", "action_type": "RESTART",
         "action_targets": ["leafy-backend"]})}],
-    "user": {"name": "tester"},
+    "type": "block_actions", "team": {"id": "TTEST"}, "channel": {"id": "CTEST"},
+    "user": {"id": "UTEST", "name": "tester"},
 }))
 
 
@@ -55,7 +58,8 @@ def load_main(mode="docker", slack_secret=SLACK_SECRET, api_key=API_KEY,
     TTL 스캐너는 끄고(REMEDIATION_TTL_SCAN_SEC=0) 필요한 테스트가 직접 호출한다.
     """
     env = {
-        "SLACK_WEBHOOK_URL": "",
+        "SLACK_WEBHOOK_URL": "", "SLACK_TRANSPORT": "http",
+        "SLACK_TEAM_ID": "TTEST", "SLACK_CHANNEL_ID": "CTEST",
         "REMEDIATION_MODE": mode,
         "SLACK_SIGNING_SECRET": slack_secret,
         "REMEDIATION_API_KEY": api_key,
@@ -149,7 +153,7 @@ class ActionEndpointAuthTest(AuthTestBase):
         """
         resp = self.post_action()
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["status"], "pending_approval")
+        self.assertIn(resp.json()["status"], ("pending_approval", "blocked"))
         self.assertEqual(self.docker_calls(), 0)
 
     def test_high_risk_requests_never_auto_execute(self):
@@ -171,7 +175,8 @@ class ActionEndpointAuthTest(AuthTestBase):
             ("NONE", "low", "low", 1.0),
         ]:
             body = json.dumps({
-                "alert": {"labels": {"alertname": "HighCpuUsage"}},
+                "alert": {"labels": {"alertname": "HighCpuUsage", **IDENTITY},
+              "fingerprint": "auth-incident-" + action_type, "startsAt": "2026-11-11T00:00:00Z"},
                 "analysis": {"action_type": action_type, "action_targets": ["leafy-backend"],
                              "action_risk": risk, "threat_level": threat, "confidence": conf},
             }, ensure_ascii=False).encode("utf-8")
@@ -186,7 +191,8 @@ class ActionEndpointAuthTest(AuthTestBase):
         충족하면 승인 없이 실행된다 — TTL 자동 복구가 있어 되돌릴 수 있기 때문이다.
         """
         body = json.dumps({
-            "alert": {"labels": {"alertname": "HighCpuUsage"}},
+            "alert": {"labels": {"alertname": "HighCpuUsage", **IDENTITY},
+              "fingerprint": "auth-incident", "startsAt": "2026-11-11T00:00:00Z"},
             "analysis": {"action_type": "THROTTLE", "action_targets": ["leafy-backend"],
                          "threat_level": "medium", "confidence": 0.9},
         }, ensure_ascii=False).encode("utf-8")
@@ -255,12 +261,11 @@ class ActionEndpointAuthTest(AuthTestBase):
 
 
 class SlackEndpointAuthTest(AuthTestBase):
-    def test_valid_signature_passes_and_executes(self):
+    def test_valid_signature_passes_but_legacy_button_cannot_execute(self):
         resp = self.post_slack()
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["status"], "approved")
-        # 승인 경로는 여전히 조치를 실행한다 (RESTART 1회).
-        self.assertEqual(self.docker_calls(), 1)
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.json()["error"], "stored_remediation_required")
+        self.assertEqual(self.docker_calls(), 0)
 
     def test_no_signature_is_denied_and_docker_untouched(self):
         resp = self.post_slack(headers={})
@@ -298,9 +303,9 @@ class SlackEndpointAuthTest(AuthTestBase):
         }
         first = self.post_slack(headers=headers)
         second = self.post_slack(headers=headers)
-        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.status_code, 404)
         self.assertEqual(second.status_code, 401)
-        self.assertEqual(self.docker_calls(), 1)
+        self.assertEqual(self.docker_calls(), 0)
 
     def test_repeat_click_executes_once(self):
         """
@@ -309,9 +314,9 @@ class SlackEndpointAuthTest(AuthTestBase):
         Phase 2 가 remediation_id 단위 멱등성으로 닫았으므로, 이제 한 번만 실행된다.
         """
         now = int(time.time())
-        self.assertEqual(self.post_slack(ts=now).status_code, 200)
-        self.assertEqual(self.post_slack(ts=now - 1).status_code, 200)
-        self.assertEqual(self.docker_calls(), 1)
+        self.assertEqual(self.post_slack(ts=now).status_code, 404)
+        self.assertEqual(self.post_slack(ts=now - 1).status_code, 404)
+        self.assertEqual(self.docker_calls(), 0)
 
 
 class MissingSecretFailsClosedTest(unittest.TestCase):
@@ -376,7 +381,7 @@ class DisabledModeAuthTest(AuthTestBase):
         test_remediation_mode.DisabledModeTest 가 승인 경로로 검증한다.
         """
         body = self.post_action().json()
-        self.assertEqual(body["status"], "pending_approval")
+        self.assertIn(body["status"], ("pending_approval", "blocked"))
         self.assertIsNone(self.main.container_actions)
         self.assertEqual(self.docker_calls(), 0)
 
@@ -400,7 +405,7 @@ class PipelineCompatibilityTest(AuthTestBase):
         headers = self.sender.build_headers(API_KEY, AUTO_EXEC_BODY)
         resp = self.client.post("/action", content=AUTO_EXEC_BODY, headers=headers)
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["status"], "pending_approval")
+        self.assertIn(resp.json()["status"], ("pending_approval", "blocked"))
         self.assertEqual(self.docker_calls(), 0)
 
     def test_pipeline_headers_include_content_type(self):

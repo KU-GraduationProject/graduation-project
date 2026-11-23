@@ -1,7 +1,7 @@
 """
-Pipeline → Remediation /action 서명 (송신측) 테스트.
+Pipeline → Remediation /notify 서명 (송신측) 테스트.
 
-Remediation 이 /action 에 HMAC 서명을 요구하므로, 송신측은 전송할 본문 바이트
+Remediation 이 /notify 에 HMAC 서명을 요구하므로, 송신측은 전송할 본문 바이트
 그대로를 서명해야 한다. 수신측 검증은 aiops/remediation/tests 가 담당한다.
 
 실행 (pipeline 디렉터리에서):
@@ -16,6 +16,7 @@ import os
 import sys
 import unittest
 from unittest import mock
+import httpx
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -79,8 +80,11 @@ class ForwardToRemediationTest(unittest.TestCase):
 
             async def post(self_inner, url, content=None, headers=None, **kw):
                 posted.update(url=url, content=content, headers=headers, kw=kw)
+                return httpx.Response(200, json={"status": "notification_only", "dispatch": {"sent": True}},
+                                      request=httpx.Request("POST", url))
 
         with mock.patch.object(main.settings, "remediation_api_key", api_key), \
+             mock.patch.object(main.settings, "remediation_notification_enabled", True), \
              mock.patch.object(main.httpx, "AsyncClient", return_value=FakeClient()):
             asyncio.run(main.forward_to_remediation(_alert(), _result()))
         return posted
@@ -92,16 +96,16 @@ class ForwardToRemediationTest(unittest.TestCase):
         ts = posted["headers"][TIMESTAMP_HEADER]
         self.assertEqual(posted["headers"][SIGNATURE_HEADER], sign(API_KEY, ts, body))
 
-    def test_sent_body_is_valid_action_payload(self):
+    def test_sent_body_is_notification_only_payload(self):
         posted = self._post_calls(API_KEY)
         payload = json.loads(posted["content"].decode("utf-8"))
-        self.assertEqual(set(payload), {"alert", "analysis"})
+        self.assertEqual(payload["operation"], "notify_only")
         self.assertEqual(payload["analysis"]["action_type"], "ISOLATE")
         self.assertEqual(payload["alert"]["labels"]["alertname"], "UnauthorizedDataTransfer")
 
-    def test_url_unchanged(self):
+    def test_url_is_notification_endpoint(self):
         posted = self._post_calls(API_KEY)
-        self.assertTrue(posted["url"].endswith("/action"))
+        self.assertTrue(posted["url"].endswith("/notify"))
 
     def test_missing_key_skips_forwarding(self):
         """

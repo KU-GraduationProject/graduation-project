@@ -379,8 +379,11 @@ services:
       OLLAMA_URL: http://ollama:11434
       ALERTMANAGER_URL: http://alertmanager:9093
       REMEDIATION_URL: http://remediation:8001
+      REMEDIATION_NOTIFICATION_ENABLED: ${REMEDIATION_NOTIFICATION_ENABLED:-false}
+      REMEDIATION_APPROVAL_ENABLED: ${REMEDIATION_APPROVAL_ENABLED:-false}
+      REMEDIATION_PROPOSAL_MIN_CONFIDENCE: ${REMEDIATION_PROPOSAL_MIN_CONFIDENCE:-0.8}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
-      # Remediation /action 서명 공유키 (remediation 과 같은 값). 미설정이면 전달 생략.
+      # Remediation /notify 및 /action 서명 공유키 (remediation 과 같은 값). 미설정이면 전달 생략.
       REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
       # P3: Loki 규칙과 같은 Allowlist 정책을 LLM Network Context 가 읽어 일관성 유지
       ALLOWLIST_PATH: /app/config/allowlist.yml
@@ -402,6 +405,7 @@ services:
   remediation:
     build: ./aiops/remediation
     container_name: aiops-remediation
+    stop_grace_period: 60s
     environment:
       REMEDIATION_MODE: ${REMEDIATION_MODE:-disabled}
       PIPELINE_URL: http://pipeline:8000
@@ -411,25 +415,47 @@ services:
       #   SLACK_SIGNING_SECRET : Slack app 설정의 Signing Secret
       #   REMEDIATION_API_KEY  : Pipeline 과 공유하는 HMAC 키 (openssl rand -hex 32)
       SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      # Outbound Socket Mode; no public Slack callback/tunnel is required.
+      SLACK_TRANSPORT: ${SLACK_TRANSPORT:-socket_mode}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      SLACK_TEAM_ID: ${SLACK_TEAM_ID:-}
+      SLACK_CHANNEL_ID: ${SLACK_CHANNEL_ID:-}
+      SLACK_APPROVAL_TTL_SEC: ${SLACK_APPROVAL_TTL_SEC:-900}
       REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
       # Phase 1: 조치 위험도·실행 정책의 단일 소스 (아래 volumes 로 마운트)
       REMEDIATION_POLICY_PATH: /app/config/remediation_policy.yml
+      REMEDIATION_TARGET_BINDINGS_PATH: /app/config/remediation_targets.yml
+      REMEDIATION_POSTGRES_CONFIG_PATH: /app/config/remediation_postgres.yml
+      REMEDIATION_DEPLOYMENT_CONFIG_PATH: /app/config/remediation_deployment.yml
+      REMEDIATION_APP_API_CONFIG_PATH: /app/config/remediation_app_api.yml
+      REMEDIATION_SERVICE_VERIFICATION_PATH: /app/config/remediation_service_verification.yml
+      REMEDIATION_REMOTE_DEPLOYMENT_ENABLED: ${REMEDIATION_REMOTE_DEPLOYMENT_ENABLED:-false}
+      LEAFY_HEALTH_READ_TOKEN: ${LEAFY_HEALTH_READ_TOKEN:-}
+      REMEDIATION_PGHOST: ${REMEDIATION_PGHOST:-}
+      REMEDIATION_PGPORT: ${REMEDIATION_PGPORT:-5432}
+      REMEDIATION_PGDATABASE: ${REMEDIATION_PGDATABASE:-}
+      REMEDIATION_PGUSER: ${REMEDIATION_PGUSER:-}
+      REMEDIATION_PGPASSWORD: ${REMEDIATION_PGPASSWORD:-}
       # Phase 2: 조치 레코드(멱등성·TTL 복구 근거)를 영속화할 경로.
       # 이 디렉터리를 잃으면 격리를 되돌릴 증거와 중복 실행 방지 기록이 사라진다.
       REMEDIATION_STATE_DIR: /app/state
       # TTL 복구 스캔 주기(초). 0 이면 스캐너를 끈다.
-      REMEDIATION_TTL_SCAN_SEC: "60"
+      REMEDIATION_TTL_SCAN_SEC: ${REMEDIATION_TTL_SCAN_SEC:-60}
     ports:
       # 조치 실행 경로이므로 호스트 루프백에만 공개한다. Pipeline 은 mgmt-net 으로
       # http://remediation:8001 로 접근하므로 publish 가 필요하지 않다.
-      # Slack Interactivity 를 쓰려면 리버스 프록시나 터널을 앞에 두고,
-      # 0.0.0.0 publish 로 되돌리지 않는다 (Windows/Docker Desktop 에서는
-      # Docker Desktop Backend 방화벽 규칙 때문에 LAN 에 노출된다 — docs/remote 실측).
+      # Slack 승인 버튼은 outbound Socket Mode로 수신한다. ngrok 불필요.
+      # 로컬 health/관리용 포트이므로 0.0.0.0 publish 로 되돌리지 않는다.
       - "127.0.0.1:8001:8001"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # 정책은 읽기 전용으로만 들어간다. 컨테이너가 자기 정책을 고칠 수 없어야 한다.
       - ./aiops/policy/remediation_policy.yml:/app/config/remediation_policy.yml:ro
+      - ${REMEDIATION_TARGET_BINDINGS_LOCAL_PATH:-./aiops/policy/remediation_targets.yml}:/app/config/remediation_targets.yml:ro
+      - ${REMEDIATION_POSTGRES_CONFIG_LOCAL_PATH:-./aiops/policy/remediation_postgres.yml}:/app/config/remediation_postgres.yml:ro
+      - ${REMEDIATION_DEPLOYMENT_CONFIG_LOCAL_PATH:-./aiops/policy/remediation_deployment.yml}:/app/config/remediation_deployment.yml:ro
+      - ${REMEDIATION_APP_API_CONFIG_LOCAL_PATH:-./aiops/policy/remediation_app_api.yml}:/app/config/remediation_app_api.yml:ro
+      - ${REMEDIATION_SERVICE_VERIFICATION_LOCAL_PATH:-./aiops/policy/remediation_service_verification.yml}:/app/config/remediation_service_verification.yml:ro
       # 조치 레코드는 재시작·재생성을 넘어 살아야 한다 (멱등성·복구 근거)
       - remediation_state:/app/state
     networks:

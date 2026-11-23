@@ -1,0 +1,33 @@
+# REFERENCE ONLY. Replace endpoints, identity and metric selectors with verified
+# PC2 service facts. Never copy credentials or use a global up/health aggregate.
+version: 1
+profiles:
+  - identity:
+      site: gc
+      service: backend
+      source: gc-backend
+      runtime: container
+      target: leafy-backend
+    health:
+      url: https://pc2.example.ts.net/api/admin/remediation/health
+      json_equals: {status: UP, target: leafy-backend, database: UP}
+      token_env: LEAFY_HEALTH_READ_TOKEN
+    # Use HTTPS by default. Private HTTP inside the verified PC1 Compose network
+    # requires explicit allow_insecure_http:true and prometheus_url replacement.
+    prometheus_url: https://prometheus.example.ts.net
+    consecutive_samples: 3
+    min_interval_seconds: 15
+    timeout_seconds: 600
+    metrics:
+      # Existing gc telemetry/cAdvisor selector must be confirmed on PC1.
+      # The sole substitution comes from a verified deployment result (new full
+      # container ID), or the approved Docker binding, never from RCA text.
+      - name: memory_working_set
+        query: 'container_memory_working_set_bytes{job="gc-cadvisor",instance="gc-agent:8080",id="/docker/__CONTAINER_ID__"}'
+        freshness_query: 'timestamp(container_memory_working_set_bytes{job="gc-cadvisor",instance="gc-agent:8080",id="/docker/__CONTAINER_ID__"})'
+        minimum: 0.0
+        maximum: 536870912.0
+        max_age_seconds: 60
+      # Example limit is not a project SLO. Set thresholds from verified resource
+      # limits/SLOs and add incident-specific error/latency/DB/security checks.
+      # Missing, stale or multi-series metrics prevent service recovery/MTTR.

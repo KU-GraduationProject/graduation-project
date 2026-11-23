@@ -1,0 +1,3 @@
+# Deny-all default. Configure the exact Docker host/image/desired spec separately.
+version: 1
+targets: {}

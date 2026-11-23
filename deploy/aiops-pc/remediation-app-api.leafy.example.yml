@@ -1,0 +1,114 @@
+# REFERENCE ONLY: requires the companion Leafy backend patch, schema migration and ADMIN JWT.
+# Upstream baseline has no remediation endpoints. Verify deployed contract before operator opt-in.
+# Replace example origin/identity/account allowlist and mount private JWT; do not commit a real token.
+version: 1
+targets:
+  leafy-backend:
+    identity:
+      site: gc
+      service: backend
+      source: gc-backend
+      runtime: container
+      target: leafy-backend
+    api_contract_verified: true
+    contract_source: https://github.com/Project-Leafy/api-server + remediation-admin-api
+      patch; not upstream main
+    base_url: https://leafy-backend.example.ts.net
+    token_file: /run/secrets/leafy_admin_access_jwt
+    token_header: Authorization
+    token_scheme: Bearer
+    timeout_seconds: 10
+    account_allowlist:
+    - '123'
+    feature_allowlist:
+    - diagnosis
+    - plant-identification
+    - recommendations
+    allowed_account_roles:
+    - USER
+    actions:
+      LOCK_ACCOUNT:
+        method: POST
+        path: /api/admin/remediation/accounts/{resource_id}/lock
+        body:
+          target: '{target}'
+          account_id: '{resource_id}'
+          duration_seconds: '{duration_seconds}'
+          reason: '{reason}'
+        readback:
+          path: /api/admin/remediation/accounts/{resource_id}
+          target_field: target
+          resource_field: resource.id
+          action_field: last_operation.action
+          version_field: version
+          state_fields:
+            locked: true
+          idempotency_field: last_operation.idempotency_key
+          role_field: resource.role
+          expires_at_field: lock_expires_at
+      REVOKE_SESSION:
+        method: POST
+        path: /api/admin/remediation/accounts/{resource_id}/revoke-sessions
+        body:
+          target: '{target}'
+          account_id: '{resource_id}'
+          reason: '{reason}'
+        readback:
+          path: /api/admin/remediation/accounts/{resource_id}
+          target_field: target
+          resource_field: resource.id
+          action_field: last_operation.action
+          version_field: version
+          state_fields:
+            sessions_revoked: true
+          idempotency_field: last_operation.idempotency_key
+          role_field: resource.role
+      DISABLE_FEATURE:
+        method: POST
+        path: /api/admin/remediation/features/{resource_id}/disable
+        body:
+          target: '{target}'
+          feature_id: '{resource_id}'
+          reason: '{reason}'
+        readback:
+          path: /api/admin/remediation/features/{resource_id}
+          target_field: target
+          resource_field: resource.id
+          action_field: last_operation.action
+          version_field: version
+          state_fields:
+            enabled: false
+          idempotency_field: last_operation.idempotency_key
+      UNLOCK_ACCOUNT:
+        method: POST
+        path: /api/admin/remediation/accounts/{resource_id}/unlock
+        body:
+          target: '{target}'
+          account_id: '{resource_id}'
+          reason: '{reason}'
+        readback:
+          path: /api/admin/remediation/accounts/{resource_id}
+          target_field: target
+          resource_field: resource.id
+          action_field: last_operation.action
+          version_field: version
+          state_fields:
+            locked: false
+          idempotency_field: last_operation.idempotency_key
+          role_field: resource.role
+      ENABLE_FEATURE:
+        method: POST
+        path: /api/admin/remediation/features/{resource_id}/enable
+        body:
+          target: '{target}'
+          feature_id: '{resource_id}'
+          reason: '{reason}'
+        readback:
+          path: /api/admin/remediation/features/{resource_id}
+          target_field: target
+          resource_field: resource.id
+          action_field: last_operation.action
+          version_field: version
+          state_fields:
+            enabled: true
+          idempotency_field: last_operation.idempotency_key
