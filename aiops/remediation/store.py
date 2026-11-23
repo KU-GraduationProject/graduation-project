@@ -163,7 +163,7 @@ class RemediationRecord:
     evidence: dict = field(default_factory=dict)
     results: list = field(default_factory=list)
     recovery_results: list = field(default_factory=list)
-    # MTTR 계산용 타임스탬프
+    # MTTR·서비스 복구 시간 계산용 타임스탬프
     alert_active_at: str | None = None
     approval_requested_at: str | None = None
     approval_expires_at: str | None = None
@@ -200,14 +200,17 @@ class RemediationRecord:
         return asdict(self)
 
     # ── 파생 시간 지표 ────────────────────────────────────────────────────────
-    def time_to_contain(self) -> float | None:
-        """경보 발생 → 조치 검증 완료. '조치 완료까지의 시간' (MTTR 과 구분)."""
-        return _delta(self.alert_active_at, self.action_verified_at)
-
     def mttr(self) -> float | None:
         """
-        MTTR = t_recovered - t_alert_activeAt.
-        t_recovered 는 복구를 '상태 재조회로 확인한' 시각이며 호출 성공 시각이 아니다.
+        MTTR = t_action_verified - t_alert_activeAt (노션: 조치를 취할 때까지의 시간, MTTD 는 Pipeline).
+        t_action_verified 는 조치 효과를 '상태 재조회로 확인한' 시각이며 호출 성공 시각이 아니다.
+        """
+        return _delta(self.alert_active_at, self.action_verified_at)
+
+    def time_to_service_recovery(self) -> float | None:
+        """
+        경보 발생 → 서비스 복구 확인. Health·Prometheus 연속 검증을 통과한 시각만 쓴다 (MTTR 과 구분).
+        조치 효과나 Docker 설정 원복만으로는 기록되지 않는다.
         """
         return _delta(self.alert_active_at, self.service_recovered_at)
 
@@ -234,9 +237,9 @@ class RemediationRecord:
             "restore_duration_sec": _round(_delta(self.action_started_at, self.service_recovered_at)),
             "approval_latency_sec": _round(self.approval_latency()),
             "action_duration_sec": _round(self.action_duration()),
-            "time_to_contain_sec": _round(self.time_to_contain()),
             "recovery_duration_sec": _round(self.recovery_duration()),
             "mttr_sec": _round(self.mttr()),
+            "service_recovery_sec": _round(self.time_to_service_recovery()),
         }
 
 

@@ -1,4 +1,4 @@
-"""Detection payload -> RCA fixture -> real Pipeline/Controller/Agent -> health -> MTTR.
+"""Detection payload -> RCA fixture -> real Pipeline/Controller/Agent -> health -> service recovery time.
 
 LLM/collectors/Slack/health metrics and Docker are fixtures. All application paths,
 HMAC checks, HTTP parsing and durable state transitions run in process.
@@ -49,7 +49,7 @@ class PipelineAgentEndToEndTests(unittest.TestCase):
     post_slack = remote_fixture.RemoteDeploymentFlowTests.post_slack
     approve = remote_fixture.RemoteDeploymentFlowTests.approve
 
-    def test_detection_to_rca_manual_approval_remote_recreate_health_and_durable_mttr(self):
+    def test_detection_to_rca_manual_approval_remote_recreate_health_and_durable_service_recovery(self):
         identity = self.fixture.identity
         profile = health_fixture.profile()
         profile["profiles"][0]["identity"] = identity
@@ -98,7 +98,7 @@ class PipelineAgentEndToEndTests(unittest.TestCase):
             self.assertEqual(record.service_verification["state"],"PENDING")
             response = self.approve("RECREATE",record.remediation_id)
             self.assertEqual(response.json()["record_state"],"VERIFIED",response.text)
-            self.assertIsNone(record.mttr())
+            self.assertIsNone(record.time_to_service_recovery())
             verified_at = datetime.fromisoformat(record.action_verified_at).timestamp()
             now = verified_at + 10
             def health_http(request):
@@ -112,7 +112,7 @@ class PipelineAgentEndToEndTests(unittest.TestCase):
                     now = verified_at + offset
                     service_verification.verify_record(self.main.record_store,record,now=now,client=checks)
             self.assertEqual(record.service_verification["state"],"RECOVERED")
-            self.assertGreaterEqual(record.mttr(),120)
+            self.assertGreaterEqual(record.time_to_service_recovery(),120)
             restored = self.main.store_mod.RecordStore(self.main.record_store.path)
             restored.load()
-            self.assertEqual(restored.get(record.remediation_id).mttr(),record.mttr())
+            self.assertEqual(restored.get(record.remediation_id).time_to_service_recovery(),record.time_to_service_recovery())

@@ -556,7 +556,7 @@ class RemoteExecutorTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.remote.result_from_status(doc, "ISOLATE", TARGET, "r1")
 
-    def test_remote_recovery_uses_agent_evidence_and_mttr(self):
+    def test_remote_recovery_uses_agent_evidence_and_service_recovery_time(self):
         s = store.RecordStore(os.path.join(self.tmp.name, "pc1.json"))
         self.record.alert_active_at = "2026-10-29T00:00:00+00:00"
         s.create(self.record)
@@ -564,11 +564,11 @@ class RemoteExecutorTest(unittest.TestCase):
         reconcile(s, self.remote, self.record)
         self.assertEqual(s.get("r1").state, store.RECOVERY_PENDING)
         self.assertTrue(s.get("r1").evidence["targets"][TARGET]["container_id"])
-        self.assertIsNone(s.get("r1").mttr())
+        self.assertIsNone(s.get("r1").time_to_service_recovery())
         self.assertTrue(self.remote.execute_record(self.record, TARGET, "operator", "RECONNECT").ok)
         reconcile(s, self.remote, self.record)
         self.assertEqual(s.get("r1").state, store.RECOVERED)
-        self.assertIsNone(s.get("r1").mttr())
+        self.assertIsNone(s.get("r1").time_to_service_recovery())
 
     def test_controller_does_not_recover_remote_record_using_local_docker(self):
         import recovery
