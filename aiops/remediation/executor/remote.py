@@ -181,6 +181,20 @@ class RemoteExecutor(Executor):
         except (httpx.HTTPError, ValueError, TypeError, KeyError):
             raise ExecutorError("remote_target_snapshot_unavailable") from None
 
+    def capture(self, target):
+        """Agent 의 읽기 전용 증거 수집 (허용 목록·고정 컨테이너 ID 만)."""
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", target):
+            raise ExecutorError("invalid_remote_target")
+        try:
+            response = self.request("GET", f"/v1/targets/{target}/capture")
+            response.raise_for_status()
+            document = response.json()
+            if document.get("target") != target or not isinstance(document.get("log_lines"), list):
+                raise ValueError("capture_target_mismatch")
+            return document
+        except (httpx.HTTPError, ValueError, TypeError, KeyError):
+            raise ExecutorError("remote_target_capture_unavailable") from None
+
     def request(self, method, path, payload=None):
         body = b"" if payload is None else json.dumps(payload, separators=(",", ":"), allow_nan=False).encode()
         return self.client.request(method, self.base_url + path, content=body,

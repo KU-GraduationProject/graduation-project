@@ -67,6 +67,8 @@ class ActionPolicy:
     operations: tuple = ()
     # 정책이 정하는 실행 세부값 ((이름, 값) 쌍). LLM·요청이 아니라 운영자가 고정한다.
     execution_parameters: tuple = ()
+    # 실행 직전에 자동으로 붙는 선행 단계 (노션: 파괴적 조치 앞 증거 보존 등)
+    prerequisite_steps: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -157,6 +159,14 @@ def _as_tuple(value, where: str) -> tuple:
     return tuple(str(v) for v in value)
 
 
+def _prerequisite_steps(value, where: str) -> tuple:
+    steps = _as_tuple(value, where)
+    unknown = [s for s in steps if s not in PREREQUISITE_STEPS]
+    if unknown or len(set(steps)) != len(steps):
+        raise PolicyError(f"{where}: {list(PREREQUISITE_STEPS)} 중 중복 없이 골라야 한다 (받은 값: {list(steps)})")
+    return steps
+
+
 def _execution_parameters(value, operations: tuple, where: str) -> tuple:
     if value is None:
         return ()
@@ -168,6 +178,9 @@ def _execution_parameters(value, operations: tuple, where: str) -> tuple:
     if "operation" in value and value["operation"] not in operations:
         raise PolicyError(f"{where}.operation: operations {list(operations)} 중 하나여야 한다")
     return tuple(sorted(value.items()))
+
+
+PREREQUISITE_STEPS = ("capture",)
 
 
 def parse_action_policy(action_type: str, raw) -> ActionPolicy:
@@ -254,6 +267,7 @@ def parse_action_policy(action_type: str, raw) -> ActionPolicy:
         operations=operations,
         execution_parameters=_execution_parameters(
             raw.get("execution_parameters"), operations, f"actions.{action_type}.execution_parameters"),
+        prerequisite_steps=_prerequisite_steps(raw.get("prerequisite_steps"), f"actions.{action_type}.prerequisite_steps"),
     )
 
 

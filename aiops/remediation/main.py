@@ -21,6 +21,7 @@ import time
 import urllib.parse
 import re
 import httpx
+import evidence_capture as capture_mod
 import evidence as evidence_mod
 import recovery as recovery_mod
 import store as store_mod
@@ -28,7 +29,7 @@ import plans as plans_mod
 import service_verification as service_verification_mod
 from actions.notify import Notifier
 from executor.base import RECOVERY_ACTION, DisabledExecutor, ExecutionResult
-from executor.local_docker import LocalDockerExecutor
+from executor.local_docker import BoundDockerExecutor, LocalDockerExecutor
 from executor.remote import RemoteExecutor
 from executor.identity import IdentityError, bind_targets, validate_bindings
 from executor.router import route_action
@@ -845,6 +846,23 @@ async def _push_record(record, event: str, status: str | None = None) -> None:
     await _push_soc_event("aiops-remediation", body)
 
 
+def _capture_function(selected, record):
+    """증거 보존에 쓸 읽기 전용 수집 함수. 승인된 고정 컨테이너를 우선 쓴다."""
+    if isinstance(selected, RemoteExecutor):
+        return selected.capture
+    if isinstance(selected, LocalDockerExecutor):
+        def local(target):
+            binding = (record.target_bindings or {}).get(target)
+            if binding and binding.get("container"):
+                return BoundDockerExecutor(selected, binding).capture(target)
+            return selected.capture(target)
+        return local
+    # 로컬 배포 실행기(RECREATE/ROLLBACK)는 자신이 고정한 현재 컨테이너에서 수집한다.
+    if hasattr(selected, "capture_record"):
+        return lambda target: selected.capture_record(record, target)
+    return None
+
+
 async def _perform(record, decision_targets, action_type: str,
                    approved_by: str | None = None) -> tuple[list, str]:
     """
@@ -920,6 +938,29 @@ async def _perform(record, decision_targets, action_type: str,
     record_store.update(rid, evidence=target_evidence)
     if not record_store.writable:
         return [], store_mod.BLOCKED
+
+    # ②-1 선행 단계: 증거 보존 (노션). 승인 후 실행 직전에 자동으로 하고, 실패하면 실행하지 않는다.
+    if "capture" in policy_engine.prerequisite_steps(action_type) and getattr(selected, "changes_system", True):
+        capture_for = _capture_function(selected, record)
+        try:
+            if capture_for is None:
+                raise capture_mod.CaptureError("capture_executor_unavailable")
+            manifests = await asyncio.to_thread(
+                capture_mod.preserve, capture_for, rid, list(decision_targets),
+                os.path.dirname(record_store.path), loki_url=LOKI_URL,
+                service=(record.identity or {}).get("service"), alert_started_at=record.alert_active_at)
+        except capture_mod.CaptureError as exc:
+            record_store.update(rid, state=store_mod.BLOCKED, results=[{"blocked_reason": str(exc)}])
+            logger.warning("[Remediation] 증거 보존(CAPTURE) 실패로 차단: %s — %s", action_type, exc)
+            await _push_soc_event("aiops-remediation", {
+                "event": "capture_blocked", "status": "BLOCKED", "remediation_id": rid,
+                "alert": record.alertname, "action_type": action_type, "reason": str(exc),
+                "targets": list(decision_targets)})
+            return [], store_mod.BLOCKED
+        target_evidence = {**target_evidence, "captures": manifests}
+        record_store.update(rid, evidence=target_evidence)
+        if not record_store.writable:
+            return [], store_mod.BLOCKED
 
     # ③ 실행 + ④ 검증 (실행기가 상태를 재조회해 확인한다)
     results = []

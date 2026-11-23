@@ -132,6 +132,11 @@ class PolicyEngine:
         policy = self.config.actions.get(str(action_type or "").upper())
         return dict(policy.execution_parameters) if policy else {}
 
+    def prerequisite_steps(self, action_type: str) -> tuple:
+        """실행 직전 자동 선행 단계 (예: capture). 없으면 빈 tuple."""
+        policy = self.config.actions.get(str(action_type or "").upper())
+        return policy.prerequisite_steps if policy else ()
+
     # ── 단일 실행 게이트 ──────────────────────────────────────────────────────
     def execution_allowed(self, action_type: str, targets) -> tuple[bool, str]:
         """
@@ -300,6 +305,9 @@ class BlockAllPolicyEngine:
 
     def execution_parameters(self, action_type: str) -> dict:
         return {}
+
+    def prerequisite_steps(self, action_type: str) -> tuple:
+        return ()
 
     def decide(self, action_type, threat_level=None, confidence=None,
                action_targets=None, llm_action_risk=None) -> PolicyDecision:

@@ -206,8 +206,7 @@ class AgentService:
                 raise Denied("throttle_ttl_too_long")
         return rule
 
-    def target_snapshot(self, target):
-        """Authenticated, read-only preapproval check, independent of Controller labels."""
+    def _readable_rule(self, target):
         rule = self.config.targets.get(target)
         if (rule is None or target.lower() in PROTECTED or target.startswith("aiops-")
                 or not self.config.site or not self.config.source
@@ -215,6 +214,24 @@ class AgentService:
                 or rule.labels.get("io.leafy.remediation") != "workload"
                 or rule.labels.get("com.docker.compose.service") not in ("backend", "frontend", "minio")):
             raise Denied("target_not_allowed")
+        return rule
+
+    def target_capture(self, target):
+        """Authenticated, read-only evidence capture (logs/processes) of the pinned allowlisted container."""
+        rule = self._readable_rule(target)
+        if self.mode != "live":
+            raise Denied("capture_requires_live_agent")
+        executor = self.executor(target, rule)
+        try:
+            return {**executor.capture(rule.container_id), "target": target, "agent_id": self.config.agent_id}
+        finally:
+            close = getattr(executor.client, "close", None)
+            if close:
+                close()
+
+    def target_snapshot(self, target):
+        """Authenticated, read-only preapproval check, independent of Controller labels."""
+        rule = self._readable_rule(target)
         document = {"target": target, "available": False,
                     "agent_id": self.config.agent_id,
                     "identity": {"site": self.config.site, "source": self.config.source,

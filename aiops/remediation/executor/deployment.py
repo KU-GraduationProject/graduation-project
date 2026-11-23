@@ -292,6 +292,15 @@ class DeploymentExecutor(Executor):
             raise DeploymentError("current_deployment_identity_changed")
         return container, doc
 
+    def capture_record(self, record, target):
+        """증거 보존용 읽기 전용 수집. 승인된 현재 배포 컨테이너(고정 ID·이미지·라벨)만 읽는다."""
+        from evidence_capture import container_capture
+        rule = self._rule(record.identity, record.targets, record.action_type)
+        if target != rule.identity.target:
+            raise DeploymentError("capture_target_mismatch")
+        container, doc = self._old(rule)
+        return {**container_capture(container), "container_id": doc["Id"]}
+
     @staticmethod
     def _snapshot(doc, labels):
         return {"container_id": doc["Id"], "container_name": doc["Name"].lstrip('/'),

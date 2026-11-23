@@ -257,6 +257,12 @@ class LocalDockerExecutor(Executor):
             "available": True,
         }
 
+    def capture(self, target: str) -> dict:
+        """증거 보존용 읽기 전용 수집 (로그·프로세스). 하위 클래스의 고정 ID 검사를 그대로 거친다."""
+        from evidence_capture import container_capture
+        container = self._container(target)
+        return {**container_capture(container), "container_id": (getattr(container, "attrs", None) or {}).get("Id")}
+
     def _before_mutation(self):
         # A slow inspect must not turn a valid dispatch into an expired approval
         # at the actual Docker boundary. Recheck for each network operation too.
