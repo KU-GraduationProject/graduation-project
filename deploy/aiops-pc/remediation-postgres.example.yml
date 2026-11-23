@@ -1,0 +1,23 @@
+# REFERENCE ONLY. Copy outside Git; replace every target/role/identity value.
+version: 1
+targets:
+  leafy-db:
+    identity: {site: gc, service: db, source: gc-postgres, runtime: host, target: leafy-db}
+    system_identifier: '0' # Replace with the verified cluster's pg_control_system ID.
+    database: leafy
+    server_addr: 192.0.2.17 # Documentation address, not a configured live database.
+    server_port: 5432
+    executor_role: leafy_remediator
+    connection:
+      host_env: REMEDIATION_PGHOST
+      port_env: REMEDIATION_PGPORT
+      dbname_env: REMEDIATION_PGDATABASE
+      user_env: REMEDIATION_PGUSER
+      password_env: REMEDIATION_PGPASSWORD
+      sslmode: verify-full
+    allowed_roles: [leafy_app]
+    allowed_applications: [leafy-backend]
+    allowed_client_addrs: [192.0.2.18]
+    min_idle_seconds: 60
+    min_query_seconds: 120
+    max_sessions: 5

@@ -64,6 +64,7 @@ class ActionPolicy:
     evidence_required: tuple = ()
     executor_blocked_reason: str | None = None
     recovery_mode: str = RECOVERY_NONE
+    operations: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -127,6 +128,7 @@ class PolicyConfig:
     unsupported: dict = field(default_factory=dict)    # action_type -> 사유
     threat_levels: dict = field(default_factory=dict)  # level -> ThreatPolicy
     networks: NetworkPolicy = field(default_factory=NetworkPolicy)
+    proposed_actions: dict = field(default_factory=dict)
 
 
 # ── 검증 로더 ─────────────────────────────────────────────────────────────────
@@ -186,6 +188,8 @@ def parse_action_policy(action_type: str, raw) -> ActionPolicy:
         # 자동 실행과 승인 필수가 동시에 참이면 두 경로가 모순된다.
         raise PolicyError(f"actions.{action_type}: auto_execute 와 requires_approval 을 "
                           f"동시에 참으로 둘 수 없다")
+    if risk == "high" and raw["performs_action"] is True and not requires_approval:
+        raise PolicyError(f"actions.{action_type}: high 위험 조치는 승인이 필요하다")
 
     threat_levels = _as_tuple(raw.get("auto_threat_levels"),
                               f"actions.{action_type}.auto_threat_levels")
@@ -231,6 +235,7 @@ def parse_action_policy(action_type: str, raw) -> ActionPolicy:
         executor_blocked_reason=(str(raw["executor_blocked_reason"])
                                  if raw.get("executor_blocked_reason") else None),
         recovery_mode=recovery_mode,
+        operations=_as_tuple(raw.get("operations"), f"actions.{action_type}.operations"),
     )
 
 
@@ -275,10 +280,33 @@ def parse_policy(raw) -> PolicyConfig:
     if missing_levels:
         raise PolicyError(f"threat_levels 누락: {missing_levels} (4단계 모두 필요)")
 
+    raw_proposed = raw.get("proposed_actions") or {}
+    if not isinstance(raw_proposed, dict):
+        raise PolicyError("proposed_actions 는 매핑이어야 한다")
+    from policy.catalog import ACTION_FAMILIES
+    proposals = {}
+    for name, item in raw_proposed.items():
+        key = str(name).upper()
+        if not isinstance(item, dict) or item.get("action_risk") not in RISKS:
+            raise PolicyError(f"proposed_actions.{key}: 고정 action_risk가 필요하다")
+        if key in actions or key not in ACTION_FAMILIES:
+            raise PolicyError(f"proposed_actions.{key}: 지원 조치 중복 또는 미정의 계약")
+        if item.get("executor") != ACTION_FAMILIES[key]:
+            raise PolicyError(f"proposed_actions.{key}: 실행기 계약 불일치")
+        if item.get("executor_ready") is not False:
+            raise PolicyError(f"proposed_actions.{key}: 미구현 조치 활성화 금지")
+        if not isinstance(item.get("prerequisites"), list) or not item["prerequisites"]:
+            raise PolicyError(f"proposed_actions.{key}: 선행 검증 조건 필요")
+        proposals[key] = dict(item)
+
     raw_unsupported = raw.get("unsupported") or {}
     if not isinstance(raw_unsupported, dict):
         raise PolicyError("unsupported 는 매핑이어야 한다")
     unsupported = {str(k).upper(): str(v) for k, v in raw_unsupported.items()}
+    if set(proposals) & set(unsupported):
+        raise PolicyError("proposed_actions 와 unsupported 중복")
+    unsupported.update({key: f"executor_not_implemented:{item['executor']}"
+                        for key, item in proposals.items()})
 
     overlap = sorted(set(actions) & set(unsupported))
     if overlap:
@@ -300,4 +328,5 @@ def parse_policy(raw) -> PolicyConfig:
 
     return PolicyConfig(version=version, actions=actions,
                         unsupported=unsupported, threat_levels=threat_levels,
-                        networks=NetworkPolicy(isolate=isolate, preserve=preserve))
+                        networks=NetworkPolicy(isolate=isolate, preserve=preserve),
+                        proposed_actions=proposals)

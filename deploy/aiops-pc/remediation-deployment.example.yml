@@ -1,0 +1,144 @@
+# REFERENCE ONLY. The shipped configuration denies every deployment target.
+# Copy this file outside Git and deliberately configure one verified Docker host.
+# Never replace a placeholder with a tag, short container ID, or guessed topology.
+version: 1
+targets: {}
+
+# Backend profile: replace the deny-all targets above with an operator-reviewed
+# targets map. All IDs/hashes below are deliberately invalid placeholders.
+# targets:
+#   leafy-backend:
+#     identity:
+#       site: REPLACE_WITH_VERIFIED_SITE
+#       service: backend
+#       source: REPLACE_WITH_VERIFIED_OBSERVATION_SOURCE
+#       runtime: container
+#       target: leafy-backend
+#     container_id: REPLACE_WITH_FULL_64_HEX_CURRENT_CONTAINER_ID
+#     current_image_id: sha256:REPLACE_WITH_FULL_64_HEX_CURRENT_IMAGE_ID
+#     image_repository: gicks/ai-ops-leafy-backend
+#     labels:
+#       io.leafy.remediation: workload
+#       com.docker.compose.project: REPLACE_WITH_ACTUAL_PROJECT
+#       com.docker.compose.service: backend
+#     actions: [RECREATE, ROLLBACK]
+#     stop_timeout_seconds: 10
+#     health_timeout_seconds: 90
+#     desired: &backend_spec
+#       image_id: sha256:REPLACE_WITH_FULL_64_HEX_CURRENT_IMAGE_ID
+#       command: null # Inherit the approved immutable image's normal command.
+#       entrypoint: null # Inherit its normal entrypoint; do not copy F3-a injection.
+#       environment_file: /run/secrets/leafy_backend_env.json
+#       environment_sha256: REPLACE_WITH_SHA256_OF_EXACT_PRIVATE_JSON_FILE_BYTES
+#       healthcheck:
+#         # Verify curl and this route exist in the approved image/application.
+#         # This route is illustrative, not a verified Leafy health endpoint.
+#         test: [CMD, curl, --fail, http://127.0.0.1:8080/REPLACE_WITH_VERIFIED_HEALTH_PATH]
+#         interval_ns: 5000000000
+#         timeout_ns: 3000000000
+#         retries: 3
+#         start_period_ns: 30000000000
+#       networks:
+#         - name: REPLACE_WITH_ACTUAL_COMPOSE_LEAFY_NETWORK_NAME
+#           network_id: REPLACE_WITH_FULL_64_HEX_LEAFY_NETWORK_ID
+#           ipv4_address: REPLACE_WITH_VERIFIED_BACKEND_SERVICE_IP
+#           aliases: [backend, leafy-backend]
+#         - name: REPLACE_WITH_ACTUAL_COMPOSE_MANAGEMENT_NETWORK_NAME
+#           network_id: REPLACE_WITH_FULL_64_HEX_MANAGEMENT_NETWORK_ID
+#           ipv4_address: REPLACE_WITH_VERIFIED_BACKEND_MANAGEMENT_IP
+#           aliases: [backend]
+#       ports: {} # Current backend Compose profile publishes no host port.
+#       mounts: [] # Declare every required mount; image anonymous volumes are rejected.
+#       restart_policy: {name: unless-stopped, maximum_retry_count: 0}
+#       logging:
+#         driver: fluentd
+#         options:
+#           fluentd-address: localhost:24224
+#           fluentd-async: 'true'
+#           tag: backend
+#           labels: com.docker.compose.service
+#       memory_bytes: 536870912
+#       memory_swap_bytes: 536870912
+#       cpu_quota: 0
+#       cpu_period: 100000
+#       user: ''
+#       working_dir: ''
+#       read_only_rootfs: false
+#     rollback:
+#       version: REPLACE_WITH_APPROVED_KNOWN_GOOD_VERSION
+#       spec:
+#         <<: *backend_spec
+#         image_id: sha256:REPLACE_WITH_FULL_64_HEX_KNOWN_GOOD_IMAGE_ID
+#       schema_compatible: false # Only set true after real compatibility review.
+#       backup_database_id: REPLACE_WITH_VERIFIED_DATABASE_ID
+#       backup_evidence_file: /run/remediation-backups/REPLACE_WITH_VERIFIED_MANIFEST.json
+
+# Frontend profile: it uses the actual repository's image name and readonly
+# stub_status mount shape. Addresses, host source path, image ID and health probe
+# must be independently verified; this is not an executable deployment default.
+#   leafy-frontend:
+#     identity:
+#       site: REPLACE_WITH_VERIFIED_SITE
+#       service: frontend
+#       source: REPLACE_WITH_VERIFIED_OBSERVATION_SOURCE
+#       runtime: container
+#       target: leafy-frontend
+#     container_id: REPLACE_WITH_FULL_64_HEX_CURRENT_FRONTEND_ID
+#     current_image_id: sha256:REPLACE_WITH_FULL_64_HEX_CURRENT_FRONTEND_IMAGE_ID
+#     image_repository: gicks/ai-ops-leafy-frontend
+#     labels:
+#       io.leafy.remediation: workload
+#       com.docker.compose.project: REPLACE_WITH_ACTUAL_PROJECT
+#       com.docker.compose.service: frontend
+#     actions: [RECREATE, ROLLBACK]
+#     stop_timeout_seconds: 10
+#     health_timeout_seconds: 90
+#     desired: &frontend_spec
+#       image_id: sha256:REPLACE_WITH_FULL_64_HEX_CURRENT_FRONTEND_IMAGE_ID
+#       command: null
+#       entrypoint: null
+#       environment_file: null # Optional private JSON ref for TZ/TRUSTED_PROXIES.
+#       environment_sha256: null
+#       healthcheck:
+#         # Verify a direct executable and readiness route in the actual image.
+#         test: [CMD, REPLACE_WITH_VERIFIED_PROBE_EXECUTABLE, REPLACE_WITH_VERIFIED_PROBE_ARGUMENT]
+#         interval_ns: 5000000000
+#         timeout_ns: 3000000000
+#         retries: 3
+#         start_period_ns: 0
+#       networks:
+#         - name: REPLACE_WITH_ACTUAL_COMPOSE_LEAFY_NETWORK_NAME
+#           network_id: REPLACE_WITH_FULL_64_HEX_LEAFY_NETWORK_ID
+#           ipv4_address: REPLACE_WITH_VERIFIED_FRONTEND_IP
+#           aliases: [frontend, leafy-frontend]
+#       ports:
+#         80/tcp:
+#           - {host_ip: 127.0.0.1, host_port: 80}
+#       mounts:
+#         - type: bind
+#           source: /REPLACE_WITH_DOCKER_HOST_ABSOLUTE_PATH/leafy/frontend/stub_status.conf
+#           target: /etc/nginx/conf.d/stub_status.conf
+#           read_only: true
+#       restart_policy: {name: unless-stopped, maximum_retry_count: 0}
+#       logging:
+#         driver: fluentd
+#         options:
+#           fluentd-address: localhost:24224
+#           fluentd-async: 'true'
+#           tag: frontend
+#           labels: com.docker.compose.service
+#       memory_bytes: 0
+#       memory_swap_bytes: 0
+#       cpu_quota: 0
+#       cpu_period: 100000
+#       user: ''
+#       working_dir: ''
+#       read_only_rootfs: false
+#     rollback:
+#       version: REPLACE_WITH_APPROVED_KNOWN_GOOD_FRONTEND_VERSION
+#       spec:
+#         <<: *frontend_spec
+#         image_id: sha256:REPLACE_WITH_FULL_64_HEX_KNOWN_GOOD_FRONTEND_IMAGE_ID
+#       schema_compatible: false # Not a backend DB attestation for this frontend profile.
+#       backup_database_id: null
+#       backup_evidence_file: null

@@ -1,0 +1,23 @@
+# Reference only. Do not mount this example as a live allowlist.
+# Replace every placeholder after inspecting the target in the intended PC.
+version: 1
+bindings:
+  - identity:
+      site: gc
+      service: backend
+      source: gc-backend
+      runtime: container
+      target: leafy-backend
+    executor: remote
+    agent_id: gc-agent
+    agent_url: https://pc2.example.ts.net
+    container:
+      container_id: REPLACE_WITH_FULL_64_HEX_CONTAINER_ID
+      image_id: sha256:REPLACE_WITH_FULL_64_HEX_IMAGE_ID
+      labels:
+        io.leafy.remediation: workload
+        com.docker.compose.project: REPLACE_WITH_ACTUAL_PROJECT
+        com.docker.compose.service: backend
+      actions: [RESTART, PAUSE, UNPAUSE, THROTTLE, UNTHROTTLE, ISOLATE, RECONNECT]
+      isolate_networks: [leafy-net]
+      preserve_networks: [mgmt-net]

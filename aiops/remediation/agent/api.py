@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 import yaml
 
-from agent.contract import AgentConfig, Command
+from agent.contract import AgentConfig, Command, DeploymentCommand, DeploymentPlanRequest
 from agent.ledger import Conflict, Ledger
 from agent.service import AgentService, Denied
 from security.agent_auth import authenticate
@@ -131,6 +131,30 @@ def create_app(service=None, secret=None):
     async def recover(request: Request):
         return await dispatch(request, recovery=True)
 
+    async def deployment_dispatch(request, planning=False):
+        body = await authenticated_body(request)
+        try:
+            command = (DeploymentPlanRequest if planning else DeploymentCommand).model_validate_json(body)
+        except ValidationError:
+            raise HTTPException(422, "invalid_deployment_request") from None
+        try:
+            handler = service.plan_deployment if planning else service.execute_deployment
+            return await run_in_threadpool(handler, command)
+        except Conflict as exc:
+            raise HTTPException(409, str(exc)) from None
+        except (Denied, ValueError):
+            raise HTTPException(403, "deployment_request_denied") from None
+        except Exception:
+            raise HTTPException(503, "deployment_state_unavailable") from None
+
+    @app.post("/v1/deployment/plans")
+    async def deployment_plan(request: Request):
+        return await deployment_dispatch(request, planning=True)
+
+    @app.post("/v1/deployments")
+    async def deployment_execute(request: Request):
+        return await deployment_dispatch(request)
+
     @app.get("/v1/executions/{rid}/{target}")
     async def status(rid: str, target: str, request: Request):
         await authenticated_body(request)
@@ -138,5 +162,15 @@ def create_app(service=None, secret=None):
         if record is None:
             raise HTTPException(404, "unknown_remediation_id")
         return record
+
+    @app.get("/v1/targets/{target}")
+    async def target_snapshot(target: str, request: Request):
+        await authenticated_body(request)
+        try:
+            return await run_in_threadpool(service.target_snapshot, target)
+        except Denied as exc:
+            raise HTTPException(403, str(exc)) from None
+        except Exception:
+            raise HTTPException(409, "target_identity_unavailable") from None
 
     return app

@@ -133,9 +133,216 @@ actions:
     notify: approval_request
     description: 네트워크 분리 — 연결 정보(IP·alias) 보존이 실행 전제조건
 
+# Actual extension executors require explicit REMEDIATION_MODE=extended and operator config.
+  KILL_SESSIONS:
+    action_risk: medium
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [validated_session_selection, cluster_identity]
+    operations: [terminate_idle_sessions, cancel_long_queries]
+
+  ROLLBACK:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_deployment_plan, verified_backup, schema_compatibility]
+
+  RECREATE:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_deployment_plan, original_config]
+
+  LOCK_ACCOUNT:
+    action_risk: medium
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [verified_admin_contract, account_identity, bounded_lock_expiry]
+
+  REVOKE_SESSION:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [verified_admin_contract, account_identity, resource_version]
+
+  DISABLE_FEATURE:
+    action_risk: medium
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [verified_admin_contract, feature_allowlist, resource_version]
+
+  # Restoration is a separately approved child of a verified app action.
+  UNLOCK_ACCOUNT:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [verified_admin_contract, account_identity, resource_version]
+
+  ENABLE_FEATURE:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [verified_admin_contract, feature_allowlist, resource_version]
+
 # ── 정책이 알고 있으나 지원하지 않는 조치 ─────────────────────────────────────
 # 여기에 있으면 "모르는 조치"가 아니라 "지원하지 않는 조치"로 사유가 기록된다.
 unsupported:
   SCALE: no_executor_implemented
 
 # 위 두 목록에 없는 action_type 은 fail closed 로 차단한다 (engine 기본 동작).
+
+# Notion §7.4/§7.5 proposals: vocabulary and prerequisites only.
+# No readiness flag may be enabled until an executor/permissions/recovery contract is implemented.
+proposed_actions:
+  CAPTURE:
+    action_risk: low
+    executor: observation
+    executor_ready: false
+    stage: 1
+    prerequisites: [read_only_capture_contract,evidence_storage_limits]
+    risk_origin: integration_review_default
+  BLOCK_EGRESS:
+    action_risk: high
+    executor: network
+    executor_ready: false
+    stage: 2
+    prerequisites: [network_backend,approved_egress_rules,restore_network]
+    risk_origin: notion_proposal
+  BACKUP_DB:
+    action_risk: medium
+    executor: db
+    executor_ready: false
+    stage: candidate1
+    prerequisites: [db_executor,backup_permissions,backup_integrity]
+    risk_origin: integration_review_default
+  RESTORE_DB:
+    action_risk: high
+    executor: db
+    executor_ready: false
+    stage: candidate1
+    prerequisites: [db_executor,manual_approval,validated_backup,restore_plan]
+    risk_origin: integration_review_default
+  DISABLE_DB_ROLE:
+    action_risk: high
+    executor: db
+    executor_ready: false
+    stage: 2
+    prerequisites: [db_executor,role_allowlist,restore_role]
+    risk_origin: notion_proposal
+  SET_LOG_LEVEL:
+    action_risk: low
+    executor: observation
+    executor_ready: false
+    stage: candidate1
+    prerequisites: [service_logging_api,ttl,restore_log_level]
+    risk_origin: integration_review_default
+  PACKET_CAPTURE:
+    action_risk: medium
+    executor: observation
+    executor_ready: false
+    stage: candidate1
+    prerequisites: [capture_executor,time_limit,privacy,storage_access_control]
+    risk_origin: integration_review_default
+  SILENCE_ALERT:
+    action_risk: high
+    executor: observation
+    executor_ready: false
+    stage: 2
+    prerequisites: [alertmanager_api,manual_approval,expiry]
+    risk_origin: integration_review_default
+  BLOCK_PATH:
+    action_risk: medium
+    executor: nginx
+    executor_ready: false
+    stage: 2
+    prerequisites: [nginx_executor,validate_config,restore_config]
+    risk_origin: notion_proposal
+  RATE_LIMIT:
+    action_risk: medium
+    executor: nginx
+    executor_ready: false
+    stage: 2
+    prerequisites: [nginx_executor,proxy_nat_review,restore_config]
+    risk_origin: notion_proposal
+  MAINTENANCE_MODE:
+    action_risk: high
+    executor: nginx
+    executor_ready: false
+    stage: 2
+    prerequisites: [nginx_executor,availability_review,restore_config]
+    risk_origin: notion_proposal
+  RESTRICT_BUCKET:
+    action_risk: medium
+    executor: minio
+    executor_ready: false
+    stage: 2
+    prerequisites: [minio_executor,app_account_separation,restore_bucket_policy]
+    risk_origin: notion_proposal
+  DISABLE_KEY:
+    action_risk: high
+    executor: minio
+    executor_ready: false
+    stage: 2
+    prerequisites: [minio_executor,key_identity,credential_dependencies,restore_access]
+    risk_origin: notion_proposal
+  RESTART_HOST_SVC:
+    action_risk: high
+    executor: host
+    executor_ready: false
+    stage: 2
+    prerequisites: [host_executor,host_identity,service_allowlist,service_health_verification]
+    risk_origin: notion_proposal
+  CLEAN_DISK:
+    action_risk: high
+    executor: host
+    executor_ready: false
+    stage: 2
+    prerequisites: [host_executor,approved_delete_targets,irreversibility_review]
+    risk_origin: notion_proposal
+  RECORD_INCIDENT:
+    action_risk: low
+    executor: record
+    executor_ready: false
+    stage: 2
+    prerequisites: [github_executor,incident_closure,record_deduplication]
+    risk_origin: integration_review_default

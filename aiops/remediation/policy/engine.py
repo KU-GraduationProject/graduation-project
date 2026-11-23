@@ -168,7 +168,8 @@ class PolicyEngine:
         if policy is None:
             # fail closed: 모르는/지원하지 않는 조치는 차단하고 사유를 남긴다.
             if key in self.config.unsupported:
-                return blocked("high", f"unsupported_action_type:"
+                proposal = self.config.proposed_actions.get(key, {})
+                return blocked(proposal.get("action_risk", "high"), f"unsupported_action_type:"
                                        f"{self.config.unsupported[key]}")
             return blocked("high", "undefined_action_type")
 
@@ -194,6 +195,13 @@ class PolicyEngine:
                 requires_approval=False, executable_now=False,
                 reasons=tuple(reasons + ["policy_performs_no_action"]),
                 notify=policy.notify, **common)
+
+        # A low-risk mutation proposed for a severe incident requires review.
+        # NOTIFY/NONE above remain valid informational responses at every level.
+        if policy.action_risk == "low" and level in ("high", "critical"):
+            return blocked(policy.action_risk, "risk_threat_underresponse_review", *reasons)
+        if policy.action_risk == "high" and level == "low":
+            reasons.append("risk_threat_overresponse_review_requires_approval")
 
         # 2) 대상 검증 — 대상이 없으면 어떤 조치도 실행할 수 없다
         if policy.requires_targets and not targets:

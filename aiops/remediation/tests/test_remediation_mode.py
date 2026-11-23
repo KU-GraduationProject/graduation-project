@@ -29,7 +29,10 @@ SLACK_SECRET = "test-slack-secret"
 API_KEY = "test-api-key"
 
 LOW_RISK_RESTART = {
-    "alert": {"labels": {"alertname": "HighCpuUsage"}},
+    "alert": {"labels": {"alertname": "HighCpuUsage", "site": "gc",
+                          "service": "backend", "source": "gc-backend",
+                          "runtime": "container", "target": "leafy-backend"},
+              "fingerprint": "cpu-incident", "startsAt": "2026-11-11T12:00:00Z"},
     "analysis": {"action_type": "RESTART", "action_targets": ["leafy-backend"],
                  "action_risk": "low", "threat_level": "high", "confidence": 0.9},
 }
@@ -64,6 +67,7 @@ def load_main(mode):
     멱등성 기록이 테스트끼리 공유돼 간섭한다). TTL 스캐너는 끈다.
     """
     env = {"SLACK_WEBHOOK_URL": "", "SLACK_TRANSPORT": "http",
+           "SLACK_TEAM_ID": "TTEAM", "SLACK_CHANNEL_ID": "CTEAM",
            "SLACK_SIGNING_SECRET": SLACK_SECRET,
            "REMEDIATION_API_KEY": API_KEY,
            "REMEDIATION_STATE_DIR": tempfile.mkdtemp(prefix="remstate_"),
@@ -118,16 +122,36 @@ class DisabledModeTest(unittest.TestCase):
         self.assertNotIn(("aiops-timeline", "auto_remediation_completed"), events)
 
     def test_slack_approval_is_logged_as_skipped(self):
+        request_body, request_headers = signed_action(LOW_RISK_RESTART)
+        proposal = self.client.post("/action", content=request_body, headers=request_headers)
+        self.assertEqual(proposal.status_code, 200)
         value = json.dumps({"alertname": "HighCpuUsage", "action_type": "RESTART",
-                            "action_targets": ["leafy-backend"]})
-        payload = json.dumps({"actions": [{"action_id": "approve_action", "value": value}],
-                              "user": {"name": "tester"}})
+                            "action_targets": ["leafy-backend"],
+                            "remediation_id": proposal.json()["remediation_id"]})
+        payload = json.dumps({"type": "block_actions", "team": {"id": "TTEAM"},
+                              "channel": {"id": "CTEAM"},
+                              "actions": [{"action_id": "approve_action", "value": value}],
+                              "user": {"id": "UANYMEMBER", "name": "tester"}})
         content, headers = signed_slack("payload=" + urllib.parse.quote(payload))
         body = self.client.post("/slack/action", content=content, headers=headers).json()
         self.assertEqual(body["status"], "approved")
         self.assertTrue(body["results"][0].startswith("Skipped:"))
         executed = [e for job, e in self.events if e.get("event") == "manual_approval_executed"]
         self.assertEqual([e["status"] for e in executed], ["SKIPPED"])
+        self.from_env.assert_not_called()
+
+    def test_legacy_button_cannot_make_an_executable_record(self):
+        value = json.dumps({"alertname": "HighCpuUsage", "action_type": "RESTART",
+                            "action_targets": ["leafy-backend"]})
+        payload = {"type": "block_actions", "team": {"id": "TTEAM"},
+                   "channel": {"id": "CTEAM"}, "user": {"id": "UANYMEMBER"},
+                   "actions": [{"action_id": "approve_action", "value": value}]}
+        content, headers = signed_slack("payload=" + urllib.parse.quote(json.dumps(payload)))
+        response = self.client.post("/slack/action", content=content, headers=headers)
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(response.json()["new_approval_required"])
+        self.assertEqual(self.main.record_store.all(), [])
+        self.from_env.assert_not_called()
 
     def test_approval_message_says_it_will_not_run(self):
         from actions import notify

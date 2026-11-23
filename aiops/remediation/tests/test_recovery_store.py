@@ -13,6 +13,7 @@ import os
 import sys
 import tempfile
 import unittest
+from tests.safety_fixtures import IDENTITY, CID, configure_local_binding, enrich_doc, local_binding
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -31,8 +32,8 @@ TARGET = "leafy-backend"
 
 
 def full_doc():
-    return inspect_doc({BUSINESS: {"ip": "10.210.0.7", "aliases": ["backend"]},
-                        MGMT: {"ip": "10.211.0.7"}}, resources={"CpuQuota": 0})
+    return enrich_doc(inspect_doc({BUSINESS: {"ip": "10.210.0.7", "aliases": ["backend"]},
+                        MGMT: {"ip": "10.211.0.7"}}, resources={"CpuQuota": 0}))
 
 
 def new_store(tmpdir) -> store_mod.RecordStore:
@@ -44,6 +45,7 @@ def new_store(tmpdir) -> store_mod.RecordStore:
 def record_for(action_type, rid="rid-1", ttl=1800, mode="auto", targets=(TARGET,)):
     return store_mod.RemediationRecord(
         remediation_id=rid, alertname="HighCpuUsage", action_type=action_type,
+        identity=dict(IDENTITY), target_bindings={TARGET: local_binding()},
         targets=list(targets), ttl_seconds=ttl, recovery_mode=mode,
         alert_active_at="2026-10-29T00:00:00+00:00",
     )
@@ -155,7 +157,7 @@ class EvidenceGateTest(unittest.TestCase):
         ex, _ = make_executor(full_doc())
         ev = evidence_mod.collect(ex, "rid-1", "ISOLATE", [TARGET])
         snap = ev["targets"][TARGET]
-        self.assertEqual(snap["container_id"], "abc123")
+        self.assertEqual(snap["container_id"], CID)
         self.assertIn(BUSINESS, snap["networks"])
         self.assertEqual(snap["networks"][BUSINESS]["ip_address"], "10.210.0.7")
         self.assertIn("cpu_quota", snap["resources"])
@@ -209,6 +211,7 @@ class TtlRecoveryTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.store = new_store(self.tmp.name)
+        configure_local_binding(self, self.tmp.name, full_doc())
         self.ex, self.fake = make_executor(full_doc())
 
     def _executed(self, action_type, mode, rid="rid-1"):
@@ -256,6 +259,8 @@ class TtlRecoveryTest(unittest.TestCase):
     def test_isolate_recovers_only_with_approval(self):
         self._executed("ISOLATE", recovery_mod.REQUIRE_APPROVAL)
         recovery_mod.run_due(self.store, self.ex, now=2000.0)
+        self.store.update("rid-1", recovery_approval_requested_at=store_mod.utcnow(),
+                          recovery_approval_expires_at=recovery_mod.recovery_due_at(900))
         record = self.store.get("rid-1")
 
         results, state = recovery_mod.recover(self.store, self.ex, record,
@@ -274,7 +279,9 @@ class TtlRecoveryTest(unittest.TestCase):
         self.assertTrue(self.ex.snapshot(TARGET)["state"]["paused"])
 
         record = self.store.get("rid-1")
-        _, state = recovery_mod.recover(self.store, self.ex, record, force=True)
+        self.store.update("rid-1", recovery_approval_requested_at=store_mod.utcnow(),
+                          recovery_approval_expires_at=recovery_mod.recovery_due_at(900))
+        _, state = recovery_mod.recover(self.store, self.ex, record, approved_by="tester", force=True)
         self.assertEqual(state, store_mod.RECOVERED)
         self.assertFalse(self.ex.snapshot(TARGET)["state"]["paused"])
 
@@ -310,7 +317,7 @@ class TtlRecoveryTest(unittest.TestCase):
 
 
 class MttrTest(unittest.TestCase):
-    def test_mttr_uses_verified_recovery_time(self):
+    def test_mttr_uses_service_confirmation_after_action_restore(self):
         record = store_mod.RemediationRecord(
             remediation_id="r", alertname="a", action_type="ISOLATE",
             alert_active_at="2026-10-29T00:00:00+00:00",
@@ -320,9 +327,10 @@ class MttrTest(unittest.TestCase):
             action_verified_at="2026-10-29T00:01:20+00:00",
             recovery_started_at="2026-10-29T00:30:00+00:00",
             recovery_verified_at="2026-10-29T00:31:00+00:00",
+            service_recovered_at="2026-10-29T00:32:00+00:00",
         )
         t = record.timings()
-        self.assertEqual(t["mttr_sec"], 1860.0)             # 복구 확인 - 경보 발생
+        self.assertEqual(t["mttr_sec"], 1920.0)             # 복구 확인 - 경보 발생
         self.assertEqual(t["time_to_contain_sec"], 80.0)    # 조치 확인 - 경보 발생
         self.assertEqual(t["approval_latency_sec"], 50.0)
         self.assertEqual(t["action_duration_sec"], 15.0)
