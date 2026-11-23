@@ -118,4 +118,4 @@ Windows Host PostgreSQL 17 및 F2-c 조치는 기본 비활성이다. 후속 요
 검증 결과는 [개선 검증 기록](REMEDIATION_IMPROVEMENTS_VERIFICATION.md)에 기록한다.
 테스트는 `testing/run_isolated.py`로 Docker 생성자·네트워크·DNS·subprocess·pipe 접근을 차단한다.
 실제 Slack WebSocket/메시지, 컨테이너 전후 상태, 원격 네트워크/PC 2, Windows Host DB는 별도 인수 대상이다.
-MTTR은 검증된 정상 복구 시각까지이며 조치 검증 시각까지는 별도 containment 지표다.
+(#49 이후) MTTR은 노션 정의대로 조치 검증 시각까지이며, 검증된 정상 복구 시각까지는 별도 서비스 복구 시간 지표다.

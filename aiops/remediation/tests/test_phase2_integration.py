@@ -269,8 +269,8 @@ class IsolateFlowTest(Phase2Base):
 
         record = self.record(rid)
         self.assertEqual(record.state, store_mod.RECOVERED)
-        self.assertIsNone(record.timings()["mttr_sec"])
-        self.assertIsNotNone(record.timings()["time_to_contain_sec"])
+        self.assertIsNone(record.timings()["service_recovery_sec"])
+        self.assertIsNotNone(record.timings()["mttr_sec"])
 
     def test_recovery_for_unknown_id_is_rejected(self):
         resp = self.post_slack(approve_form("ISOLATE", "no-such-id",
@@ -340,7 +340,7 @@ class ThrottleAutoExecuteTest(Phase2Base):
                                          now=time.time() + 10_000)
         self.assertEqual(processed[0][2], store_mod.RECOVERED)
         self.assertEqual(self.main.executor.snapshot(TARGET)["resources"]["cpu_quota"], 0)
-        self.assertIsNone(self.record(rid).timings()["mttr_sec"])
+        self.assertIsNone(self.record(rid).timings()["service_recovery_sec"])
 
     def test_throttle_below_threshold_is_not_executed(self):
         resp = self.post_action(analysis_body("THROTTLE", threat_level="medium",
@@ -399,7 +399,7 @@ class DisabledModeTest(Phase2Base):
         record = self.record(rid)
         self.assertEqual(record.state, store_mod.SKIPPED)
         self.assertIsNone(record.action_verified_at)
-        self.assertIsNone(record.mttr())
+        self.assertIsNone(record.time_to_service_recovery())
 
     def test_throttle_candidate_is_skipped_not_executed(self):
         resp = self.post_action(analysis_body("THROTTLE", threat_level="medium",
@@ -430,7 +430,7 @@ class AuditTimingTest(Phase2Base):
                     "action_started_at", "action_verified_at",
                     "recovery_started_at", "recovery_verified_at"):
             self.assertIsNotNone(t[key], key)
-        self.assertIsNone(t["mttr_sec"])  # Container restoration is not service health proof.
+        self.assertIsNone(t["service_recovery_sec"])  # Container restoration is not service health proof.
 
     def test_audit_events_use_existing_job_label(self):
         resp = self.post_action(analysis_body("ISOLATE"))

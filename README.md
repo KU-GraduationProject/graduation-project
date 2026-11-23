@@ -331,7 +331,7 @@ Invoke-RestMethod http://127.0.0.1:8001/health
 
 `disabled`에서는 승인되어도 Docker 조치를 실행하지 않습니다. Controller는 JSON 상태 파일, Agent는 SQLite에 실행 선점·증거·복구 상태를 보존합니다. 같은 `remediation_id`/대상의 요청이 재전송되어도 중복 실행하지 않으며, 프로세스 중단으로 결과가 불확실하면 자동 재실행하지 않습니다. 원격 타임아웃은 성공이나 실패로 단정하지 않고 `UNKNOWN`/`RECOVERY_UNKNOWN`으로 기록한 뒤 상태를 조회합니다.
 
-수동 승인된 원격 THROTTLE의 TTL은 PC 1과 독립적으로 Agent가 처리하지만, **Agent 또는 PC 2가 중단되면 복구가 지연됩니다.** 원격 자동 THROTTLE 실행은 차단되어 있습니다. 실행·복구 검증이 실패하거나 중단된 작업은 사람이 증거를 확인해야 합니다. MTTR은 원 경보 발생부터 **검증된 복구 시각**까지, containment 시간은 조치 검증 시각까지로 구분합니다. RECONNECT 성공은 Docker 연결 복원을 뜻하며 실제 Zeek 패킷 관측까지 보장하지 않습니다.
+수동 승인된 원격 THROTTLE의 TTL은 PC 1과 독립적으로 Agent가 처리하지만, **Agent 또는 PC 2가 중단되면 복구가 지연됩니다.** 원격 자동 THROTTLE 실행은 차단되어 있습니다. 실행·복구 검증이 실패하거나 중단된 작업은 사람이 증거를 확인해야 합니다. MTTR은 노션 정의대로 원 경보 발생부터 **조치 효과를 검증한 시각**까지이고, 서비스 복구 시간(`service_recovery_sec`)은 Health·지표 연속 검증을 통과한 시각까지로 따로 기록합니다. RECONNECT 성공은 Docker 연결 복원을 뜻하며 실제 Zeek 패킷 관측까지 보장하지 않습니다.
 
 ### 현재 구현 범위와 제한
 

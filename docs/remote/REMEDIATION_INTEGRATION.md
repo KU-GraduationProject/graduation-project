@@ -60,7 +60,7 @@
       PC1 RemoteExecutor → HMAC PC2 Agent → SQLite ledger → DeploymentExecutor
   → 조치 효과 재조회 (action_verified_at, VERIFIED)
   → 읽기 전용 Health + Prometheus 지표/실제 scrape 신선도 연속 검사
-  → service_recovered_at / MTTR 영속 저장 + 감사 이벤트
+  → service_recovered_at / 서비스 복구 시간 영속 저장 + 감사 이벤트 (MTTR 은 조치 효과 확인 시각 기준)
 ```
 
 - `REMEDIATION_APPROVAL_ENABLED=false`가 기본이다. 켜도 RCA 요청은 항상 별도 수동 승인이다.
@@ -89,9 +89,10 @@
   없거나 여러 개의 series, NaN, 응답 오류, stale sample, 범위 초과는 복구를 확정하지 않는다.
 - `__CONTAINER_ID__`는 검증된 배포 결과의 새 전체 ID 또는 승인된 Docker 바인딩에서만 치환한다.
   유지된 이전 컨테이너 지표로 새 서비스의 복구를 확인하지 않는다.
-- 실행 효과와 Docker 설정 원복은 서비스 복구와 다르다. `recovery_verified_at`만 있어도 MTTR은 null이다.
-  `MTTR = service_recovered_at - alert_active_at`; `time_to_contain`은 별도다.
-  다단계 계획의 중간 단계는 HEALTHY_INTERMEDIATE만 기록하고 마지막 단계에서 MTTR을 확정한다.
+- 실행 효과와 Docker 설정 원복은 서비스 복구와 다르다. `recovery_verified_at`만 있어도 서비스 복구 시간은 null이다.
+  노션 정의(#49): `MTTR = action_verified_at - alert_active_at`(조치를 취할 때까지).
+  `service_recovery = service_recovered_at - alert_active_at`는 별도 지표다.
+  다단계 계획의 중간 단계는 HEALTHY_INTERMEDIATE만 기록하고 마지막 단계에서 서비스 복구 시간을 확정한다.
   검증 타임아웃은 서비스 TIMEOUT이며 성공한 조치 자체를 실패/UNKNOWN으로 바꾸지 않는다.
 
 ## 4. 검증 결과
@@ -159,8 +160,8 @@ PC2 live+deployment override의 `config --quiet`를 확인했다. Compose 검사
    다음 검증 환경에서 approval=true로 전환해 같은 안전한 사건의 typed plan이 승인 대기로 저장되는지 확인한다.
    승인 전 실행 0회, 잘못된 채널/Reject 후 Approve/만료/변조 버튼 실행 0회를 확인한다.
 6. **명시 승인된 단일 조치**: 운영자 승인 범위의 검증 컨테이너에 한해 승인한다. PC1 레코드와 PC2 ledger의
-   사건/승인/계획/대상 ID를 대조하고 효과 검증 시각을 확인한다. 조치 성공 직후 MTTR=null이어야 한다.
-   연속 Health+지표 검증 후 SERVICE_RECOVERED 감사 이벤트와 MTTR을 확인한다.
+   사건/승인/계획/대상 ID를 대조하고 효과 검증 시각을 확인한다. 조치 효과 확인 직후 MTTR은 기록되고 서비스 복구 시간은 null이어야 한다.
+   연속 Health+지표 검증 후 SERVICE_RECOVERED 감사 이벤트와 서비스 복구 시간을 확인한다.
    복구 스캐너 기본 간격은 60초이며 `REMEDIATION_TTL_SCAN_SEC=0`이면 자동 검사가 꺼진다.
 7. **단절/중복/교체**: 승인 이벤트 중복은 새 실행이 없어야 한다. 승인 후 Agent 응답만 유실시키는 통제된
    검증에서는 `/remote/reconcile`의 `operation:reconcile_remote`, `retry:false`로 조회만 수행한다.

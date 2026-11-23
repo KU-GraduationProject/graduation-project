@@ -51,7 +51,7 @@ class IntegratedPlanTests(Phase2Base):
         self.assertEqual(self.docker_actions(), [])
         self.assertEqual(self.post_slack(approve_form("THROTTLE", rid)).status_code, 200)
         self.assertEqual(len(self.docker_actions()), 1)
-        self.assertIsNone(self.record(rid).mttr())
+        self.assertIsNone(self.record(rid).time_to_service_recovery())
 
     def test_manual_wire_tampering_unsupported_parameters_and_missing_intent_block(self):
         body = proposal()
@@ -166,7 +166,7 @@ class IntegratedPlanTests(Phase2Base):
         self.assertEqual(approved.status_code, 200, approved.text)
         self.assertEqual(record.state, "VERIFIED")
         self.assertEqual(app.calls, ["LOCK_ACCOUNT", "UNLOCK_ACCOUNT"])
-        self.assertIsNone(record.mttr())
+        self.assertIsNone(record.time_to_service_recovery())
 
     def test_direct_restore_without_parent_is_rejected_even_with_valid_service_signature(self):
         body = json.loads(analysis_body("ENABLE_FEATURE"))

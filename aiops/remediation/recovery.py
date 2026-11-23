@@ -11,7 +11,7 @@ ISOLATE 가 require_approval 인 이유: 공격이 진행 중이라면 TTL 만�
 공격을 재개시킨다. 격리는 사람이 "이제 풀어도 된다" 고 판단해야 풀린다.
 
 복구도 실행과 같은 규칙을 따른다 — 상태를 다시 조회해 확인되지 않으면 성공으로
-기록하지 않는다. MTTR 은 복구를 '확인한' 시각으로만 계산한다.
+기록하지 않는다. 시간 지표는 상태를 '확인한' 시각으로만 계산한다.
 """
 
 from __future__ import annotations
@@ -151,7 +151,7 @@ def recover(store, executor, record, approved_by: str | None = None,
         return results, store_mod.RECOVERED
 
     # 확인되지 않은 복구는 성공으로 기록하지 않는다. recovery_verified_at 을
-    # 비워 두므로 MTTR 도 계산되지 않는다 (없는 값을 만들지 않는다).
+    # 비워 두므로 복구 시간도 계산되지 않는다 (없는 값을 만들지 않는다).
     store.update(record.remediation_id, state=store_mod.RECOVERY_FAILED,
                  recovery_results=[r.as_dict() for r in results])
     return results, store_mod.RECOVERY_FAILED

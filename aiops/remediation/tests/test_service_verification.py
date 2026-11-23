@@ -83,26 +83,26 @@ class ServiceVerificationTests(unittest.TestCase):
         return verification.verify_record(self.store, self.record, now=self.now,
             config_path=self.config_path, client=self.client)
 
-    def test_effect_and_restore_success_alone_have_no_mttr(self):
-        self.assertIsNone(self.record.mttr())
-        self.assertIsNotNone(self.record.time_to_contain())
+    def test_effect_and_restore_success_alone_have_no_service_recovery_time(self):
+        self.assertIsNone(self.record.time_to_service_recovery())
+        self.assertIsNotNone(self.record.mttr())
         self.assertIsNone(self.record.service_recovered_at)
 
-    def test_three_fresh_health_and_metric_samples_confirm_service_and_mttr(self):
+    def test_three_fresh_health_and_metric_samples_confirm_service_recovery_time(self):
         self.check(BASE + 10)
         self.assertEqual(self.record.service_verification["consecutive"], 1)
-        self.assertIsNone(self.record.mttr())
+        self.assertIsNone(self.record.time_to_service_recovery())
         self.check(BASE + 20)
         self.check(BASE + 30)
         self.assertEqual(self.record.service_verification["state"], "RECOVERED")
         self.assertEqual(self.record.state, states.VERIFIED)
-        self.assertEqual(self.record.mttr(), 130.0)
+        self.assertEqual(self.record.time_to_service_recovery(), 130.0)
         self.assertEqual(self.record.timings()["restore_duration_sec"], 32.0)
         self.assertEqual(len(self.calls), 9)
         self.assertNotIn("private_detail", json.dumps(self.record.as_dict()))
         restarted = states.RecordStore(self.store_path)
         restarted.load()
-        self.assertEqual(restarted.get("service-record").mttr(), 130.0)
+        self.assertEqual(restarted.get("service-record").time_to_service_recovery(), 130.0)
         self.check(BASE + 50)
         self.assertEqual(len(self.calls), 9)
 
@@ -111,14 +111,14 @@ class ServiceVerificationTests(unittest.TestCase):
             list(pool.map(lambda _: self.check(BASE + 10), range(4)))
         self.assertEqual(self.record.service_verification["consecutive"], 1)
         self.assertEqual(len(self.calls), 3)
-        self.assertIsNone(self.record.mttr())
+        self.assertIsNone(self.record.time_to_service_recovery())
 
     def test_health_failure_resets_consecutive_window(self):
         self.check(BASE + 10)
         self.health_body = {"status": "DOWN"}
         self.check(BASE + 20)
         self.assertEqual(self.record.service_verification["consecutive"], 0)
-        self.assertIsNone(self.record.mttr())
+        self.assertIsNone(self.record.time_to_service_recovery())
         self.health_body = {"status": "UP"}
         self.check(BASE + 30)
         self.assertEqual(self.record.service_verification["consecutive"], 1)
@@ -127,7 +127,7 @@ class ServiceVerificationTests(unittest.TestCase):
         self.metric_time = BASE - 100
         self.check(BASE + 10)
         self.assertEqual(self.record.service_verification["reason"], "service_metric_not_fresh")
-        self.assertIsNone(self.record.mttr())
+        self.assertIsNone(self.record.time_to_service_recovery())
 
     def test_same_scrape_repeated_later_does_not_advance_stable_window(self):
         self.metric_time = BASE + 10
@@ -140,7 +140,7 @@ class ServiceVerificationTests(unittest.TestCase):
         for timestamp in (BASE - 1, BASE + 60):
             self.metric_time = timestamp
             self.check(self.now + 10)
-            self.assertIsNone(self.record.mttr())
+            self.assertIsNone(self.record.time_to_service_recovery())
             self.assertEqual(self.record.service_verification["consecutive"], 0)
 
     def test_missing_ambiguous_nan_and_threshold_metrics_do_not_confirm_recovery(self):
@@ -151,14 +151,14 @@ class ServiceVerificationTests(unittest.TestCase):
         for value in ("NaN", "Inf", "0", "2"):
             self.metric_value = value
             self.check(self.now + 10)
-            self.assertIsNone(self.record.mttr())
+            self.assertIsNone(self.record.time_to_service_recovery())
             self.assertEqual(self.record.service_verification["consecutive"], 0)
 
     def test_timeout_is_service_timeout_and_never_changes_successful_action(self):
         self.check(BASE + 301)
         self.assertEqual(self.record.service_verification["state"], "TIMEOUT")
         self.assertEqual(self.record.state, states.VERIFIED)
-        self.assertIsNone(self.record.mttr())
+        self.assertIsNone(self.record.time_to_service_recovery())
         self.assertEqual(self.calls, [])
 
     def test_unknown_failed_or_unverified_action_never_makes_health_requests(self):
@@ -169,7 +169,7 @@ class ServiceVerificationTests(unittest.TestCase):
         self.record.results[0]["verified"] = False
         self.check()
         self.assertEqual(self.calls, [])
-        self.assertIsNone(self.record.mttr())
+        self.assertIsNone(self.record.time_to_service_recovery())
 
     def test_profile_change_after_approval_requires_reapproval(self):
         self.config["profiles"][0]["health"]["url"] = "https://other.fixture.invalid"
@@ -186,7 +186,7 @@ class ServiceVerificationTests(unittest.TestCase):
         self.record.service_verification = {}
         self.check(BASE + 20)
         self.assertEqual(self.calls, [])
-        self.assertIsNone(self.record.mttr())
+        self.assertIsNone(self.record.time_to_service_recovery())
 
     def test_network_failure_is_sanitized_without_changing_action_state(self):
         with patch.object(self.client, "stream", side_effect=httpx.ConnectError("secret raw body")):
@@ -223,21 +223,21 @@ class ServiceVerificationTests(unittest.TestCase):
         self.save()
         self.assertEqual(verification.plan_record(self.record, self.config_path)["state"], "BLOCKED")
 
-    def test_store_failure_never_returns_confirmed_mttr(self):
+    def test_store_failure_never_returns_confirmed_service_recovery(self):
         self.check(BASE + 10)
         self.check(BASE + 20)
         with patch("store.os.replace", side_effect=OSError("fixture full disk")):
             returned = self.check(BASE + 30)
         self.assertFalse(self.store.writable)
-        self.assertIsNone(returned.mttr())
-        self.assertIsNone(self.store.get("service-record").mttr())
+        self.assertIsNone(returned.time_to_service_recovery())
+        self.assertIsNone(self.store.get("service-record").time_to_service_recovery())
 
-    def test_intermediate_stage_health_does_not_finalize_incident_mttr(self):
+    def test_intermediate_stage_health_does_not_finalize_service_recovery(self):
         self.record.plan_steps = [{"fixture":1}, {"fixture":2}]
         for now in (BASE+10,BASE+20,BASE+30):
             self.check(now)
         self.assertEqual(self.record.service_verification["state"], "HEALTHY_INTERMEDIATE")
-        self.assertIsNone(self.record.mttr())
+        self.assertIsNone(self.record.time_to_service_recovery())
 
     def test_metrics_bind_verified_replacement_id_instead_of_the_retained_old_container(self):
         self.config["profiles"][0]["metrics"][0].update(

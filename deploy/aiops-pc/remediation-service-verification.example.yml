@@ -30,4 +30,4 @@ profiles:
         max_age_seconds: 60
       # Example limit is not a project SLO. Set thresholds from verified resource
       # limits/SLOs and add incident-specific error/latency/DB/security checks.
-      # Missing, stale or multi-series metrics prevent service recovery/MTTR.
+      # Missing, stale or multi-series metrics prevent service recovery time.

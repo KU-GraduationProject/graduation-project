@@ -304,9 +304,9 @@ class TtlRecoveryTest(unittest.TestCase):
         results, state = recovery_mod.recover(self.store, broken, record)
         self.assertEqual(state, store_mod.RECOVERY_FAILED)
         self.assertFalse(any(r.ok for r in results))
-        # MTTR 을 만들지 않는다
+        # 복구 시간을 만들지 않는다
         self.assertIsNone(self.store.get("rid-1").recovery_verified_at)
-        self.assertIsNone(self.store.get("rid-1").mttr())
+        self.assertIsNone(self.store.get("rid-1").time_to_service_recovery())
 
     def test_due_recoveries_only_includes_pending(self):
         self._executed("THROTTLE", recovery_mod.AUTO, rid="a")
@@ -317,7 +317,7 @@ class TtlRecoveryTest(unittest.TestCase):
 
 
 class MttrTest(unittest.TestCase):
-    def test_mttr_uses_service_confirmation_after_action_restore(self):
+    def test_mttr_ends_at_action_verification_and_service_time_at_confirmation(self):
         record = store_mod.RemediationRecord(
             remediation_id="r", alertname="a", action_type="ISOLATE",
             alert_active_at="2026-10-29T00:00:00+00:00",
@@ -330,25 +330,25 @@ class MttrTest(unittest.TestCase):
             service_recovered_at="2026-10-29T00:32:00+00:00",
         )
         t = record.timings()
-        self.assertEqual(t["mttr_sec"], 1920.0)             # 복구 확인 - 경보 발생
-        self.assertEqual(t["time_to_contain_sec"], 80.0)    # 조치 확인 - 경보 발생
+        self.assertEqual(t["service_recovery_sec"], 1920.0)  # 서비스 복구 확인 - 경보 발생
+        self.assertEqual(t["mttr_sec"], 80.0)                # 조치 효과 확인 - 경보 발생 (노션 MTTR)
         self.assertEqual(t["approval_latency_sec"], 50.0)
         self.assertEqual(t["action_duration_sec"], 15.0)
         self.assertEqual(t["recovery_duration_sec"], 60.0)
 
-    def test_mttr_and_contain_are_distinct(self):
+    def test_mttr_and_service_recovery_are_distinct(self):
         record = store_mod.RemediationRecord(
             remediation_id="r", alertname="a", action_type="THROTTLE",
             alert_active_at="2026-10-29T00:00:00+00:00",
             action_verified_at="2026-10-29T00:00:30+00:00")
-        self.assertEqual(record.time_to_contain(), 30.0)
-        self.assertIsNone(record.mttr())   # 복구 확인 전에는 MTTR 이 없다
+        self.assertEqual(record.mttr(), 30.0)
+        self.assertIsNone(record.time_to_service_recovery())   # 서비스 복구 확인 전에는 값이 없다
 
     def test_missing_timestamps_give_none_not_zero(self):
         record = store_mod.RemediationRecord(remediation_id="r", alertname="a",
                                              action_type="ISOLATE")
+        self.assertIsNone(record.time_to_service_recovery())
         self.assertIsNone(record.mttr())
-        self.assertIsNone(record.time_to_contain())
 
     def test_recovery_due_at_respects_ttl(self):
         due = recovery_mod.recovery_due_at(1800, now=0.0)

@@ -2,7 +2,7 @@
 
 Only operator-authored exact-identity profiles select URLs, PromQL and thresholds.
 An action receipt is never proof of service recovery. Multiple fresh health AND
-metric observations after the action are required before a durable MTTR exists.
+metric observations after the action are required before service recovery time exists.
 """
 from __future__ import annotations
 

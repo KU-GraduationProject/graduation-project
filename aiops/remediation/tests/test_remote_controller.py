@@ -122,7 +122,7 @@ class RemoteControllerTest(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertEqual(record.state, "RECOVERED")
         self.assertEqual(len(self.fake.calls), 2)
-        self.assertIsNone(record.mttr())
+        self.assertIsNone(record.time_to_service_recovery())
 
     def test_throttle_policy_candidate_still_requires_manual_approval(self):
         record = self.propose_approve("THROTTLE")
