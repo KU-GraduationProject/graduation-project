@@ -295,6 +295,30 @@ class FailClosedTest(unittest.TestCase):
         self.assertEqual(d.confidence, 1.0)
 
 
+class ExecutionParametersTest(unittest.TestCase):
+    """실행 세부값(잠금 시간·세션 정리 방식)은 LLM 이 아니라 정책 파일이 정한다 (노션)."""
+
+    def test_repo_policy_owns_lock_duration_and_session_operation(self):
+        e = engine()
+        self.assertEqual(e.execution_parameters("KILL_SESSIONS"), {"operation": "terminate_idle_sessions"})
+        self.assertEqual(e.execution_parameters("LOCK_ACCOUNT"), {"duration_seconds": 1800})
+        self.assertEqual(e.execution_parameters("RESTART"), {})
+        self.assertEqual(BlockAllPolicyEngine("x").execution_parameters("LOCK_ACCOUNT"), {})
+
+    def test_invalid_execution_parameters_are_rejected(self):
+        import yaml
+        with open(REPO_POLICY_PATH, encoding="utf-8") as fh:
+            original = yaml.safe_load(fh)
+        for action, value in (("KILL_SESSIONS", {"operation": "drop_database"}),
+                              ("LOCK_ACCOUNT", {"duration_seconds": True}),
+                              ("LOCK_ACCOUNT", {"duration_seconds": [1800]}),
+                              ("LOCK_ACCOUNT", {})):
+            raw = yaml.safe_load(yaml.safe_dump(original))
+            raw["actions"][action]["execution_parameters"] = value
+            with self.subTest(action=action, value=value), self.assertRaises(PolicyError):
+                parse_policy(raw)
+
+
 class MalformedPolicyTest(unittest.TestCase):
     """잘못된 정책 파일은 안전하게 실패한다."""
 

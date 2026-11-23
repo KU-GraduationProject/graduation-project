@@ -20,8 +20,13 @@ ACTION_TYPES = ("NONE", "NOTIFY", "THROTTLE", "RESTART", "PAUSE", "ISOLATE",
 # 시스템을 바꾸지 않는 조치 — 대상이 없어야 한다.
 NO_TARGET_ACTIONS = ("NONE", "NOTIFY")
 
-# 조치 대상이 될 수 있는 컨테이너 (remediation-agent allowlist: backend/frontend/minio)
-ACTION_TARGETS = ("leafy-backend", "leafy-frontend", "leafy-minio")
+# 조치 대상 이름. 컨테이너(remediation-agent allowlist: backend/frontend/minio)와 DB(KILL_SESSIONS).
+ACTION_TARGETS = ("leafy-backend", "leafy-frontend", "leafy-minio", "leafy-db")
+
+# 계정 대상(LOCK_ACCOUNT)은 "account:<관측된 계정 ID>" 로 쓴다. 실제 잠글 수 있는 계정은
+# Controller 의 운영자 allowlist(remediation-app-api account_allowlist)가 다시 제한한다.
+ACCOUNT_TARGET_PREFIX = "account:"
+ACCOUNT_TARGET_PATTERN = r"^account:[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"
 
 INCIDENT_CLASSES = ("attack", "failure", "benign")
 

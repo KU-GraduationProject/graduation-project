@@ -127,6 +127,11 @@ class PolicyEngine:
             return 0.0
         return max(0.0, min(1.0, value))
 
+    def execution_parameters(self, action_type: str) -> dict:
+        """정책이 고정한 실행 세부값 (예: 잠금 시간, 세션 정리 방식). 없으면 빈 dict."""
+        policy = self.config.actions.get(str(action_type or "").upper())
+        return dict(policy.execution_parameters) if policy else {}
+
     # ── 단일 실행 게이트 ──────────────────────────────────────────────────────
     def execution_allowed(self, action_type: str, targets) -> tuple[bool, str]:
         """
@@ -292,6 +297,9 @@ class BlockAllPolicyEngine:
 
     def execution_allowed(self, action_type: str, targets) -> tuple[bool, str]:
         return False, f"policy_unavailable:{self.reason}"
+
+    def execution_parameters(self, action_type: str) -> dict:
+        return {}
 
     def decide(self, action_type, threat_level=None, confidence=None,
                action_targets=None, llm_action_risk=None) -> PolicyDecision:

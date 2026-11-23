@@ -44,7 +44,7 @@ SCHEMA (all fields required):
 
 RULES:
 - action_type: RESTART=CPU spike/memory leak (service down), ISOLATE=active network attack/data exfil, PAUSE=container compromise requiring forensic preservation, THROTTLE=transient CPU/memory pressure with service still alive, NOTIFY=ambiguous/needs human review, NONE=false positive or already recovered
-- action_targets: MUST match Container field in ALERT. Always an array.
+- action_targets: MUST match Container field in ALERT. Always an array. For LOCK_ACCOUNT use ["account:<account id seen in logs>"].
 - evidence: 3-5 numeric values from metrics.
 - KILL_SESSIONS=database connection pool exhausted by idle sessions or long queries, LOCK_ACCOUNT=credential attack on one application account, RECREATE=container must be replaced from its approved image, ROLLBACK=failure began right after a deployment or configuration change.
 - Recommend only what and where. Never include commands, SQL, URLs, credentials, durations or multi-step plans; the policy engine decides how to execute.

@@ -57,9 +57,9 @@ class ExtendedControllerTests(Phase2Base):
             target = "leafy-db"
             payload["alert"]["labels"].update(service="db", runtime="host", target=target)
             payload["analysis"]["action_targets"] = [target]
-            payload["analysis"]["action_parameters"] = {"operation": "terminate_idle_sessions"}
+            payload["analysis"]["action_parameters"] = {}  # 세션 정리 방식은 정책이 채운다
         elif action == "LOCK_ACCOUNT":
-            payload["analysis"]["action_parameters"] = {"account_id": "test-user", "duration_seconds": 60}
+            payload["analysis"]["action_parameters"] = {"account_id": "test-user"}  # 잠금 시간은 정책이 채운다
         payload["alert"]["fingerprint"] += "-" + action
         response = self.post_action(json.dumps(payload).encode())
         self.assertEqual(response.status_code, 200, response.text)
@@ -119,6 +119,28 @@ class ExtendedControllerTests(Phase2Base):
         self.assertEqual(self.approve("KILL_SESSIONS", rid, targets, nonce=1).status_code, 409)
         self.assertEqual(self.families["postgres"].calls, ["KILL_SESSIONS"])
 
+    def test_policy_fills_execution_parameters_for_rca_proposals(self):
+        lock, _ = self.propose("LOCK_ACCOUNT")
+        self.assertEqual(self.record(lock.json()["remediation_id"]).action_parameters,
+                         {"account_id": "test-user", "duration_seconds": 1800})
+        kill, _ = self.propose("KILL_SESSIONS")
+        self.assertEqual(self.record(kill.json()["remediation_id"]).action_parameters,
+                         {"operation": "terminate_idle_sessions"})
+
+    def test_request_cannot_override_policy_owned_parameters(self):
+        for action, parameters in (("KILL_SESSIONS", {"operation": "cancel_long_queries"}),
+                                   ("LOCK_ACCOUNT", {"account_id": "test-user", "duration_seconds": 60})):
+            payload = json.loads(analysis_body(action))
+            if action == "KILL_SESSIONS":
+                payload["alert"]["labels"].update(service="db", runtime="host", target="leafy-db")
+                payload["analysis"]["action_targets"] = ["leafy-db"]
+            payload["analysis"]["action_parameters"] = parameters
+            response = self.post_action(json.dumps(payload).encode())
+            with self.subTest(action=action):
+                self.assertEqual(response.status_code, 422)
+                self.assertEqual(response.json()["detail"], "policy_owned_action_parameter")
+        self.assertEqual(self.main.record_store.all(), [])
+
     def test_approval_message_contains_actual_parameters_and_selected_sessions(self):
         with patch.object(self.main.notifier, "send_approval_request", new=AsyncMock(return_value={})) as notice:
             proposal, _ = self.propose()
@@ -135,8 +157,7 @@ class ExtendedControllerTests(Phase2Base):
 
     def test_unsupported_command_or_secret_fields_are_never_persisted(self):
         payload = json.loads(analysis_body("KILL_SESSIONS"))
-        payload["analysis"]["action_parameters"] = {"operation": "terminate_idle_sessions",
-                                                    "password": "do-not-store", "sql": "do-not-store"}
+        payload["analysis"]["action_parameters"] = {"password": "do-not-store", "sql": "do-not-store"}
         response = self.post_action(json.dumps(payload).encode())
         self.assertEqual(response.status_code, 422)
         self.assertEqual(self.main.record_store.all(), [])

@@ -147,7 +147,7 @@ class IntegratedPlanTests(Phase2Base):
         app = FamilyFixture("app_api", self)
         self.main.executor = ExtendedExecutorRouter({"app_api":app})
         body = proposal("LOCK_ACCOUNT")
-        body["analysis"]["action_parameters"] = {"account_id":"fixture-user", "duration_seconds":60}
+        body["analysis"]["action_parameters"] = {"account_id":"fixture-user"}
         body["plan"] = wire(body["alert"], body["analysis"])
         first = self.post(body).json()["remediation_id"]
         request = {"operation":"request_recovery", "remediation_id":first, "reason":"Incident reviewed"}

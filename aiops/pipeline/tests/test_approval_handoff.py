@@ -99,12 +99,39 @@ class ManualApprovalHandoffTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("plan_steps", body)
         self.assertNotIn("arbitrary", seen[0].content.decode())
 
-    def test_actions_needing_execution_details_are_not_proposed_from_llm_output(self):
-        # 잠금 시간·세션 정리 방식은 LLM 이 아니라 정책이 정한다. 그 전까지 제안하지 않는다.
-        for action in ("LOCK_ACCOUNT", "KILL_SESSIONS"):
+    def test_lock_account_targets_an_observed_account_and_leaves_duration_to_policy(self):
+        value = raw()
+        value.update(action_type="LOCK_ACCOUNT", action_targets=["account:fixture-user"])
+        proposal = build_proposal(alert(), parsed(value), ObservationIdentity(**IDENTITY), "resolved")
+        self.assertEqual(proposal["plan"]["targets"], [IDENTITY["target"]])
+        self.assertEqual(proposal["plan"]["parameters"], {"account_id": "fixture-user"})
+        self.assertEqual(proposal["analysis"]["action_targets"], [IDENTITY["target"]])
+        for targets in (["leafy-backend"], ["account:a", "account:b"], ["account:fixture-user", "leafy-backend"]):
+            value["action_targets"] = targets
+            with self.subTest(targets=targets), self.assertRaises(PlanError):
+                build_proposal(alert(), parsed(value), ObservationIdentity(**IDENTITY), "resolved")
+
+    def test_account_targets_are_only_for_lock_account(self):
+        value = raw()
+        value["action_targets"] = ["account:fixture-user"]
+        with self.assertRaises(PlanError):
+            build_proposal(alert(), parsed(value), ObservationIdentity(**IDENTITY), "resolved")
+
+    def test_kill_sessions_targets_the_observed_database_without_llm_parameters(self):
+        db = dict(IDENTITY, service="db", runtime="host", target="leafy-db")
+        db_alert = main.Alert(status="firing", startsAt="2026-11-12T00:00:00Z", fingerprint="fixture-db",
+                              labels=main.AlertLabel(alertname="DbPoolExhausted", **db))
+        value = raw()
+        value.update(action_type="KILL_SESSIONS", action_targets=["leafy-db"])
+        proposal = build_proposal(db_alert, parsed(value), ObservationIdentity(**db), "resolved")
+        self.assertEqual(proposal["plan"]["targets"], ["leafy-db"])
+        self.assertEqual(proposal["plan"]["parameters"], {})
+
+    def test_malformed_account_targets_are_invalid_analysis(self):
+        for target in ("account:", "account:bad id", "account:../x", "user:fixture"):
             value = raw()
-            value["action_type"] = action
-            model = parsed(value)
-            self.assertEqual(model.analysis_status, "valid")
-            with self.assertRaises(PlanError):
-                build_proposal(alert(), model, ObservationIdentity(**IDENTITY), "resolved")
+            value.update(action_type="LOCK_ACCOUNT", action_targets=[target])
+            with self.subTest(target=target):
+                model = parsed(value)
+                self.assertEqual(model.analysis_status, "invalid")
+                self.assertIn("invalid_enum:action_targets", model.invalid_reasons)
