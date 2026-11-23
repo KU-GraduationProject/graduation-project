@@ -18,8 +18,12 @@ class ProposalContractTests(unittest.TestCase):
 
     def test_recommendation_vocabularies_match_across_separate_images(self):
         actions = Path(__file__).resolve().parents[2] / "pipeline/schemas/actions.py"
-        pipeline_names = runpy.run_path(str(actions))["RECOMMENDED_ACTIONS"]
-        self.assertEqual(set(pipeline_names), set(ACTION_FAMILIES))
+        pipeline_names = set(runpy.run_path(str(actions))["ACTION_TYPES"])
+        # LLM 은 Notion 1차 조치만 고른다. 나머지 어휘(2차 조치·선행 단계·사람 요청 복구)는
+        # Controller 정책 카탈로그에만 있고 LLM 출력으로는 들어오지 않는다.
+        self.assertLessEqual(pipeline_names, set(ACTION_FAMILIES))
+        self.assertTrue(pipeline_names.isdisjoint(self.engine.config.proposed_actions))
+        self.assertTrue(pipeline_names.isdisjoint({"UNLOCK_ACCOUNT", "ENABLE_FEATURE", "SCALE"}))
 
     def test_all_proposals_have_policy_risk_and_cannot_execute_at_any_severity(self):
         self.assertEqual(len(self.engine.config.proposed_actions), 16)

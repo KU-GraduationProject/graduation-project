@@ -102,7 +102,8 @@ class ReleaseTelemetryTests(unittest.IsolatedAsyncioTestCase):
         def client(**kw):
             kw.setdefault("transport", transport)
             return factory(**kw)
-        result = main.LLMAnalysisResult(root_cause="fixture RCA", action_type="NOTIFY", confidence=.8)
+        result = main.LLMAnalysisResult(root_cause="fixture RCA", incident_class="failure", action_type="NOTIFY",
+                                        action_targets=[], threat_level="medium", evidence=[], confidence=.8)
         starts_at = datetime.now(timezone.utc).isoformat()
         with patch.object(main, "_observation_bindings", (self.binding,)), \
              patch.object(main, "metrics_collector", MetricsCollector("http://fixture.invalid", transport)), \

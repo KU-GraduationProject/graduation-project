@@ -68,7 +68,7 @@ class PipelineAgentEndToEndTests(unittest.TestCase):
             anchor = datetime.now(timezone.utc)
             network = NetworkContext("backend", anchor, anchor, provenance={"status":"empty"})
             result = pipeline["LLMAnalysisResult"](root_cause="Synthetic deployment configuration failure",
-                action_type="RECREATE", action_targets=[identity["target"]], action_parameters={},
+                incident_class="failure", action_type="RECREATE", action_targets=[identity["target"]],
                 evidence=["fixture app errors"], confidence=.95, threat_level="high")
             self.assertEqual(result.analysis_status, "valid")
             alert = pipeline["Alert"](status="firing", startsAt=datetime.fromtimestamp(time.time()-120, timezone.utc).isoformat(),

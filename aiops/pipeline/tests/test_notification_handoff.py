@@ -14,7 +14,8 @@ import main
 from identity import ObservationIdentity, LogEvidence, MetricEvidence, parse_bindings
 from collector.network import NetworkContext
 from security.service_auth import SIGNATURE_HEADER, TIMESTAMP_HEADER, sign
-from schemas.actions import RECOMMENDED_ACTIONS
+from schemas.actions import ACTION_TYPES
+from schemas.llm_output import parse_analysis
 
 IDENTITY = {"site": "fixture-gc", "service": "backend", "source": "fixture-docker",
             "runtime": "container", "target": "fixture-backend"}
@@ -27,8 +28,11 @@ def alert(**labels):
 
 
 def result():
-    return main.LLMAnalysisResult(root_cause="fixture cpu saturation", action_type="THROTTLE",
-                                  action_targets=["fixture-backend"], evidence=["cpu > threshold"], confidence=.9)
+    # 알림 경로는 분석 결과를 그대로 전달만 한다. fixture 대상 이름은 조치 대상 enum 밖이라 검증을 건너뛴다.
+    return main.LLMAnalysisResult.model_construct(
+        root_cause="fixture cpu saturation", incident_class="failure", action_type="THROTTLE",
+        action_targets=["fixture-backend"], threat_level="medium", evidence=["cpu > threshold"],
+        confidence=.9, analysis_status="valid", invalid_reasons=[])
 
 
 class NotificationHandoffTests(unittest.IsolatedAsyncioTestCase):
@@ -115,9 +119,15 @@ class NotificationHandoffTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("ALERT ONLY", json.dumps(captured))
 
     def test_team_proposal_candidates_remain_recommendations(self):
-        for action in RECOMMENDED_ACTIONS:
-            self.assertEqual(main.LLMAnalysisResult(action_type=action).action_type, action)
-        self.assertEqual(main.LLMAnalysisResult(action_type="arbitrary_shell").action_type, "NONE")
+        def parse(action):
+            return parse_analysis(json.dumps({"root_cause": "x", "incident_class": "failure",
+                "action_type": action, "action_targets": [], "threat_level": "low",
+                "evidence": [], "confidence": .5}), evidence_ids=None)
+        for action in ACTION_TYPES:
+            self.assertEqual(parse(action).action_type, action)
+        invalid = parse("arbitrary_shell")
+        self.assertEqual(invalid.analysis_status, "invalid")
+        self.assertEqual(invalid.action_type, "NOTIFY")
 
 
 class PipelineNotificationFlowTests(unittest.IsolatedAsyncioTestCase):

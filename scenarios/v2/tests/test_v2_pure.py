@@ -65,6 +65,16 @@ class TestRegistry(unittest.TestCase):
         with self.assertRaises(ValueError):
             registry._validate(bad)
 
+    def test_rejects_bad_incident_class(self):
+        bad = [{"id": "x", "expected_action": "NONE", "incident_class": "maybe",
+                "module": None, "external_tool": None}]
+        with self.assertRaises(ValueError):
+            registry._validate(bad)
+
+    def test_every_row_has_incident_class(self):
+        for r in registry.SCENARIO_REGISTRY_V2:
+            self.assertIn(r["incident_class"], registry.INCIDENT_CLASSES, r["id"])
+
     def test_rejects_bad_evidence(self):
         bad = [{"id": "x", "expected_action": "NONE", "evidence": ["bogus"],
                 "module": None, "external_tool": None}]

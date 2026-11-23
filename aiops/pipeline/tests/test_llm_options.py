@@ -21,9 +21,9 @@ import main  # noqa: E402
 
 _CONTENT = {
     "root_cause": "cpu saturated",
+    "incident_class": "failure",
     "action_type": "RESTART",
     "action_targets": ["leafy-backend"],
-    "action_description": "restart",
     "threat_level": "high",
     "evidence": ["cpu_usage: latest=4.9"],
     "confidence": 0.9,
@@ -72,7 +72,9 @@ class LlmOptionsTest(unittest.TestCase):
         for body in bodies:
             self.assertEqual(body["options"], expected)  # seed 미설정이면 키 자체가 없다
             self.assertEqual(body["model"], main.settings.llm_model)
-            self.assertEqual(body["format"], "json")
+        # call_llm 은 출력 JSON 스키마로 형식을 강제하고, 주기 스캔은 기존 json 모드를 쓴다
+        self.assertEqual(bodies[0]["format"], main.output_schema(None))
+        self.assertEqual(bodies[1]["format"], "json")
 
     def test_seed_sent_only_when_configured(self):
         for body in self._sent_bodies(seed=42):

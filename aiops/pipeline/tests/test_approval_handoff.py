@@ -1,5 +1,4 @@
 """RCA planning and actual signed HTTP handoff over MockTransport; no real LLM/API."""
-from copy import deepcopy
 import json
 import unittest
 from unittest.mock import patch
@@ -7,17 +6,21 @@ from unittest.mock import patch
 import httpx
 import main
 from identity import ObservationIdentity
-from schemas.llm_output import LLMAnalysisResult
-from schemas.remediation_plan import build_proposals, PlanError
+from schemas.llm_output import parse_analysis
+from schemas.remediation_plan import build_proposal, PlanError
 from security.service_auth import SIGNATURE_HEADER, TIMESTAMP_HEADER, sign
 
 IDENTITY = {"site":"gc", "service":"backend", "source":"pc2", "runtime":"container", "target":"leafy-backend"}
 
 
 def raw():
-    return {"root_cause":"Observed CPU saturation", "action_type":"THROTTLE",
-            "action_targets":["leafy-backend"], "action_parameters":{},
-            "threat_level":"medium", "confidence":.9, "evidence":["CPU > threshold"]}
+    return {"root_cause":"Observed CPU saturation", "incident_class":"failure", "action_type":"THROTTLE",
+            "action_targets":["leafy-backend"], "threat_level":"medium", "confidence":.9,
+            "evidence":["CPU > threshold"]}
+
+
+def parsed(value):
+    return parse_analysis(json.dumps(value), evidence_ids=None)
 
 
 def alert():
@@ -39,7 +42,7 @@ class ManualApprovalHandoffTests(unittest.IsolatedAsyncioTestCase):
              patch.object(main.settings, "remediation_approval_enabled", True), \
              patch.object(main.settings, "remediation_api_key", "fixture-api-key"), \
              patch.object(main.httpx, "AsyncClient", side_effect=lambda **kw: original(transport=httpx.MockTransport(handler), **kw)):
-            status = await main.forward_to_remediation(alert(), LLMAnalysisResult(**(analysis or raw())),
+            status = await main.forward_to_remediation(alert(), parsed(analysis or raw()),
                                                         ObservationIdentity(**IDENTITY), identity_status)
         return seen, status
 
@@ -59,8 +62,8 @@ class ManualApprovalHandoffTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_invalid_low_confidence_future_or_restore_action_stays_informational(self):
         for mutation in ({"confidence":.79}, {"confidence":"0.95"}, {"action_type":"BACKUP_DB"},
-                         {"action_type":"ENABLE_FEATURE"}, {"action_targets":["other-pc"]},
-                         {"evidence":[]}, {"action_parameters":{"command":"arbitrary"}}):
+                         {"action_type":"ENABLE_FEATURE"}, {"action_type":"REVOKE_SESSION"},
+                         {"action_targets":["other-pc"]}, {"evidence":[]}):
             value = raw()
             value.update(mutation)
             seen, result = await self.send(value)
@@ -84,31 +87,24 @@ class ManualApprovalHandoffTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(seen), 1)
         self.assertEqual(result["handoff_status"], "approval_proposal_not_accepted")
 
-    async def test_two_steps_are_sent_as_one_manual_plan_without_advancing(self):
+    async def test_llm_execution_details_and_plans_are_never_forwarded(self):
         value = raw()
-        value["remediation_steps"] = [deepcopy(value), {"action_type":"RECREATE", "action_targets":["leafy-backend"],
-                                                       "action_parameters":{}}]
-        # Step schema forbids nested plans and inherits the root cause itself.
-        value["remediation_steps"][0].pop("root_cause")
+        value["action_parameters"] = {"command": "arbitrary"}
+        value["remediation_steps"] = [{"action_type": "RECREATE", "action_targets": ["leafy-backend"]}]
         seen, _ = await self.send(value)
-        body = json.loads(seen[0].content)
-        self.assertEqual(body["operation"], "propose_plan")
-        self.assertEqual(len(body["plan_steps"]), 2)
-        self.assertTrue(body["force_manual"])
         self.assertEqual(len(seen), 1)
+        body = json.loads(seen[0].content)
+        self.assertEqual(body["operation"], "propose_manual_action")
+        self.assertEqual(body["plan"]["parameters"], {})
+        self.assertNotIn("plan_steps", body)
+        self.assertNotIn("arbitrary", seen[0].content.decode())
 
-    def test_required_resource_parameters_are_typed_and_unknown_inputs_are_discarded(self):
-        value = raw()
-        value.update(action_type="LOCK_ACCOUNT", action_parameters={"account_id":"123", "duration_seconds":300})
-        model = LLMAnalysisResult(**value)
-        self.assertEqual(model.analysis_status, "valid")
-        self.assertEqual(build_proposals(alert(), model, ObservationIdentity(**IDENTITY), "resolved")[0]["plan"]["parameters"],
-                         {"account_id":"123", "duration_seconds":300})
-        for invalid in ({"account_id":"123", "duration_seconds":"300"},
-                        {"account_id":"123", "duration_seconds":300, "token":"private-never-store"}, {}):
-            value["action_parameters"] = invalid
-            model = LLMAnalysisResult(**value)
-            self.assertEqual(model.analysis_status, "invalid")
-            self.assertNotIn("private-never-store", model.model_dump_json())
+    def test_actions_needing_execution_details_are_not_proposed_from_llm_output(self):
+        # 잠금 시간·세션 정리 방식은 LLM 이 아니라 정책이 정한다. 그 전까지 제안하지 않는다.
+        for action in ("LOCK_ACCOUNT", "KILL_SESSIONS"):
+            value = raw()
+            value["action_type"] = action
+            model = parsed(value)
+            self.assertEqual(model.analysis_status, "valid")
             with self.assertRaises(PlanError):
-                build_proposals(alert(), model, ObservationIdentity(**IDENTITY), "resolved")
+                build_proposal(alert(), model, ObservationIdentity(**IDENTITY), "resolved")

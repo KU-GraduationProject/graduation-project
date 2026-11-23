@@ -154,4 +154,4 @@ def labels_for(scenario_id: str) -> dict:
     row = next((r for r in registry.SCENARIO_REGISTRY_V2 if r["id"] == scenario_id), None)
     if row is None:
         raise KeyError(scenario_id)
-    return {k: row[k] for k in ("threat_level", "expected_action", "expected_action_ideal")}
+    return {k: row[k] for k in ("threat_level", "expected_action", "expected_action_ideal", "incident_class")}

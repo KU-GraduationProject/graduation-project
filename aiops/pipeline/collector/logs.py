@@ -9,7 +9,9 @@ class LogsCollector:
         self.url = loki_url
         self._transport = transport
 
-    async def fetch(self, ctx: CorrelationContext, limit: int = 200) -> list[dict]:
+    async def fetch(self, ctx: CorrelationContext, limit: int = 200,
+                    direction: str = "forward") -> list[dict]:
+        """반환은 항상 시각 오름차순. direction=backward 면 limit 에 걸려도 최신 줄이 남는다 (v2 경보 분석)."""
         scope = ctx.binding.logs if ctx.binding else {}
         report = {"backend": "loki", "identity": ctx.identity.to_dict() if ctx.identity else {},
                   "selector": scope, "limit": limit}
@@ -31,7 +33,7 @@ class LogsCollector:
                     return LogEvidence(status="source_mismatch", **report)
                 resp = await client.get(f"{self.url}/loki/api/v1/query_range", params={
                     "query": selector(scope), "start": ctx.start_ns, "end": ctx.end_ns,
-                    "limit": limit, "direction": "forward"})
+                    "limit": limit, "direction": direction})
                 resp.raise_for_status()
                 data = resp.json()
                 if data.get("status") != "success" or data["data"]["resultType"] != "streams":

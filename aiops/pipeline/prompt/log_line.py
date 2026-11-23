@@ -145,3 +145,88 @@ def is_priority(entry: dict) -> bool:
         except ValueError:
             return False
     return any(kw in text.lower() for kw in _TEXT_KEYWORDS)
+
+
+# ─── v2: 압축 렌더링 (prompt/builder_v2.py) ───────────────────────────────────
+# 판단에 필요한 필드만 남긴다. user_agent·detail·pid·session 같은 긴/잡음 필드는 뺀다.
+# 시각은 줄 안의 원래 표기(+09:00 등) 대신 Loki 수집 시각(UTC)을 builder 가 붙인다.
+COMPACT_CHARS = 180
+_COMPACT_FIELDS = (
+    (("request_method", "http_method"), "", 10),
+    (("request_uri", "uri"), "", 100),
+    (("status",), "status=", 5),
+    (("duration_ms",), "dur_ms=", 10),
+    (("request_time",), "dur_s=", 10),
+    (("state_code", "sql_state_code"), "sqlstate=", 8),
+    (("exception_class",), "exc=", 60),
+    (("exception_message",), "exc_msg=", 80),
+    (("user", "principal"), "user=", 30),
+    (("dbname",), "db=", 30),
+    (("source_ip", "remote_addr", "remote_host"), "src=", 40),
+    (("query_decoded",), "q=", 80),
+    (("request_id",), "rid=", 40),
+)
+_DIGITS = re.compile(r"\d+")
+_HEXISH = re.compile(r"\b[0-9a-fA-F]{8,}\b|\b[0-9a-fA-F-]{32,36}\b")
+
+
+def compact_fields(entry: dict) -> dict:
+    """
+    압축 렌더링에 쓰는 필드 dict. 키: severity, method, path, status, message, extra(list[str]).
+    JSON 이 아닌 줄은 message 에 원문만 담는다.
+    """
+    rec = _record(entry)
+    labels = entry.get("labels", {})
+    if rec is None or labels.get("log_format") in ("text", "json_invalid"):
+        raw = entry["line"] if rec is None else _raw_text(rec)
+        return {"severity": "", "method": "", "path": "", "status": "",
+                "message": _WHITESPACE.sub(" ", str(raw)).strip()[:VALUE_CHARS], "extra": []}
+
+    sev = _first(rec, _SEVERITY_KEYS)
+    msg = _first(rec, _MESSAGE_KEYS)
+    out = {"severity": str(sev[1]).upper() if sev else "",
+           "message": _WHITESPACE.sub(" ", str(msg[1])).strip()[:VALUE_CHARS] if msg else "",
+           "method": "", "path": "", "status": "", "extra": []}
+    for keys, label, limit in _COMPACT_FIELDS:
+        found = _first(rec, keys)
+        if not found:
+            continue
+        value = _WHITESPACE.sub(" ", str(found[1])).strip()[:limit]
+        if keys[0] == "request_method":
+            out["method"] = value
+        elif keys[0] == "request_uri":
+            out["path"] = value
+        elif keys[0] == "status":
+            out["status"] = value
+        elif not (out["message"] and value in out["message"]):
+            out["extra"].append(label + value)
+    # 액세스 로그 message 가 "GET /x 200" 처럼 같은 값만 담고 있으면 버린다
+    if out["message"] and out["path"] and out["path"] in out["message"]:
+        out["message"] = ""
+    return out
+
+
+def render_compact(entry: dict) -> str:
+    """[service] SEVERITY METHOD PATH status=… message | 부가 필드. 비밀값은 가린다."""
+    labels = entry.get("labels", {})
+    prefix = labels.get("service") or labels.get("container") or "?"
+    f = compact_fields(entry)
+    parts = [p for p in (f["severity"] if f["severity"] not in ("", "INFO") else "",
+                         f["method"], f["path"],
+                         f"status={f['status']}" if f["status"] else "",
+                         f["message"][:120]) if p]
+    text = " ".join(parts)
+    if f["extra"]:
+        text += " | " + " ".join(f["extra"])
+    return f"[{prefix}] " + mask_secrets(text)[:COMPACT_CHARS]
+
+
+def pattern_key(entry: dict) -> tuple:
+    """같은 패턴 묶음 키: 서비스·심각도·메서드·경로(쿼리 값·숫자 제거)·상태·메시지 틀."""
+    labels = entry.get("labels", {})
+    f = compact_fields(entry)
+    path, _, query = f["path"].partition("?")
+    query_keys = ",".join(sorted(kv.partition("=")[0] for kv in query.split("&") if kv))
+    template = _DIGITS.sub("#", _HEXISH.sub("*", f["message"]))[:80]
+    return (labels.get("service") or labels.get("container") or "?", f["severity"], f["method"],
+            _DIGITS.sub("#", path) + ("?" + query_keys if query_keys else ""), f["status"], template)
