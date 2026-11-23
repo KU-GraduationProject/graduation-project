@@ -137,12 +137,14 @@ actions:
   KILL_SESSIONS:
     action_risk: medium
     performs_action: true
-    requires_approval: true
-    auto_execute: false
+    requires_approval: false       # 노션: medium 은 자동 + 사후 알림. 실제 자동 실행은
+    auto_execute: true             # REMEDIATION_AUTO_EXECUTE_ENABLED=true 일 때만 (기본 승인)
+    min_confidence: 0.8
+    auto_threat_levels: [medium, high]
     executor_ready: true
     requires_targets: true
     recovery_mode: none
-    notify: approval_request
+    notify: post_action
     evidence_required: [validated_session_selection, cluster_identity]
     operations: [terminate_idle_sessions, cancel_long_queries]
     execution_parameters:          # 노션: LLM 이 아니라 정책이 실행 방식을 정한다
@@ -173,12 +175,14 @@ actions:
   LOCK_ACCOUNT:
     action_risk: medium
     performs_action: true
-    requires_approval: true
-    auto_execute: false
+    requires_approval: false       # 시간 제한 잠금만 있다 (노션: 시간 제한 자동, 영구는 승인)
+    auto_execute: true             # 실제 자동 실행은 REMEDIATION_AUTO_EXECUTE_ENABLED=true 일 때만
+    min_confidence: 0.8
+    auto_threat_levels: [medium, high]
     executor_ready: true
     requires_targets: true
     recovery_mode: none
-    notify: approval_request
+    notify: post_action
     evidence_required: [verified_admin_contract, account_identity, bounded_lock_expiry]
     execution_parameters:          # 시간 제한 잠금. 만료되면 앱이 해제한다 (노션: TTL 만료 시 자동 해제)
       duration_seconds: 1800

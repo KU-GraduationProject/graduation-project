@@ -165,14 +165,21 @@ class ActionOutcomeTest(PolicyEndpointBase):
         self.assertTrue(policy["requires_approval"])
         self.assertEqual(self.docker_calls(), 0)
 
+    def test_auto_candidate_waits_for_approval_when_auto_execution_is_off(self):
+        """노션 정렬 #47: 기본값(플래그 off)에서는 자동 후보도 실행하지 않고 승인을 요청한다."""
+        resp = self.post_action(analysis_body("THROTTLE", threat_level="medium", confidence=0.85))
+        self.assertEqual(resp.json()["status"], "pending_approval")
+        self.assertEqual(self.docker_calls(), 0)
+
     def test_throttle_candidate_is_executed_with_ttl(self):
         """
         [Phase 2 기대값 변경] Phase 1 에서는 TTL 자동 복구가 없어 후보 상태로만 남고
         'auto_execution_deferred' 였다. Phase 2 는 UNTHROTTLE 복구를 구현했으므로
         정책대로 실행된다 (executable_now=true). 복구 TTL 은 그대로 1800초다.
         """
-        resp = self.post_action(analysis_body("THROTTLE", threat_level="medium",
-                                              confidence=0.85))
+        with mock.patch.dict(os.environ, {"REMEDIATION_AUTO_EXECUTE_ENABLED": "true"}):
+            resp = self.post_action(analysis_body("THROTTLE", threat_level="medium",
+                                                  confidence=0.85))
         body = resp.json()
         self.assertEqual(body["policy"]["outcome"], "AUTO_EXECUTE_CANDIDATE")
         self.assertTrue(body["policy"]["executable_now"])

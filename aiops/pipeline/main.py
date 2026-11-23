@@ -901,6 +901,10 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
     return result
 
 
+# Controller 자동 실행 경로의 응답 상태 (remediation main._propose_action)
+AUTO_EXECUTION_STATUSES = frozenset({"executed", "skipped", "unknown", "failed", "blocked", "auto_execution_deferred"})
+
+
 async def forward_to_remediation(alert: Alert, result: LLMAnalysisResult,
                                  identity=None, identity_status: str | None = None) -> dict:
     """
@@ -937,8 +941,9 @@ async def forward_to_remediation(alert: Alert, result: LLMAnalysisResult,
         except PlanError as exc:
             status["proposal_reason"] = str(exc)
         else:
-            payload = {"operation": "propose_manual_action", "force_manual": True,
-                       "alert": raw_alert, **proposal}
+            auto = settings.remediation_auto_execute_enabled
+            payload = ({"operation": "propose_rca_action", "alert": raw_alert, **proposal} if auto else
+                       {"operation": "propose_manual_action", "force_manual": True, "alert": raw_alert, **proposal})
             body = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
             headers = build_service_auth_headers(settings.remediation_api_key, body)
             try:
@@ -947,9 +952,14 @@ async def forward_to_remediation(alert: Alert, result: LLMAnalysisResult,
                                                  content=body, headers=headers)
                     response.raise_for_status()
                     answer = response.json()
-                if (not isinstance(answer, dict) or answer.get("status") not in {"pending_approval", "existing"}
+                accepted = {"pending_approval", "existing"} | (AUTO_EXECUTION_STATUSES if auto else set())
+                if (not isinstance(answer, dict) or answer.get("status") not in accepted
                         or not isinstance(answer.get("remediation_id"), str)):
                     return {**status, "handoff_status": "approval_proposal_not_accepted"}
+                if answer["status"] in AUTO_EXECUTION_STATUSES:
+                    return {**status, "handoff_status": "auto_" + answer["status"], "remediation_dispatched": True,
+                            "remediation_id": answer["remediation_id"],
+                            "execution_attempted": answer["status"] in {"executed", "unknown", "failed"}}
                 return {**status, "handoff_status": "approval_pending", "remediation_dispatched": True,
                         "remediation_id": answer["remediation_id"], "execution_attempted": False,
                         "approval_notification_dispatched": (answer.get("dispatch") or {}).get("sent") is True}

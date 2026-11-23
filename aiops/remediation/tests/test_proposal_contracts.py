@@ -90,5 +90,8 @@ class ProposalContractTests(unittest.TestCase):
             self.assertTrue(set(candidates) <= set(ACTION_FAMILIES))
         db = self.engine.config.actions["KILL_SESSIONS"]
         self.assertEqual(db.operations, ("terminate_idle_sessions", "cancel_long_queries"))
-        self.assertTrue(db.requires_approval)
-        self.assertFalse(db.auto_execute)
+        # 노션: medium 조치는 자동 + 사후 알림 후보. 실제 자동 실행은 운영자 플래그가 켜졌을 때만이다.
+        self.assertEqual(db.action_risk, "medium")
+        self.assertFalse(db.requires_approval)
+        self.assertTrue(db.auto_execute)
+        self.assertEqual(db.notify, "post_action")
