@@ -2,9 +2,12 @@
 #
 # 기존 docker-compose.yml / docker-compose.aiops.yml 와 독립된 project 다.
 # depends_on·volume·network 를 공유하지 않으므로 이 스택이 멈춰도 실시간 RCA 경로에 영향이 없다.
-# 현재 DAG 는 Mock fixture 기반 stub 이라 Loki/Prometheus 에 접근하지 않는다.
+# Bronze phase 는 DP_LOKI_URL / DP_PROMETHEUS_URL 로 읽기 전용 질의만 한다. 기본값은 이 Compose 의
+# dp-mock-sources(STEP 0 fixture 를 답하는 mock Loki/Prometheus)이며 실제 Loki/Prometheus 에는 접근하지 않는다.
+# lineage.run 에 남길 git sha 를 반드시 넘긴다(03 §2: 모르면 실행 거부).
 #
-#   docker compose -f docker-compose.dataplatform.yml up -d
+#   DP_GIT_SHA=$(git rev-parse HEAD) DP_GIT_DIRTY=$(test -z "$(git status --porcelain)" && echo false || echo true) \
+#     docker compose -f docker-compose.dataplatform.yml up -d
 #   UI: http://127.0.0.1:18080   (loopback 전용, 로컬 개발용으로 로그인 생략)
 #   docker compose -f docker-compose.dataplatform.yml down      # 데이터 유지
 #   docker compose -f docker-compose.dataplatform.yml down -v   # lake·메타DB 삭제
@@ -19,8 +22,16 @@ x-airflow-env: &airflow-env
   # 로컬 loopback 전용 개발 편의. 공유 환경에서는 제거하고 인증을 켠다.
   AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
   PYTHONPATH: /opt/airflow/dataplatform
+  PYTHONDONTWRITEBYTECODE: "1"
   DP_LAKE_ROOT: /opt/airflow/lake
   DP_FIXTURE_DIR: /opt/airflow/fixtures
+  DP_PIPELINE_DIR: /opt/airflow/pipeline
+  DP_ALLOWLIST_PATH: /opt/airflow/policy/allowlist.yml
+  DP_LOKI_URL: ${DP_LOKI_URL:-http://dp-mock-sources:3100}
+  DP_PROMETHEUS_URL: ${DP_PROMETHEUS_URL:-http://dp-mock-sources:3100}
+  DP_GIT_SHA: ${DP_GIT_SHA:-}
+  DP_GIT_DIRTY: ${DP_GIT_DIRTY:-false}
+  DP_ENV: ${DP_ENV:-development}
 
 services:
   dp-airflow-db:
@@ -51,6 +62,28 @@ services:
       - dp_lake:/opt/airflow/lake
     networks: [datalake-net]
 
+  # Mock Loki + Prometheus: STEP 0 fixture Bronze 행으로 답한다(읽기 전용 GET, 외부 publish 없음).
+  dp-mock-sources:
+    image: apache/airflow:3.3.2-python3.11
+    container_name: dp-mock-sources
+    working_dir: /opt/airflow/dataplatform
+    entrypoint: ["python", "-m", "mock_sources.server", "--port", "3100"]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      DP_FIXTURE_DIR: /opt/airflow/fixtures
+    volumes:
+      - ./aiops/dataplatform:/opt/airflow/dataplatform:ro
+      - ./docs/data-platform/examples/db-connection-limit:/opt/airflow/fixtures:ro
+    networks: [datalake-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3100/ready')"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 256m
+    cpus: 0.25
+    restart: unless-stopped
+
   dp-airflow:
     image: apache/airflow:3.3.2-python3.11
     container_name: dp-airflow
@@ -59,6 +92,8 @@ services:
         condition: service_healthy
       dp-lake-init:
         condition: service_completed_successfully
+      dp-mock-sources:
+        condition: service_healthy
     environment: *airflow-env
     command:
       - bash
@@ -73,6 +108,9 @@ services:
     volumes:
       - ./aiops/dataplatform/airflow/dags:/opt/airflow/dags:ro
       - ./aiops/dataplatform:/opt/airflow/dataplatform:ro
+      # aiops/pipeline 모듈(identity·correlation·log_line…)과 allowlist 는 읽기 전용으로만 재사용한다(05 §3.2).
+      - ./aiops/pipeline:/opt/airflow/pipeline:ro
+      - ./aiops/policy:/opt/airflow/policy:ro
       - ./docs/data-platform/examples/db-connection-limit:/opt/airflow/fixtures:ro
       - dp_lake:/opt/airflow/lake
     networks: [datalake-net]
