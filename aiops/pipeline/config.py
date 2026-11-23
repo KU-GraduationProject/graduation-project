@@ -20,6 +20,9 @@ class Settings:
     # Propose manual approval records only. The new operation is rejected by older Controllers.
     remediation_approval_enabled: bool = os.getenv("REMEDIATION_APPROVAL_ENABLED", "false").lower() == "true"
     remediation_proposal_min_confidence: float = float(os.getenv("REMEDIATION_PROPOSAL_MIN_CONFIDENCE", "0.8"))
+    # 노션: medium 조치 자동 실행 + 사후 알림. 켜면 RCA 제안을 propose_rca_action 으로 보내고,
+    # Controller 도 같은 플래그가 켜져 있어야 자동 실행한다. 기본 false = 모든 제안이 수동 승인.
+    remediation_auto_execute_enabled: bool = os.getenv("REMEDIATION_AUTO_EXECUTE_ENABLED", "false").lower() == "true"
     # Remediation 서명 공유키. 미설정이면 알림 전달을 생략한다 (fail closed).
     remediation_api_key: str = os.getenv("REMEDIATION_API_KEY", "")
     # 원격 대상 이름 -> canonical service. 형식은 correlation.parse_target_map 참고. 비우면 Docker metadata만 쓴다.

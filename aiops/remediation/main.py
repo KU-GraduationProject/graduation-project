@@ -60,6 +60,13 @@ LOKI_URL = os.getenv("LOKI_URL", "http://loki:3100")
 SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
 REMEDIATION_API_KEY = os.getenv("REMEDIATION_API_KEY", "")
 
+
+
+def _auto_execute_enabled() -> bool:
+    """노션: medium 조치 자동 실행 + 사후 알림. 운영자가 켤 때만 (기본 false = 모두 승인)."""
+    return os.getenv("REMEDIATION_AUTO_EXECUTE_ENABLED", "false").lower() == "true"
+
+
 _replay_guard = ReplayGuard()
 slack_settings = SlackSettings.from_env()
 slack_socket = None
@@ -443,17 +450,25 @@ async def execute_action(request: ActionRequest):
 async def _propose_action(request, previous=None, link_kind=None, steps=None,
                           step_index=0, internal_recovery=False):
     """Propose an incident-bound action; the policy remains execution authority."""
-    if request.operation not in (None, "propose_action", "propose_manual_action", "propose_plan", "replan_action", "internal_recovery"):
+    if request.operation not in (None, "propose_action", "propose_manual_action", "propose_plan", "replan_action",
+                                 "propose_rca_action", "internal_recovery"):
         raise HTTPException(400, "action_operation_mismatch")
     analysis, alert = request.analysis, request.alert
-    manual_intent = request.operation in {"propose_manual_action", "propose_plan", "replan_action"}
+    # propose_rca_action: 수동 제안과 같은 엄격 검증. 자동 실행 플래그가 꺼져 있으면 수동 제안과 같다.
+    rca_auto = request.operation == "propose_rca_action" and _auto_execute_enabled()
+    strict_proposal = request.operation in {"propose_manual_action", "propose_plan", "replan_action",
+                                            "propose_rca_action"}
+    manual_intent = strict_proposal and not rca_auto
     if request.operation == "internal_recovery" and not internal_recovery:
         raise HTTPException(400, "internal_operation_forbidden")
     if analysis.get("action_type") in {"UNLOCK_ACCOUNT", "ENABLE_FEATURE"} and not internal_recovery:
         raise HTTPException(409, "restoration_requires_verified_parent_request")
     try:
-        if manual_intent:
-            if not request.force_manual:
+        if strict_proposal:
+            if request.operation == "propose_rca_action":
+                if request.force_manual:
+                    raise ValueError("rca_operation_is_not_manual")
+            elif not request.force_manual:
                 raise ValueError("manual_intent_required")
             if request.operation == "propose_plan":
                 steps = plans_mod.validate_steps(request.plan_steps, alert)
@@ -519,7 +534,12 @@ async def _propose_action(request, previous=None, link_kind=None, steps=None,
 
     selected = select_executor(decision.action_type, executor)
     remote_manual = isinstance(selected, RemoteExecutor)
-    manual = decision.requires_approval or remote_manual or is_extended_executor(selected) or manual_intent or internal_recovery or request.force_manual
+    # 자동 실행은 REMEDIATION_AUTO_EXECUTE_ENABLED=true 일 때만 (기본: 정책상 자동 후보도 승인으로 돌린다).
+    # 확장 실행기(DB·앱 API)는 그중에서도 엄격 검증된 RCA 제안만 자동으로 실행한다.
+    # 원격 Agent 는 항상 승인 (_perform 이 승인자 없는 원격 실행을 막는다).
+    extended_manual = is_extended_executor(selected) and not rca_auto
+    manual = (decision.requires_approval or remote_manual or extended_manual or manual_intent
+              or internal_recovery or request.force_manual or not _auto_execute_enabled())
     record = store_mod.RemediationRecord(
         remediation_id=record_store.new_id(), incident_key=key, action_hash=digest,
         identity=identity, action_parameters=parameters,

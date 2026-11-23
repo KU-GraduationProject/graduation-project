@@ -189,3 +189,79 @@ class IntegratedPlanTests(Phase2Base):
         self.assertEqual(len(self.main.record_store.all()),2)
         self.assertEqual(parent.state,"SUPERSEDED")
         self.assertEqual(self.docker_actions(),[])
+
+
+def rca_proposal(action="THROTTLE", threat_level="medium"):
+    """Pipeline 의 자동 실행 경로 제안 (propose_rca_action, force_manual 없음)."""
+    body = proposal(action)
+    body["operation"] = "propose_rca_action"
+    body.pop("force_manual")
+    body["analysis"]["threat_level"] = threat_level
+    if action == "KILL_SESSIONS":
+        body["alert"]["labels"].update(service="db", runtime="host", target="leafy-db")
+        body["analysis"]["action_targets"] = ["leafy-db"]
+    body["alert"]["fingerprint"] += "-rca-" + action + "-" + threat_level
+    body["plan"] = wire(body["alert"], body["analysis"])
+    return body
+
+
+class RcaAutoExecutionTests(Phase2Base):
+    """노션 정렬 #47: medium 조치 자동 실행 + 사후 알림은 운영자 플래그가 켜졌을 때만."""
+    post = IntegratedPlanTests.post
+
+    def setUp(self):
+        super().setUp()
+        self.sequence = 0
+        self.main.notifier.send_approval_request = AsyncMock(return_value={"sent": True})
+        self.main.notifier.send_alert_only = AsyncMock(return_value={"sent": True})
+        self.addCleanup(self.client.close)
+
+    def auto(self, enabled=True):
+        return patch.dict("os.environ", {"REMEDIATION_AUTO_EXECUTE_ENABLED": "true" if enabled else "false"})
+
+    def test_flag_off_keeps_every_rca_proposal_manual(self):
+        with self.auto(False):
+            response = self.post(rca_proposal())
+        self.assertEqual(response.json()["status"], "pending_approval", response.text)
+        self.assertEqual(self.docker_actions(), [])
+
+    def test_flag_on_executes_medium_docker_action_and_sends_post_action_notice(self):
+        with self.auto():
+            response = self.post(rca_proposal())
+        self.assertEqual(response.json()["status"], "executed", response.text)
+        self.assertEqual(len(self.docker_actions()), 1)
+        self.assertFalse(self.record(response.json()["remediation_id"]).requires_approval)
+        self.main.notifier.send_alert_only.assert_awaited()
+        self.main.notifier.send_approval_request.assert_not_awaited()
+
+    def test_flag_on_executes_db_session_cleanup_with_policy_parameters(self):
+        postgres = FamilyFixture("postgres", self)
+        self.main.executor = ExtendedExecutorRouter({"postgres": postgres}, docker_executor=self.main.executor)
+        with self.auto():
+            response = self.post(rca_proposal("KILL_SESSIONS"))
+        self.assertEqual(response.json()["status"], "executed", response.text)
+        self.assertEqual(postgres.calls, ["KILL_SESSIONS"])
+        self.assertEqual(self.record(response.json()["remediation_id"]).action_parameters,
+                         {"operation": "terminate_idle_sessions"})
+
+    def test_low_threat_high_risk_and_legacy_extended_requests_still_need_approval(self):
+        postgres = FamilyFixture("postgres", self)
+        self.main.executor = ExtendedExecutorRouter({"postgres": postgres}, docker_executor=self.main.executor)
+        legacy = rca_proposal("KILL_SESSIONS")
+        legacy["operation"] = "propose_action"
+        legacy.pop("plan")
+        legacy["alert"]["fingerprint"] += "-legacy"
+        with self.auto():
+            for body in (rca_proposal(threat_level="low"), rca_proposal("RESTART", "high"), legacy):
+                response = self.post(body)
+                with self.subTest(action=body["analysis"]["action_type"], operation=body["operation"]):
+                    self.assertEqual(response.json()["status"], "pending_approval", response.text)
+        self.assertEqual(self.docker_actions(), [])
+        self.assertEqual(postgres.calls, [])
+
+    def test_rca_operation_cannot_claim_manual_intent(self):
+        body = rca_proposal()
+        body["force_manual"] = True
+        with self.auto():
+            self.assertEqual(self.post(body).status_code, 422)
+        self.assertEqual(self.main.record_store.all(), [])

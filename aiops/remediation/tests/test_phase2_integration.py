@@ -311,6 +311,13 @@ class FailureIsNotSuccessTest(Phase2Base):
 
 
 class ThrottleAutoExecuteTest(Phase2Base):
+    def setUp(self):
+        super().setUp()
+        # 자동 실행은 운영자 플래그가 켜졌을 때만 일어난다 (노션 정렬 #47).
+        patcher = mock.patch.dict(os.environ, {"REMEDIATION_AUTO_EXECUTE_ENABLED": "true"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_throttle_auto_executes_verifies_and_schedules_recovery(self):
         resp = self.post_action(analysis_body("THROTTLE", threat_level="medium",
                                               confidence=0.85))
@@ -374,6 +381,13 @@ class PolicyBypassTest(Phase2Base):
 
 class DisabledModeTest(Phase2Base):
     mode = "disabled"
+
+    def setUp(self):
+        super().setUp()
+        # 자동 실행은 운영자 플래그가 켜졌을 때만 일어난다 (노션 정렬 #47).
+        patcher = mock.patch.dict(os.environ, {"REMEDIATION_AUTO_EXECUTE_ENABLED": "true"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_nothing_is_executed_and_not_reported_as_success(self):
         resp = self.post_action(analysis_body("RESTART"))

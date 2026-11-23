@@ -29,7 +29,8 @@ def alert():
 
 
 class ManualApprovalHandoffTests(unittest.IsolatedAsyncioTestCase):
-    async def send(self, analysis=None, answer=None, error=False, identity_status="resolved", notice=True):
+    async def send(self, analysis=None, answer=None, error=False, identity_status="resolved", notice=True,
+                   auto=False):
         seen = []
         async def handler(request):
             seen.append(request)
@@ -40,6 +41,7 @@ class ManualApprovalHandoffTests(unittest.IsolatedAsyncioTestCase):
         original = httpx.AsyncClient
         with patch.object(main.settings, "remediation_notification_enabled", notice), \
              patch.object(main.settings, "remediation_approval_enabled", True), \
+             patch.object(main.settings, "remediation_auto_execute_enabled", auto), \
              patch.object(main.settings, "remediation_api_key", "fixture-api-key"), \
              patch.object(main.httpx, "AsyncClient", side_effect=lambda **kw: original(transport=httpx.MockTransport(handler), **kw)):
             status = await main.forward_to_remediation(alert(), parsed(analysis or raw()),
@@ -135,3 +137,18 @@ class ManualApprovalHandoffTests(unittest.IsolatedAsyncioTestCase):
                 model = parsed(value)
                 self.assertEqual(model.analysis_status, "invalid")
                 self.assertIn("invalid_enum:action_targets", model.invalid_reasons)
+
+    async def test_auto_flag_sends_rca_operation_and_reports_execution(self):
+        seen, result = await self.send(auto=True, answer={"status": "executed", "remediation_id": "fixture-rid"})
+        body = json.loads(seen[0].content)
+        self.assertEqual(body["operation"], "propose_rca_action")
+        self.assertNotIn("force_manual", body)
+        self.assertEqual(result["handoff_status"], "auto_executed")
+        self.assertTrue(result["execution_attempted"])
+        _, waiting = await self.send(auto=True)
+        self.assertEqual(waiting["handoff_status"], "approval_pending")
+        self.assertFalse(waiting["execution_attempted"])
+
+    async def test_manual_mode_never_accepts_an_execution_answer(self):
+        _, result = await self.send(answer={"status": "executed", "remediation_id": "fixture-rid"})
+        self.assertEqual(result["handoff_status"], "approval_proposal_not_accepted")
