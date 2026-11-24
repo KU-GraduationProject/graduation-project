@@ -14,6 +14,16 @@ class Settings:
     llm_num_predict: int = int(os.getenv("LLM_NUM_PREDICT", "400"))
     # 비우면 호출에 seed 를 넣지 않는다 (Ollama 가 매번 무작위 seed 사용).
     llm_seed: int | None = int(os.getenv("LLM_SEED")) if os.getenv("LLM_SEED") else None
+    # RCA LLM 공급자: gemini(기본, GPU·Ollama 불필요) | ollama(기존 로컬 경로)
+    llm_provider: str = (os.getenv("LLM_PROVIDER") or "gemini").strip().lower()
+    # 키는 환경변수로만 받는다. 로그·예외 메시지에 넣지 않는다.
+    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    gemini_model: str = os.getenv("GEMINI_MODEL") or "gemini-3.5-flash-lite"
+    gemini_timeout: float = float(os.getenv("GEMINI_TIMEOUT", "30"))
+    gemini_max_output_tokens: int = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "1024"))
+    # 429·일시적 5xx 에만 쓰는 추가 시도 횟수 (총 호출 ≤ 1 + 이 값). 지연은 base × 2^n 초
+    gemini_max_retries: int = int(os.getenv("GEMINI_MAX_RETRIES", "2"))
+    gemini_retry_base_delay: float = float(os.getenv("GEMINI_RETRY_BASE_DELAY", "2"))
     slack_webhook_url: str = os.getenv("SLACK_WEBHOOK_URL", "")
     # RCA 알림은 /notify 로만 보낸다. 운영 전환은 명시 opt-in 이며 /action 을 열지 않는다.
     remediation_notification_enabled: bool = os.getenv("REMEDIATION_NOTIFICATION_ENABLED", "false").lower() == "true"

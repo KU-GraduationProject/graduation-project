@@ -1,5 +1,6 @@
 """Read-only reconciliation of PC 1 records with the Agent's durable state."""
-import httpx
+
+from executor.remote import HTTP_ERRORS
 
 from executor.base import RECOVERY_ACTION
 import store as states
@@ -22,7 +23,7 @@ def reconcile(store, executor, record):
             if doc.get("recovery_state"):
                 recoveries.append(executor.result_from_status(
                     doc, RECOVERY_ACTION[record.action_type], target, record.remediation_id, True))
-    except (httpx.HTTPError, ValueError, TypeError, KeyError):
+    except (*HTTP_ERRORS, ValueError, TypeError, KeyError):
         return record
     if not results:
         return record

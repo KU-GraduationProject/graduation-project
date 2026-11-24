@@ -10,6 +10,14 @@ from urllib.parse import urlsplit
 
 import httpx
 
+try:
+    # starlette TestClient 는 httpx2 가 설치돼 있으면 httpx2 응답을 돌려준다 (google-genai 가 httpx2 를 끌어온다).
+    # 같은 Agent 응답 오류를 두 라이브러리 어느 쪽에서 와도 같은 실패로 처리한다.
+    import httpx2
+    HTTP_ERRORS = (httpx.HTTPError, httpx2.HTTPError)
+except ImportError:
+    HTTP_ERRORS = (httpx.HTTPError,)
+
 from agent.contract import Authorization, Command, DeploymentCommand
 from executor.base import Executor, ExecutorError, ExecutionResult, blocked
 from security.agent_auth import headers
@@ -83,7 +91,7 @@ class RemoteExecutor(Executor):
                     or plan["pre_snapshot"]["image_id"] != configured["container"]["image_id"]
                     or plan["operator_config"]["labels"] != configured["container"]["labels"]):
                 raise ValueError()
-        except (httpx.HTTPError, ValueError, TypeError, KeyError):
+        except (*HTTP_ERRORS, ValueError, TypeError, KeyError):
             raise ExecutorError("remote_deployment_plan_unavailable_or_mismatched") from None
         return {target: {**plan, "transport": transport}}
 
@@ -158,13 +166,13 @@ class RemoteExecutor(Executor):
                 return self.result_from_status(document, action, target, record.remediation_id)
             if response.status_code in (400, 401, 403, 413, 422):
                 return blocked(action, target, f"agent_deployment_rejected_http_{response.status_code}")
-        except (httpx.HTTPError, ValueError, TypeError, KeyError):
+        except (*HTTP_ERRORS, ValueError, TypeError, KeyError):
             try:
                 document = self.status(record.remediation_id, target)
                 if document:
                     self.verify_deployment_status(document, record, target)
                     return self.result_from_status(document, action, target, record.remediation_id)
-            except (httpx.HTTPError, ValueError, TypeError, KeyError):
+            except (*HTTP_ERRORS, ValueError, TypeError, KeyError):
                 pass
         return ExecutionResult(action, target, "UNKNOWN", detail="remote_deployment_ledger_query_required_no_retry")
 
@@ -178,7 +186,7 @@ class RemoteExecutor(Executor):
             if document.get("target") != target:
                 raise ValueError("snapshot_target_mismatch")
             return document
-        except (httpx.HTTPError, ValueError, TypeError, KeyError):
+        except (*HTTP_ERRORS, ValueError, TypeError, KeyError):
             raise ExecutorError("remote_target_snapshot_unavailable") from None
 
     def capture(self, target):
@@ -192,7 +200,7 @@ class RemoteExecutor(Executor):
             if document.get("target") != target or not isinstance(document.get("log_lines"), list):
                 raise ValueError("capture_target_mismatch")
             return document
-        except (httpx.HTTPError, ValueError, TypeError, KeyError):
+        except (*HTTP_ERRORS, ValueError, TypeError, KeyError):
             raise ExecutorError("remote_target_capture_unavailable") from None
 
     def request(self, method, path, payload=None):
@@ -301,12 +309,12 @@ class RemoteExecutor(Executor):
                 return self.result_from_status(document, action, target, command.remediation_id, is_recovery)
             if response.status_code in (400, 401, 403, 413, 422):
                 return blocked(action, target, f"agent_rejected_http_{response.status_code}")
-        except (httpx.HTTPError, ValueError, TypeError, KeyError):
+        except (*HTTP_ERRORS, ValueError, TypeError, KeyError):
             try:
                 document = self.status(command.remediation_id, target)
                 if document:
                     return self.result_from_status(document, action, target, command.remediation_id, is_recovery)
-            except (httpx.HTTPError, ValueError, TypeError, KeyError):
+            except (*HTTP_ERRORS, ValueError, TypeError, KeyError):
                 pass
         return ExecutionResult(action, target, "UNKNOWN", detail="query_agent_ledger_manual_reconciliation_required")
 

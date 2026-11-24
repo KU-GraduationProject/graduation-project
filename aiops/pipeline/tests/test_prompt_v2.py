@@ -415,6 +415,7 @@ class MainV2WindowTest(unittest.TestCase):
             return {"message": {"content": '{"root_cause":'}, "done_reason": "length", "prompt_eval_count": 10}
 
         with mock.patch.object(main, "_ollama_chat", chat), \
+             mock.patch.object(main.settings, "llm_provider", "ollama"), \
              mock.patch.object(main.asyncio, "sleep", mock.AsyncMock()), \
              mock.patch.object(main.httpx, "AsyncClient"):
             r = asyncio.run(main.call_llm({"system": "s", "user": "u", "evidence_ids": ["A1"]}))

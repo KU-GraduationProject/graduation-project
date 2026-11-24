@@ -20,6 +20,8 @@ import logging
 import httpx
 import time
 import re as _re
+from google import genai
+from google.genai import errors as genai_errors, types as genai_types
 _DOCKER_UDS = "/var/run/docker.sock"
 from collector.metrics import MetricsCollector
 from collector.logs import LogsCollector
@@ -695,12 +697,98 @@ async def _ollama_chat(client: httpx.AsyncClient, system: str, user: str,
     return data
 
 
+class LLMCallError(Exception):
+    """다시 물어도 결과가 달라지지 않는 LLM 호출 실패 (설정 오류·재시도 소진·시간 초과). RCA 성공이 아니다."""
+
+
+# 재시도 대상: Rate Limit 과 일시적 서버 오류만. 400/401/403/404 는 즉시 실패.
+_GEMINI_RETRYABLE_CODES = {429, 500, 502, 503, 504}
+
+
+def _gemini_schema(schema):
+    """Gemini 구조화 출력용 스키마. 정규식(pattern)은 빼고 넘긴다 — 최종 판정은 parse_analysis 가 한다."""
+    if isinstance(schema, dict):
+        return {k: _gemini_schema(v) for k, v in schema.items() if k != "pattern"}
+    if isinstance(schema, list):
+        return [_gemini_schema(v) for v in schema]
+    return schema
+
+
+async def _gemini_chat(system: str, user: str, response_schema: dict | None = None) -> dict:
+    """
+    Gemini generateContent 1회 요청 → {"content", "done_reason", "prompt_eval_count"}.
+    429·일시적 5xx 만 지수 backoff 로 제한 재시도한다. 출력 한도에서 끊기면 done_reason=length.
+    """
+    if not settings.gemini_api_key:
+        raise LLMCallError("GEMINI_API_KEY 미설정 — LLM_PROVIDER=gemini 로 RCA 를 수행할 수 없음")
+    config = genai_types.GenerateContentConfig(
+        system_instruction=system,
+        temperature=settings.llm_temperature,
+        seed=settings.llm_seed,
+        max_output_tokens=settings.gemini_max_output_tokens,
+        response_mime_type="application/json",
+        response_json_schema=_gemini_schema(response_schema),
+    )
+    client = genai.Client(api_key=settings.gemini_api_key,
+                          http_options=genai_types.HttpOptions(timeout=int(settings.gemini_timeout * 1000)))
+    attempts = settings.gemini_max_retries + 1
+    try:
+        for attempt in range(attempts):
+            started = time.monotonic()
+            try:
+                response = await client.aio.models.generate_content(
+                    model=settings.gemini_model, contents=user, config=config)
+            except genai_errors.APIError as e:
+                # 키가 섞일 수 있는 요청 정보는 남기지 않고 code/status 만 기록한다.
+                logger.warning(f"[LLM] provider=gemini model={settings.gemini_model} success=False "
+                               f"code={e.code} status={e.status} attempt={attempt + 1}/{attempts}")
+                if e.code not in _GEMINI_RETRYABLE_CODES or attempt + 1 >= attempts:
+                    raise LLMCallError(f"Gemini API 오류 {e.code} {e.status}") from None
+                await asyncio.sleep(settings.gemini_retry_base_delay * 2 ** attempt)
+                continue
+            except (httpx.TransportError, TimeoutError) as e:
+                logger.warning(f"[LLM] provider=gemini model={settings.gemini_model} success=False "
+                               f"error={type(e).__name__} attempt={attempt + 1}/{attempts}")
+                raise LLMCallError(f"Gemini 연결 실패/시간 초과 ({type(e).__name__})") from None
+            usage = response.usage_metadata
+            finish = response.candidates[0].finish_reason if response.candidates else None
+            text = response.text
+            logger.info(
+                f"[LLM] provider=gemini model={settings.gemini_model} success={bool(text)} "
+                f"prompt_tokens={getattr(usage, 'prompt_token_count', None)} "
+                f"output_tokens={getattr(usage, 'candidates_token_count', None)} "
+                f"total_tokens={getattr(usage, 'total_token_count', None)} "
+                f"latency={time.monotonic() - started:.2f}s finish_reason={finish}"
+            )
+            truncated = str(getattr(finish, "name", finish) or "").upper() == "MAX_TOKENS"
+            if not text and not truncated:
+                raise LLMCallError(f"Gemini 응답 본문 없음 (finish_reason={finish})")
+            # Gemini 는 입력을 자르지 않고 거부하므로 prompt_eval_count 기반 잘림 판정은 쓰지 않는다.
+            return {"content": text, "done_reason": "length" if truncated else "stop", "prompt_eval_count": None}
+    finally:
+        await client.aio.aclose()
+
+
+async def _llm_chat(system: str, user: str, response_schema: dict | None = None) -> dict:
+    """
+    LLM_PROVIDER 에 따라 1회 분석 요청 → {"content", "done_reason", "prompt_eval_count"}.
+    response_schema 는 Ollama format / Gemini 구조화 출력에 같은 계약(output_schema)으로 넘긴다.
+    """
+    if settings.llm_provider == "ollama":
+        async with httpx.AsyncClient(timeout=settings.llm_timeout) as client:
+            data = await _ollama_chat(client, system, user, fmt=response_schema or "json")
+        return {"content": (data.get("message") or {}).get("content"),
+                "done_reason": data.get("done_reason"), "prompt_eval_count": data.get("prompt_eval_count")}
+    if settings.llm_provider == "gemini":
+        return await _gemini_chat(system, user, response_schema)
+    raise LLMCallError(f"지원하지 않는 LLM_PROVIDER={settings.llm_provider!r} (gemini|ollama)")
+
+
 async def _call_llm_raw(prompt: dict) -> dict | None:
     """주기적 스캔 전용 LLM 호출 — 결과를 dict로 반환"""
     try:
-        async with httpx.AsyncClient(timeout=settings.llm_timeout) as client:
-            data = await _ollama_chat(client, prompt["system"], prompt["user"])
-            return json.loads(data["message"]["content"])
+        data = await _llm_chat(prompt["system"], prompt["user"])
+        return json.loads(data["content"])
     except Exception as e:
         logger.error(f"[Periodic] LLM 호출 실패: {e}")
         return None
@@ -844,9 +932,9 @@ async def push_timeline_event(event: str, fields: dict) -> None:
 
 async def call_llm(prompt: dict) -> LLMAnalysisResult:
     """
-    Ollama 호출 → 엄격 검증 (최대 2회 시도). format 에 JSON 스키마를 넘겨 형식을 강제한다.
+    LLM(Ollama|Gemini) 호출 → 엄격 검증 (최대 2회 시도). 출력 JSON 스키마를 넘겨 형식을 강제한다.
     두 번 다 실패하면 invalid 결과(NOTIFY, 분석 실패)를 돌려준다 — NONE 으로 메우지 않는다.
-    입력이 잘린 경우(truncated)는 같은 프롬프트로 다시 해도 같으므로 재시도하지 않는다.
+    입력이 잘린 경우(truncated)와 설정 오류·재시도 소진(LLMCallError)은 다시 물어도 같으므로 재시도하지 않는다.
     """
     evidence_ids = prompt.get("evidence_ids")   # legacy 프롬프트는 증거 ID 가 없다 (None)
     fmt = output_schema(evidence_ids)
@@ -859,9 +947,8 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
             user_content += "\n\nYou MUST respond with valid JSON only. No markdown, no explanation."
 
         try:
-            async with httpx.AsyncClient(timeout=settings.llm_timeout) as client:
-                data = await _ollama_chat(client, prompt["system"], user_content, fmt=fmt)
-            last_raw = (data.get("message") or {}).get("content")
+            data = await _llm_chat(prompt["system"], user_content, fmt)
+            last_raw = data["content"]
             result = parse_analysis(
                 last_raw, evidence_ids=evidence_ids,
                 done_reason=data.get("done_reason"), prompt_eval_count=data.get("prompt_eval_count"),
@@ -873,6 +960,11 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
                          f"{result.invalid_reasons} | 원본: {last_raw!r}")
             if "truncated" in result.invalid_reasons:
                 break
+        except LLMCallError as e:
+            # 설정 오류·재시도 소진은 다시 물어도 같다 — 추가 요청(비용) 없이 실패 처리
+            logger.error(f"[Pipeline] LLM 호출 실패 (재시도 안 함): {e}")
+            result = LLMAnalysisResult.invalid(["llm_call_failed"])
+            break
         except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
             logger.error(f"[Pipeline] LLM 호출 실패 (시도 {attempt + 1}/2): {e}")
             result = LLMAnalysisResult.invalid(["llm_call_failed"])

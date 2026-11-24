@@ -56,6 +56,7 @@ class LlmOptionsTest(unittest.TestCase):
 
         prompt = {"system": "sys", "user": "usr"}
         with mock.patch.object(main.settings, "llm_seed", seed), \
+             mock.patch.object(main.settings, "llm_provider", "ollama"), \
              mock.patch.object(main.httpx, "AsyncClient", return_value=FakeClient()):
             asyncio.run(main.call_llm(prompt))
             asyncio.run(main._call_llm_raw(prompt))
