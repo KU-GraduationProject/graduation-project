@@ -10,7 +10,7 @@
 | 1 | CAPTURE | low | 중 | (#51 구현) PAUSE·ISOLATE·RECREATE·ROLLBACK 정책 선행 단계로 로그·프로세스·Loki 네트워크 이벤트를 크기 제한·마스킹해 state `captures/`에 0600 저장(기본 14일). LLM 이 고르는 조치로는 여전히 차단 |
 | 1 | RECORD_INCIDENT | low | 소 | JSON 감사 레코드·Loki 기록 있음. GitHub 사건 생성·중복 키·민감정보 제거·실패 복구 없음 |
 | 1 | SILENCE_ALERT | high | 중 | Pipeline 분석 중복 제거와 다름. Alertmanager 범위·만료·해제 검증 없음 |
-| 2 | BACKUP_DB | medium | 중 | 배포 전 기존 백업 파일 해시/목록 검사는 있음. 직접 백업 생성·복원 가능성 검증 없음 |
+| 2 | BACKUP_DB | medium | 중 | (#53 구현) RECREATE·ROLLBACK(필수)·보안 사고 ISOLATE(실패해도 격리) 정책 선행 단계로 Controller 가 전용 읽기 계정으로 `pg_dump -Fc` → 크기·PGDMP·`pg_restore --list`·sha256 검증 → ROLLBACK 검사와 같은 형식 manifest, `remediation_backups` 볼륨 0600·7일/최근 5개. 복원(RESTORE_DB)은 여전히 미구현 |
 | 2 | SET_LOG_LEVEL | low | 중 | 관측 로그 조회와 다름. 실제 로그 레벨 관리자 API, 기존 값 보존·TTL 원복 없음 |
 | 2 | RATE_LIMIT | medium | 중 | CPU THROTTLE과 다름. Nginx 요청 제한 설정·검사·원복 없음 |
 | 2 | BLOCK_PATH | medium | 중 | 전체 컨테이너 ISOLATE과 다름. 경로별 Nginx 설정·검사·원복 없음 |

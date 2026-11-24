@@ -38,3 +38,9 @@ def enrich_doc(doc):
     doc["Image"] = IMAGE_ID
     doc["Config"]["Labels"] = dict(LABELS)
     return doc
+
+
+def fake_db_backup(remediation_id):
+    """선행 단계 DB 백업(#53)의 테스트 대역. pg_dump 를 실행하지 않고 검증된 manifest 모양만 돌려준다."""
+    return {"manifest_path": f"/fixture/backups/{remediation_id}.json", "sha256": "0" * 64, "bytes": 1024,
+            "database_id": "0:leafy", "verified_at": "2026-11-11T01:00:00+00:00", "restore_list_verified": True}

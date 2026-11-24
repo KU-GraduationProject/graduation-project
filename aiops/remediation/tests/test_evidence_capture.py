@@ -104,15 +104,17 @@ class CaptureModuleTest(unittest.TestCase):
 class CapturePolicyTest(unittest.TestCase):
     def test_destructive_actions_require_capture(self):
         engine = PolicyEngine.from_file(REPO_POLICY_PATH)
-        for action in ("PAUSE", "ISOLATE", "RECREATE", "ROLLBACK"):
-            self.assertEqual(engine.prerequisite_steps(action), ("capture",), action)
+        self.assertEqual(engine.prerequisite_steps("PAUSE"), ("capture",))
+        self.assertEqual(engine.prerequisite_steps("ISOLATE"), ("capture", "backup_db_on_attack"))
+        for action in ("RECREATE", "ROLLBACK"):
+            self.assertEqual(engine.prerequisite_steps(action), ("capture", "backup_db"), action)
         for action in ("RESTART", "THROTTLE", "KILL_SESSIONS", "LOCK_ACCOUNT", "NOTIFY"):
             self.assertEqual(engine.prerequisite_steps(action), (), action)
 
     def test_unknown_or_duplicate_steps_are_rejected(self):
         with open(REPO_POLICY_PATH, encoding="utf-8") as fh:
             original = yaml.safe_load(fh)
-        for value in (["backup_db"], ["capture", "capture"], ["rm -rf"]):
+        for value in (["backup"], ["capture", "capture"], ["rm -rf"], ["backup_db", "backup_db_on_attack"]):
             raw = yaml.safe_load(yaml.safe_dump(original))
             raw["actions"]["PAUSE"]["prerequisite_steps"] = value
             with self.subTest(value=value), self.assertRaises(PolicyError):

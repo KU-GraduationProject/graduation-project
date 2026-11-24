@@ -52,6 +52,7 @@ class ExtendedControllerTests(Phase2Base):
         self.families = {name: FamilyFixture(name, self) for name in ("postgres", "deployment", "app_api")}
         self.configured = ExtendedExecutorRouter(self.families, docker_executor=self.main.executor)
         self.main.executor = self.configured
+        self.main.db_backup_runner = lambda rid: {"manifest_path": "/fixture", "sha256": "0" * 64}
 
     def propose(self, action="KILL_SESSIONS"):
         payload = json.loads(analysis_body(action))

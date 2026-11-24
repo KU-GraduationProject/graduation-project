@@ -29,6 +29,7 @@ volumes:
   ollama_data:
   minio_data:          # 업로드 사진 + 도감 이미지 217장. 지우면 첫 기동에 73MB를 다시 받는다
   remediation_state:    # 조치 레코드(멱등성·TTL 복구 근거). 지우면 격리를 되돌릴 증거를 잃는다
+  remediation_backups:  # 선행 단계 DB 백업(pg_dump). 개인정보 포함 — 0600, 7일/최근 5개 보관
   zeek_logs:            # Zeek conn.log (observer 내부 전달용)
   network_events:       # Canonical Network Event (JSONL) — #8 ingestion이 소비
 
@@ -443,6 +444,11 @@ services:
       REMEDIATION_STATE_DIR: /app/state
       # TTL 복구 스캔 주기(초). 0 이면 스캐너를 끈다.
       REMEDIATION_TTL_SCAN_SEC: ${REMEDIATION_TTL_SCAN_SEC:-60}
+      # 선행 단계 DB 백업 (#53). 대상은 remediation_postgres.yml 의 target 키, 계정은 전용 읽기 전용 역할
+      REMEDIATION_BACKUP_TARGET: ${REMEDIATION_BACKUP_TARGET:-}
+      REMEDIATION_BACKUP_DIR: /app/backups
+      REMEDIATION_BACKUP_PGUSER: ${REMEDIATION_BACKUP_PGUSER:-}
+      REMEDIATION_BACKUP_PGPASSWORD: ${REMEDIATION_BACKUP_PGPASSWORD:-}
     ports:
       # 조치 실행 경로이므로 호스트 루프백에만 공개한다. Pipeline 은 mgmt-net 으로
       # http://remediation:8001 로 접근하므로 publish 가 필요하지 않다.
@@ -460,6 +466,7 @@ services:
       - ${REMEDIATION_SERVICE_VERIFICATION_LOCAL_PATH:-./aiops/policy/remediation_service_verification.yml}:/app/config/remediation_service_verification.yml:ro
       # 조치 레코드는 재시작·재생성을 넘어 살아야 한다 (멱등성·복구 근거)
       - remediation_state:/app/state
+      - remediation_backups:/app/backups
     networks:
       - mgmt-net
     depends_on:
