@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from executor.base import DisabledExecutor
 from executor.extended import ExtendedExecutorRouter
 from tests import test_deployment_executor as deployment_fixture
+from tests.safety_fixtures import fake_db_backup
 from tests import test_phase2_integration as controller_fixture
 
 
@@ -21,6 +22,7 @@ class ActualDeploymentControllerTest(unittest.TestCase):
         self.fixture.executor.clock = time.time
         self.main = controller_fixture.load_main("disabled", os.path.join(self.fixture.tmp.name, "controller"))
         self.main.executor = ExtendedExecutorRouter({"deployment": self.fixture.executor})
+        self.main.db_backup_runner = fake_db_backup  # 선행 단계 DB 백업(#53)은 모의로
         self.main.notifier.send_approval_request = AsyncMock(return_value={})
         self.main.notifier.send_alert_only = AsyncMock(return_value={})
         for name in ("_push_soc_event", "_update_slack_message"):

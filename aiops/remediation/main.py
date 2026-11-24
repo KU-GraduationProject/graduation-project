@@ -21,6 +21,7 @@ import time
 import urllib.parse
 import re
 import httpx
+import db_backup as backup_mod
 import evidence_capture as capture_mod
 import evidence as evidence_mod
 import recovery as recovery_mod
@@ -547,6 +548,8 @@ async def _propose_action(request, previous=None, link_kind=None, steps=None,
         alertname=alert.get("labels", {}).get("alertname", "unknown"),
         action_type=decision.action_type, targets=list(decision.targets),
         action_risk=decision.action_risk, threat_level=decision.threat_level,
+        incident_class=(analysis.get("incident_class")
+                        if analysis.get("incident_class") in ("attack", "failure", "benign") else None),
         requires_approval=manual, ttl_seconds=decision.ttl_seconds,
         recovery_mode=decision.recovery_mode, source="alert_triggered",
         alert_active_at=alert["startsAt"], executor_name=selected.name,
@@ -846,6 +849,23 @@ async def _push_record(record, event: str, status: str | None = None) -> None:
     await _push_soc_event("aiops-remediation", body)
 
 
+def _backup_for_record(remediation_id):
+    """선행 단계 DB 백업. 대상 DB 연결은 Postgres 실행기 설정을 재사용한다."""
+    settings = backup_mod.BackupSettings.from_env()
+    if settings is None:
+        raise backup_mod.BackupError("backup_not_configured")
+    from executor.postgres import PostgresError, PostgresExecutor
+    try:
+        config = PostgresExecutor()._config(settings.target)
+    except PostgresError:
+        raise backup_mod.BackupError("backup_target_not_configured") from None
+    return backup_mod.create_backup(settings, config, remediation_id)
+
+
+# 테스트가 pg_dump 없이 대체할 수 있도록 모듈 속성으로 둔다.
+db_backup_runner = _backup_for_record
+
+
 def _capture_function(selected, record):
     """증거 보존에 쓸 읽기 전용 수집 함수. 승인된 고정 컨테이너를 우선 쓴다."""
     if isinstance(selected, RemoteExecutor):
@@ -958,6 +978,32 @@ async def _perform(record, decision_targets, action_type: str,
                 "targets": list(decision_targets)})
             return [], store_mod.BLOCKED
         target_evidence = {**target_evidence, "captures": manifests}
+        record_store.update(rid, evidence=target_evidence)
+        if not record_store.writable:
+            return [], store_mod.BLOCKED
+
+    # ②-2 선행 단계: DB 백업 (노션). RECREATE·ROLLBACK 은 실패하면 차단하고,
+    # 보안 사고 ISOLATE 는 격리가 늦어지지 않도록 실패를 기록만 하고 진행한다.
+    steps = policy_engine.prerequisite_steps(action_type)
+    backup_required = "backup_db" in steps
+    if (backup_required or ("backup_db_on_attack" in steps and record.incident_class == "attack")) \
+            and getattr(selected, "changes_system", True):
+        try:
+            backup = await asyncio.to_thread(db_backup_runner, rid)
+            backup_evidence = {k: backup.get(k) for k in ("manifest_path", "sha256", "bytes", "database_id",
+                                                          "verified_at", "restore_list_verified")}
+        except backup_mod.BackupError as exc:
+            await _push_soc_event("aiops-remediation", {
+                "event": "db_backup_failed", "status": "BLOCKED" if backup_required else "CONTINUED",
+                "remediation_id": rid, "alert": record.alertname, "action_type": action_type,
+                "reason": str(exc)})
+            if backup_required:
+                record_store.update(rid, state=store_mod.BLOCKED, results=[{"blocked_reason": "db_backup_failed:" + str(exc)}])
+                logger.warning("[Remediation] DB 백업 실패로 차단: %s — %s", action_type, exc)
+                return [], store_mod.BLOCKED
+            logger.warning("[Remediation] DB 백업 실패 — 보안 사고 격리는 진행: %s", exc)
+            backup_evidence = {"failed": str(exc)}
+        target_evidence = {**target_evidence, "db_backup": backup_evidence}
         record_store.update(rid, evidence=target_evidence)
         if not record_store.writable:
             return [], store_mod.BLOCKED

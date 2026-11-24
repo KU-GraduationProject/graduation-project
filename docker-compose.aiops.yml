@@ -24,6 +24,7 @@ volumes:
   ollama_data:
   fluentd_buffer:     # Loki 출력 file buffer + tail pos. Loki가 잠시 내려가도 수신한 로그를 잃지 않기 위해
   remediation_state:  # 조치 레코드(멱등성·TTL 복구 근거). 지우면 격리를 되돌릴 증거를 잃는다
+  remediation_backups:  # 선행 단계 DB 백업(pg_dump). 개인정보 포함 — 0600, 7일/최근 5개 보관
 
 services:
 
@@ -213,6 +214,11 @@ services:
       # Phase 2: 조치 레코드(멱등성·TTL 복구 근거) 영속 경로
       REMEDIATION_STATE_DIR: /app/state
       REMEDIATION_TTL_SCAN_SEC: ${REMEDIATION_TTL_SCAN_SEC:-60}
+      # 선행 단계 DB 백업 (#53). 대상은 remediation_postgres.yml 의 target 키, 계정은 전용 읽기 전용 역할
+      REMEDIATION_BACKUP_TARGET: ${REMEDIATION_BACKUP_TARGET:-}
+      REMEDIATION_BACKUP_DIR: /app/backups
+      REMEDIATION_BACKUP_PGUSER: ${REMEDIATION_BACKUP_PGUSER:-}
+      REMEDIATION_BACKUP_PGPASSWORD: ${REMEDIATION_BACKUP_PGPASSWORD:-}
       # Phase 3 구현 후에도 기본 disabled. PC 1에는 Docker socket을 마운트하지 않는다.
       REMEDIATION_MODE: disabled
     ports:
@@ -226,6 +232,7 @@ services:
       - ${REMEDIATION_APP_API_CONFIG_LOCAL_PATH:-./aiops/policy/remediation_app_api.yml}:/app/config/remediation_app_api.yml:ro
       - ${REMEDIATION_SERVICE_VERIFICATION_LOCAL_PATH:-./aiops/policy/remediation_service_verification.yml}:/app/config/remediation_service_verification.yml:ro
       - remediation_state:/app/state
+      - remediation_backups:/app/backups
     networks:
       - aiops-net
     depends_on:

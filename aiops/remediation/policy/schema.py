@@ -162,7 +162,7 @@ def _as_tuple(value, where: str) -> tuple:
 def _prerequisite_steps(value, where: str) -> tuple:
     steps = _as_tuple(value, where)
     unknown = [s for s in steps if s not in PREREQUISITE_STEPS]
-    if unknown or len(set(steps)) != len(steps):
+    if unknown or len(set(steps)) != len(steps) or {"backup_db", "backup_db_on_attack"} <= set(steps):
         raise PolicyError(f"{where}: {list(PREREQUISITE_STEPS)} 중 중복 없이 골라야 한다 (받은 값: {list(steps)})")
     return steps
 
@@ -180,7 +180,7 @@ def _execution_parameters(value, operations: tuple, where: str) -> tuple:
     return tuple(sorted(value.items()))
 
 
-PREREQUISITE_STEPS = ("capture",)
+PREREQUISITE_STEPS = ("capture", "backup_db", "backup_db_on_attack")
 
 
 def parse_action_policy(action_type: str, raw) -> ActionPolicy:
