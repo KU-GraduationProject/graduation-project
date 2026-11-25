@@ -27,7 +27,9 @@ scenarios-v2 정답 레이블 — 단일 소스 (one place only).
                             어떤 룰로 탐지할지는 적지 않는다(룰 작성자 몫, THREAT_SPEC.md).
   reuse                   : 팀원 네트워크 시나리오 재사용 식별자(net_s2|net_ca). 코드 미수정.
   notes                   : 실행 시 유의/검증 메모(선택).
-  batch                   : 구현 배치 (1|2|3)
+  batch                   : 구현 배치 (1|2|3 = 1차, 4 = 2차 A군)
+  attack_id               : (선택) MITRE ATT&CK 기법 ID (v19.2 기준 확인). 장애·대조는 None.
+  pair                    : (선택, 대조 전용) 같은 탐지 신호를 내는 짝 공격·장애 id 목록.
 
   external_tool 기준 경로: 측정 PC D:\develop\leafy-baseline\tools\ (값은 파일명만 적는다).
 
@@ -37,6 +39,7 @@ scenarios-v2 정답 레이블 — 단일 소스 (one place only).
 from __future__ import annotations
 
 import importlib
+import re
 
 # LLM 이 고를 수 있는 조치 (aiops/pipeline/schemas/actions.py ACTION_TYPES, Notion 1차 범위)
 POLICY_ACTIONS = ("NONE", "NOTIFY", "THROTTLE", "RESTART", "PAUSE", "ISOLATE",
@@ -221,6 +224,181 @@ SCENARIO_REGISTRY_V2 = [
         "evidence": ["app_log"],
         "batch": 3,
     },
+    # 2차 A군 — 주입·정리 구현 (batch 4)
+    {
+        "id": "s1_b_recon_scan",
+        "label": "정찰 (취약점 스캔)",
+        "incident_class": "attack",
+        "threat_level": "low",
+        "expected_action": "NOTIFY",
+        "expected_action_ideal": "NOTIFY",
+        "targets": ["스캔 출발지"],
+        "module": "v2.s1b_recon_scan",
+        "external_tool": None,
+        "evidence": ["nginx_log"],
+        "attack_id": "T1595.002",
+        "batch": 4,
+    },
+    {
+        "id": "s2_b_c2_beacon",
+        "label": "외부 통제 서버 연결 (C2 비컨)",
+        "incident_class": "attack",
+        "threat_level": "high",
+        "expected_action": "ISOLATE",
+        "expected_action_ideal": "BLOCK_EGRESS",
+        "targets": ["leafy-backend"],
+        "module": "v2.s2b_c2_beacon",
+        "external_tool": None,
+        "evidence": ["network"],
+        "attack_id": "T1071.001",
+        "batch": 4,
+    },
+    {
+        "id": "s2_d_internal_recon",
+        "label": "내부 정찰 (내부 포트 스캔)",
+        "incident_class": "attack",
+        "threat_level": "medium",
+        "expected_action": "ISOLATE",
+        "expected_action_ideal": "ISOLATE",
+        "targets": ["leafy-backend"],
+        "module": "v2.s2d_internal_recon",
+        "external_tool": None,
+        "evidence": ["network"],
+        "attack_id": "T1046",
+        "batch": 4,
+    },
+    {
+        "id": "s2_e_db_bulk_read",
+        "label": "DB 대량 조회",
+        "incident_class": "attack",
+        "threat_level": "high",
+        "expected_action": "ISOLATE",
+        "expected_action_ideal": "ISOLATE+KILL_SESSIONS",
+        "targets": ["조회 세션", "출발 서비스"],
+        "module": "v2.s2e_db_bulk_read",
+        "external_tool": None,
+        "evidence": ["metric", "app_log"],
+        "attack_id": "T1213.006",
+        "batch": 4,
+        "notes": "app_log 증거는 DB 로그 수집 여부에 달림(측정 PC 확인).",
+    },
+    {
+        "id": "f1_a_cpu_overload",
+        "label": "CPU 과부하 (정상 요청 과다)",
+        "incident_class": "failure",
+        "threat_level": "medium",
+        "expected_action": "THROTTLE",
+        "expected_action_ideal": "THROTTLE",
+        "targets": ["leafy-backend"],
+        "module": "v2.f1a_cpu_overload",
+        "external_tool": None,
+        "evidence": ["metric", "nginx_log"],
+        "attack_id": None,
+        "batch": 4,
+    },
+    {
+        "id": "f1_c_oom_restart",
+        "label": "OOM 재시작 반복",
+        "incident_class": "failure",
+        "threat_level": "medium",
+        "expected_action": "RESTART",
+        "expected_action_ideal": "RESTART",
+        "targets": ["leafy-backend"],
+        "module": "v2.f1c_oom_restart",
+        "external_tool": None,
+        "evidence": ["metric"],
+        "attack_id": None,
+        "batch": 4,
+    },
+    {
+        "id": "f3_b_bad_env_config",
+        "label": "잘못된 설정 (환경변수) 배포",
+        "incident_class": "failure",
+        "threat_level": "high",
+        "expected_action": "NOTIFY",
+        "expected_action_ideal": "ROLLBACK",
+        "targets": ["배포 서비스"],
+        "module": "v2.f3b_bad_env_config",
+        "external_tool": None,
+        "evidence": ["metric", "app_log"],
+        "attack_id": None,
+        "batch": 4,
+    },
+    {
+        "id": "c_b_short_load_spike",
+        "label": "짧은 정상 부하 스파이크",
+        "incident_class": "benign",
+        "threat_level": "low",
+        "expected_action": "NONE",
+        "expected_action_ideal": "NONE",
+        "targets": [],
+        "module": "v2.c_b_short_load_spike",
+        "external_tool": None,
+        "evidence": ["metric"],
+        "attack_id": None,
+        "batch": 4,
+        "pair": ["f1_a_cpu_overload", "s2_a_resource_theft"],
+    },
+    {
+        "id": "c_d_normal_restart",
+        "label": "정상 재배포·재시작",
+        "incident_class": "benign",
+        "threat_level": "low",
+        "expected_action": "NONE",
+        "expected_action_ideal": "NONE",
+        "targets": [],
+        "module": "v2.c_d_normal_restart",
+        "external_tool": None,
+        "evidence": ["metric"],
+        "attack_id": None,
+        "batch": 4,
+        "pair": ["f1_c_oom_restart", "f3_a_bad_image_deploy", "f3_b_bad_env_config"],
+    },
+    {
+        "id": "c_h_admin_backup",
+        "label": "정상 관리 작업 (백업)",
+        "incident_class": "benign",
+        "threat_level": "low",
+        "expected_action": "NONE",
+        "expected_action_ideal": "NONE",
+        "targets": [],
+        "module": "v2.c_h_admin_backup",
+        "external_tool": None,
+        "evidence": ["metric"],
+        "attack_id": None,
+        "batch": 4,
+        "pair": ["f2_c_db_pool_exhaustion", "s2_e_db_bulk_read"],
+    },
+    {
+        "id": "c_j_allowed_external_call",
+        "label": "정상 외부 API 호출 (허용 목적지)",
+        "incident_class": "benign",
+        "threat_level": "low",
+        "expected_action": "NONE",
+        "expected_action_ideal": "NONE",
+        "targets": [],
+        "module": "v2.c_j_allowed_external_call",
+        "external_tool": None,
+        "evidence": ["network"],
+        "attack_id": None,
+        "batch": 4,
+        "pair": ["s2_b_c2_beacon"],
+    },
+    {
+        "id": "c_l_broken_link",
+        "label": "깨진 링크 404",
+        "incident_class": "benign",
+        "threat_level": "low",
+        "expected_action": "NONE",
+        "expected_action_ideal": "NONE",
+        "targets": [],
+        "module": "v2.c_l_broken_link",
+        "external_tool": None,
+        "evidence": ["nginx_log"],
+        "attack_id": None,
+        "batch": 4,
+        "pair": ["s1_b_recon_scan"],
+    },
 ]
 
 # 배치 ②·③ 항목(S2-a / F2-c / F3-a / S2-c / C-a / C-c / C-e / C-g / C-n)은
@@ -246,6 +424,17 @@ def _validate(registry=SCENARIO_REGISTRY_V2) -> None:
                              f"{INCIDENT_CLASSES} 에 없다")
         if row.get("module") and row.get("external_tool"):
             raise ValueError(f"{row['id']}: module 과 external_tool 을 동시에 둘 수 없다")
+        aid = row.get("attack_id")
+        if aid is not None and not re.fullmatch(r"T\d{4}(\.\d{3})?|TODO", aid):
+            raise ValueError(f"{row['id']}: attack_id 형식 오류: {aid}")
+        if aid and row["incident_class"] != "attack":
+            raise ValueError(f"{row['id']}: attack_id 는 attack 행에만")
+    for row in registry:
+        for other in row.get("pair", []):
+            if row["incident_class"] != "benign":
+                raise ValueError(f"{row['id']}: pair 는 대조(benign) 행에만")
+            if other not in ids:
+                raise ValueError(f"{row['id']}: pair 대상 없음: {other}")
 
 
 _HELDOUT_MODULES = ("v2.heldout", "v2.heldout.variant_specs")

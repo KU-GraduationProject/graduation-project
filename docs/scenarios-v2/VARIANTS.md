@@ -248,3 +248,41 @@ instance = generate(scenario_id, variant_id, seed):
   `SCENARIO_REGISTRY_V2[scenario_id]` 로 정답 조회. 둘은 분리 유지.
 - **평가용 변형 스펙**은 저장소가 추적하지 않는 별도 위치에 둔다. 레지스트리는 그 위치가 있으면
   선택적으로 읽고, 없으면 건너뛴다(구현됨: `registry.load_heldout_specs()`). 취급은 `HELDOUT_POLICY.md`.
+
+---
+
+## 2차 A군 (11 + C-l) — 튜닝용 분포·형태 변형
+
+> 코드: `scenarios/v2/variants.py` 의 `VARIANT_SPECS` (2차 A군 블록). 축 이름은 각 주입기 `inject()` 인자와 같다.
+> 강도(strong/medium/weak)는 **현실적인 공격·장애 속도**로 정의한다(룰 임계 아님). 평가용 변형은 여기 없다.
+
+**강도 정의(현실 기준):**
+| 시나리오 | weak | medium | strong |
+|---|---|---|---|
+| S1-b 정찰 스캔 | 회피형 저속 스캔(수십 건/수 분) | 기본 설정 스캐너 | 공격적 자동 스캐너(수백 건/수십 초) |
+| S2-b C2 비컨 | 긴 주기 은닉 비컨 | 흔한 기본 주기 | 짧은 주기(대화형 조작) |
+| S2-d 내부 정찰 | 소수 호스트 느린 스캔 | 보통 속도 | 전체 빠른 스윕 |
+| S2-e DB 대량 조회 | 느린 은닉 수집 | 수 초 간격 반복 | 쉬지 않는 연속 스캔 |
+| F1-a CPU 과부하 | 소규모 폭주 | 이벤트성 폭주 | 대규모 재시도 폭주 |
+| F1-c OOM 반복 | 한도가 사용량보다 약간 부족 | 상당히 부족 | 크게 부족 |
+| C-b 짧은 스파이크 | 짧고 작음 | 수십 초 | 1분 내외 |
+| C-j 허용 외부 호출 | S2-b 와 같은 주기 어휘 | 〃 | 〃 |
+| C-l 깨진 링크 | 매우 드묾 | 가끔 | 오래된 링크가 많은 페이지 |
+
+| 시나리오 | 형태 변형(튜닝) | 다변화 축 | 짝(대조) |
+|---|---|---|---|
+| S1-b | fast-sweep / slow-sweep / intermittent | strength, time_pattern, background | C-l |
+| S2-b | regular / fast-interactive | strength(주기), duration | C-j |
+| S2-d | few-hosts-slow / sweep | strength(호스트 수·간격), background | — |
+| S2-e | steady / short-grab | strength(간격), duration | C-h |
+| F1-a | sustained / moderate | strength(동시성), duration | C-b |
+| F1-c | loop | strength(한도 비율), duration | C-d |
+| F3-b | storage-endpoint | key(설정 키), duration | C-d |
+| C-b | spike | strength | F1-a, S2-a |
+| C-d | single | wait_seconds | F1-c, F3-a, F3-b |
+| C-h | single | — | F2-c, S2-e |
+| C-j | regular | strength, duration | S2-b |
+| C-l | sparse | strength, background | S1-b |
+
+- 짝 대조는 짝 공격과 **같은 채널에 같은 종류의 신호**를 내되, 정상 쪽 특성(낮은 빈도·짧은 지속·인가 목적지·1회성)만 다르게 둔다.
+- S2-b 와 C-j 는 같은 송신 스크립트를 쓰고 **목적지만** 다르다(비인가 sink-b ↔ 허용 sink-a).

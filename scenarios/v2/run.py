@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import inspect
 import sys
 from datetime import datetime, timezone
 
@@ -30,6 +31,9 @@ _MODULES = {
     "f2_c_db_pool_exhaustion": "v2.f2c_db_pool_exhaustion",
     "f3_a_bad_image_deploy": "v2.f3a_bad_image_deploy",
 }
+# 2차 A군: main(**kw) 가 주입→대기→정리 전 생명주기를 맡고, 변형 파라미터는 inject 인자 이름으로 넘긴다.
+_BATCH2 = {r["id"]: r["module"] for r in SCENARIO_REGISTRY_V2 if r.get("batch") == 4}
+_MODULES.update(_BATCH2)
 
 
 def _row(scenario_id: str) -> dict | None:
@@ -97,6 +101,17 @@ def run(scenario_id: str, dry_run: bool, variant_id: str | None = None,
             # 0 만 검증된 주입·복구다. 3(압박만)·1·130 은 픽스처 짝짓기에서 빠지도록 error 로 남긴다.
             status = "ok" if code == 0 else "error"
             return code
+
+        if scenario_id in _BATCH2:
+            accepted = inspect.signature(mod.inject).parameters
+            kw = ({k: v for k, v in inst.params.items() if k in accepted} if inst is not None else {})
+            if inst is not None and "background" in inst.params and "background" in accepted:
+                kw["background"] = inst.params["background"] != "none"
+            if inst is not None and "seed" in accepted:
+                kw["seed"] = inst.seed
+            mod.main(**kw)
+            status = "ok"
+            return 0
 
         # 변형 파라미터 중 기존 주입기가 받는 축(strength/mode)만 전달. 나머지 축(타이밍 등)은
         # 측정 PC 런타임에서 처리한다(VARIANTS 참조).
