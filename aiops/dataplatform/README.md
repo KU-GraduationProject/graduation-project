@@ -3,7 +3,7 @@
 데이터 티어링(Bronze/Silver/Gold) 배치 플랫폼. 계약은 [docs/data-platform](../../docs/data-platform/README.md)이다.
 
 ```text
-dp_bronze_acquire ─▶ (dp_bronze) ─▶ dp_silver_transform ─▶ (dp_silver) ─▶ dp_gold_build ─▶ (dp_gold) ─▶ dp_validate
+dp_incident_discover ─(trigger)─▶ dp_bronze_acquire ─▶ (dp_bronze) ─▶ dp_silver_transform ─▶ (dp_silver) ─▶ dp_gold_build ─▶ (dp_gold) ─▶ dp_validate
 ```
 
 ## 현재 상태
@@ -15,6 +15,7 @@ dp_bronze_acquire ─▶ (dp_bronze) ─▶ dp_silver_transform ─▶ (dp_silve
 | Track B Silver | `silver/normalize.py` (데이터셋 7종 + quarantine), `silver/build.py` (coverage, dedup, edge) | 01 §3, DQ-S01~S06 |
 | Track C Gold·Lineage | `gold/build.py` (사건 창·scope 매칭·채널 상태·evidence·rca_link), `gold/render.py` (Pipeline 렌더 포팅), `gold/checks.py` (DQ-G), `lineage/trace.py` (`trace`, DQ-L01) | 01 §4, 03, 04 §4·§5 |
 | Track D Airflow | DAG 4개가 `orchestration/phases.py`의 실제 진입점을 호출(#38의 `fixture_stubs` 대체), `dp_validate` 검사 5종 | 05 §5 Track D |
+| 배치화 (#68) | `orchestration/discover.py` + `dp_incident_discover`: 10분마다 Loki `{job="aiops-llm"}` envelope에서 IncidentRequest를 만들고, 획득 창 종료 + 10분 뒤 `dp_bronze_acquire`를 run id `discover__{incident_id}`로 1회 trigger(`lake-meta/discover/`에 cursor·pending·triggered 기록, plan이 이미 있으면 건너뜀). `dp_validate`는 `dp_gold` 갱신 또는 매일 19:00 UTC | 05 §5·§6 |
 | E2E용 원천 | `mock_sources/` — fixture Bronze 행으로 답하는 mock Loki/Prometheus (Compose `dp-mock-sources`, 테스트의 `httpx.MockTransport`) | 07 |
 
 **fixture 파리티:** Bronze 10건, Silver 8 build(대체된 1차 db_log 포함), Gold 2 build(대체된 1차 포함)를 fixture의
@@ -52,6 +53,10 @@ docker exec dp-airflow airflow dags trigger dp_bronze_acquire             # 하�
 # db_log만 강제 재획득(fixture 03:40 reprocess와 같은 조건)
 docker exec dp-airflow airflow dags trigger dp_bronze_acquire --conf '{…요청…, "force_reacquire": true, "page_limit": 3, "stream_classes": ["db_log"]}'
 ```
+
+사건 자동 발견: `dp_incident_discover`가 10분마다 돈다. 과거 범위를 다시 스캔하려면(cursor는 그대로)
+`docker exec dp-airflow airflow dags trigger dp_incident_discover --conf '{"scan_start": "2026-11-10T02:45:00Z", "scan_end": "2026-11-10T03:30:00Z"}'`.
+설정은 `DP_DISCOVER_START`(첫 cursor), `DP_DISCOVER_LOOKBACK_S`, `DP_DISCOVER_RELATED`(related scope 규칙 JSON) 등이다(`orchestration/discover.py`).
 
 `DP_LOKI_URL`/`DP_PROMETHEUS_URL`을 주지 않으면 `dp-mock-sources`(fixture)를 읽는다. 실제 Loki/Prometheus 연결은
 OI-09 binding 인수 이후 사용자 승인 단계다(05 §7).

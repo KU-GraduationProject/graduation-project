@@ -32,6 +32,11 @@ x-airflow-env: &airflow-env
   DP_GIT_SHA: ${DP_GIT_SHA:-}
   DP_GIT_DIRTY: ${DP_GIT_DIRTY:-false}
   DP_ENV: ${DP_ENV:-development}
+  # dp_incident_discover (#68): Loki {job="aiops-llm"} 스캔. 기본 15분 창·실행당 8창·첫 실행 1시간 lookback.
+  # DP_DISCOVER_RELATED 는 JSON 규칙 [{"match": {...}, "related_scopes": [...]}] (없으면 alert identity 만).
+  DP_DISCOVER_START: ${DP_DISCOVER_START:-}
+  DP_DISCOVER_LOOKBACK_S: ${DP_DISCOVER_LOOKBACK_S:-3600}
+  DP_DISCOVER_RELATED: ${DP_DISCOVER_RELATED:-}
 
 services:
   dp-airflow-db:

@@ -189,7 +189,8 @@ class DagStructureTest(unittest.TestCase):
     def test_phase_dags_load_without_errors(self):
         self.assertEqual(self.bag.import_errors, {})
         self.assertEqual(set(self.bag.dag_ids),
-                         {"dp_bronze_acquire", "dp_silver_transform", "dp_gold_build", "dp_validate"})
+                         {"dp_incident_discover", "dp_bronze_acquire", "dp_silver_transform", "dp_gold_build",
+                          "dp_validate"})
 
     def test_phase_tasks(self):
         tasks = {d: sorted(self.bag.get_dag(d).task_ids) for d in self.bag.dag_ids}
@@ -199,6 +200,17 @@ class DagStructureTest(unittest.TestCase):
                                                 "check_raw_pages", "check_silver", "find_orphans", "report"])
         self.assertEqual(tasks["dp_silver_transform"], ["build_silver", "plan_builds", "update_current"])
         self.assertEqual(tasks["dp_gold_build"], ["build_gold", "plan_builds", "update_current"])
+        self.assertEqual(tasks["dp_incident_discover"], ["find_due", "mark_triggered", "trigger_bronze"])
+
+    def test_batch_schedules(self):
+        """discover every 10 min in the Loki read pool; validate on Gold updates and once a day (05 §5·§6)."""
+        discover = self.bag.get_dag("dp_incident_discover")
+        self.assertEqual(discover.timetable.expression, "*/10 * * * *")
+        self.assertEqual(discover.get_task("find_due").pool, "loki_read")
+        self.assertEqual(discover.get_task("trigger_bronze").partial_kwargs["trigger_dag_id"], "dp_bronze_acquire")
+        validate = self.bag.get_dag("dp_validate").timetable
+        self.assertEqual(validate.timetable.expression, "0 19 * * *")
+        self.assertIsNotNone(validate.asset_condition)
 
 
 if __name__ == "__main__":
