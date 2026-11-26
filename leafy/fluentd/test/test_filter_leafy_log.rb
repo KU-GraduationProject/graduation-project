@@ -82,6 +82,17 @@ class LeafyDockerLogFilterTest < Test::Unit::TestCase
     assert_false untrusted.key?("_lbl_site")
   end
 
+  test "aiops.site만 있어도 site/target을 붙이고 observation source는 비운다" do
+    _, rec = filter([docker("ok", "aiops.site" => "fixture-gc")]).first
+    assert_equal "fixture-gc", rec["_lbl_site"]
+    assert_equal "leafy-backend", rec["_lbl_target"]
+    assert_false rec.key?("_lbl_observation_source")
+    _, plain = filter([docker("ok")]).first
+    assert_equal "ok", plain["message"]
+    assert_false plain.key?("_lbl_site")
+    assert_false plain.key?("_lbl_target")
+  end
+
   test "텍스트 로그는 원문을 message에 담는다 (앞 공백 유지, 끝 개행 제거)" do
     _, rec = filter([docker("\tat com.leafy.A.b(A.java:1)\r\n")]).first
     assert_equal "\tat com.leafy.A.b(A.java:1)", rec["message"]

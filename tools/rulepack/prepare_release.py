@@ -180,7 +180,8 @@ def render(config):
     am = yaml.safe_load((ROOT / "monitoring/alertmanager/alertmanager.yml").read_text())
     am["route"]["group_by"] = ["alertname", *FIELDS]
     fluent = (ROOT / "leafy/fluentd/fluent.conf").read_text()
-    fluent = fluent.replace("      source         $._lbl_source", "      source         $._lbl_observation_source\n      log_stream     $._lbl_source\n      site           $._lbl_site\n      target         $._lbl_target")
+    # site/target app labels are already in fluent.conf; only source semantics change here.
+    fluent = fluent.replace("      source         $._lbl_source", "      source         $._lbl_observation_source\n      log_stream     $._lbl_source")
     # PG labels are stamped from verified receiver config, not incoming JSON.
     if pg:
         params = '\n'.join('    ' + k + ' "' + pg[v] + '"' for k, v in
@@ -189,6 +190,7 @@ def render(config):
         fluent = fluent.replace("      service    $._lbl_service", "      site       $._lbl_site\n      source     $._lbl_observation_source\n      target     $._lbl_target\n      service    $._lbl_service")
     logging = yaml.safe_load((ROOT / "deploy/leafy-pc/leafy-compose-logging.example.yml").read_text())
     logging.pop("x-aiops-log-opts", None)
+    logging.pop("x-aiops-site-labels", None)
     logging["services"] = {k: v for k, v in logging["services"].items() if k in gc["targets"]}
     for service, entry in logging["services"].items():
         entry["labels"] = {"aiops.site": gc["site"], "aiops.source": gc["source"]}

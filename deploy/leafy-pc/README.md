@@ -86,7 +86,7 @@ JH 쪽에서는 [REMOTE_DEPLOYMENT.md §3](../../docs/remote/REMOTE_DEPLOYMENT.m
 
 ## 3. Leafy compose (`back/deploy/`) logging 설정
 
-[leafy-compose-logging.example.yml](leafy-compose-logging.example.yml)의 `x-aiops-log-opts`와 서비스별 `logging` 블록을 기존 compose에 병합하고, `.env`에 `AIOPS_TAILSCALE_IP`를 추가합니다.
+[leafy-compose-logging.example.yml](leafy-compose-logging.example.yml)의 `x-aiops-log-opts`, `x-aiops-site-labels`와 서비스별 `labels`·`logging` 블록을 기존 compose에 병합하고, `.env`에 `AIOPS_TAILSCALE_IP`와 `LEAFY_SITE`(이 장비 이름, 예: `gc-mac`)를 추가합니다. `LEAFY_SITE`는 Loki의 `site` 라벨이 되며 AIOps 쪽 관측 바인딩의 `site`와 같아야 합니다.
 
 필수 확인:
 

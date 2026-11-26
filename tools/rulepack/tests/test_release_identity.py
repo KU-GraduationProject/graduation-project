@@ -122,6 +122,8 @@ class ReleaseIdentityTests(unittest.TestCase):
         b = release.render(profile())
         self.assertIn("source         $._lbl_observation_source", b["fluent.conf"])
         self.assertIn("log_stream     $._lbl_source", b["fluent.conf"])
+        self.assertEqual(b["fluent.conf"].count("site           $._lbl_site"), 1)
+        self.assertEqual(b["fluent.conf"].count("target         $._lbl_target"), 1)
         self.assertIn('target "fixture-pg17"', b["fluent.conf"])
         logging = yaml.safe_load(b["gc.logging.override.yml"])
         for service in logging["services"].values():

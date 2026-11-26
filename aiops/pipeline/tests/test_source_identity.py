@@ -64,6 +64,19 @@ class IdentityTests(unittest.TestCase):
         self.assertIsNone(i.runtime)  # legacy alias does not prove host vs container
         self.assertEqual(status, "source_unknown")
 
+    def test_remote_bindings_example_resolves_loki_site_target_alerts(self):
+        path = os.path.join(os.path.dirname(__file__), "../../../deploy/aiops-pc/observation-bindings.remote.example.json")
+        with open(path, encoding="utf-8") as f:
+            bindings = parse_bindings(f.read())
+        # Loki 보안 규칙(sum by (site, target)) 경보 형태. container annotation은 규칙에 고정된 값이다.
+        identity, _, status = resolve_identity(
+            {"alertname": "SuspiciousProcessExecution", "site": "gc-mac", "target": "leafy-frontend"},
+            {"container": "leafy-backend"}, bindings)
+        self.assertEqual((status, identity.service, identity.source), ("resolved", "frontend", "gc-mac-docker"))
+        _, _, status = resolve_identity({"alertname": "SecretDumpAttempt", "site": "other", "target": "leafy-backend"},
+                                        {"container": "leafy-backend"}, bindings)
+        self.assertEqual(status, "source_unmapped")
+
     def test_job_instance_explicitly_maps_to_site(self):
         b = binding()
         i, found, status = resolve_identity(b.match, {"container": "leafy-db"}, [b])
