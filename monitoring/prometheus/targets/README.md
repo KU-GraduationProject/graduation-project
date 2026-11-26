@@ -15,5 +15,6 @@ Prometheus가 파일 변경을 자동으로 다시 읽는다 (재시작 불필�
 | `leafy-backend.yml` | Spring Actuator 9090 (`/actuator/prometheus`) | 팀원 PC에서 Tailscale IP로 publish 필요 |
 | `nginx-exporter.yml` | nginx-prometheus-exporter 9113 | 팀원 PC에 exporter 배치 필요 |
 | `postgres-exporter.yml` | postgres-exporter 9187 | 팀원 PC에 exporter 배치 필요 (5432를 AIOps PC에 열지 않기 위해) |
+| `leafy-telemetry.yml` | 컨테이너 지표 collector 9108 | [compose.remote.yml](../../../deploy/leafy-pc/telemetry/compose.remote.yml)로 팀원 PC에 배치 (#61) |
 
 메트릭 포트는 확정된 포트표(24224/24225/3100/5432)에 없다. 열기 전에 팀과 합의한다.

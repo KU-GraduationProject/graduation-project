@@ -4,7 +4,7 @@ groups:
   rules:
   - alert: HighMemoryUsage
     expr: |
-      max by (name) (
+      max by (site, name) (
         (
           container_memory_working_set_bytes{id=~"/docker/.+", instance="cadvisor:8080", job="cadvisor"}
           / (container_spec_memory_limit_bytes{id=~"/docker/.+", instance="cadvisor:8080", job="cadvisor"} > 0)

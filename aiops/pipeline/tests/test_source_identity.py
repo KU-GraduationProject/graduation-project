@@ -76,6 +76,11 @@ class IdentityTests(unittest.TestCase):
         _, _, status = resolve_identity({"alertname": "SecretDumpAttempt", "site": "other", "target": "leafy-backend"},
                                         {"container": "leafy-backend"}, bindings)
         self.assertEqual(status, "source_unmapped")
+        # Prometheus 컨테이너 경보(by (site, name)) 형태
+        identity, binding, status = resolve_identity(
+            {"alertname": "HighCpuUsage", "site": "gc-mac", "name": "leafy-backend"},
+            {"container": "leafy-backend"}, bindings)
+        self.assertEqual((status, identity.service, binding.metrics_profile), ("resolved", "backend", "gc-telemetry-v1"))
 
     def test_job_instance_explicitly_maps_to_site(self):
         b = binding()

@@ -170,6 +170,18 @@ class ProducerTests(unittest.TestCase):
         self.assertEqual({s.labels['cpu'] for s in self.get(body, CPU)}, {'total', 'cpu00'})
         self.assertTrue(all(s.labels['name'] == 'leafy-backend' for s in self.get(body, CPU)))
 
+    def test_real_cadvisor_timestamps_kept_and_docker_desktop_service_cgroups_skipped(self):
+        # 실제 cAdvisor는 모든 샘플에 시각(ms)을 붙이고 housekeeping 주기로만 값을 바꾼다 (#61 맥 실측).
+        # 수집 시각으로 바꾸면 irate()가 같은 값을 0으로 본다 -> 원래 시각을 그대로 낸다.
+        self.raw = ''.join(l + ' 99000\n' for l in raw().splitlines())
+        # Docker Desktop(맥·Windows) VM의 서비스 cgroup. 컨테이너 id가 아니므로 건너뛴다.
+        self.raw += line(CPU, {'id': '/docker/buildx', 'cpu': 'total'}, 5) + '\n'
+        body = self.collector.collect()
+        cpu = self.get(body, CPU)
+        self.assertEqual([(s.labels['id'], s.ts) for s in cpu], [('/docker/' + CID, 99000)])
+        self.assertIsNone(self.get(body, 'container_name_info')[0].ts)
+        self.assertEqual(verify(body, CFG)['status'], 'PASS')
+
     def test_cadvisor_get_only_no_redirect_and_timeout(self):
         with patch('exporter.http.client.HTTPConnection') as connection:
             response = connection.return_value.getresponse.return_value
@@ -235,9 +247,10 @@ class ProducerTests(unittest.TestCase):
     def test_parser_escaping_and_reserved_labels(self):
         body = line(NET, {'id': '/', 'interface': 'eth"\\\n'}, 0)
         self.assertEqual(parse_metrics(body)[0].labels['interface'], 'eth"\\\n')
+        # 실제 cAdvisor 형식: 샘플 시각(ms)을 받아들이고 보존한다 (#61).
+        self.assertEqual(parse_metrics('container_memory_working_set_bytes{id="/"} 0 123')[0].ts, 123)
         for bad in ('container_memory_working_set_bytes{id="/",id="/"} 0',
                     'container_memory_working_set_bytes{id="/"} Inf',
-                    'container_memory_working_set_bytes{id="/"} 0 123',
                     'container_memory_working_set_bytes{id="/",job="jh"} 0'):
             with self.assertRaises((ValueError, ContractError)):
                 parse_metrics(bad)
@@ -349,10 +362,11 @@ class NativePromQLTests(unittest.TestCase):
         return output
 
     def test_cpu_core_seconds_irate_and_metadata_join(self):
-        self.evaluate('HighCpuUsage', self.bodies(), [{'labels': '{name="leafy-backend"}', 'value': .8}], 'leafy-backend')
+        # 컨테이너 경보는 by (site, name)으로 출처 장비를 유지한다 (#61)
+        self.evaluate('HighCpuUsage', self.bodies(), [{'labels': '{name="leafy-backend", site="gc-fixture"}', 'value': .8}], 'leafy-backend')
 
     def test_memory_ratio_and_zero_limit(self):
-        self.evaluate('HighMemoryUsage', self.bodies(), [{'labels': '{name="leafy-backend"}', 'value': .9}])
+        self.evaluate('HighMemoryUsage', self.bodies(), [{'labels': '{name="leafy-backend", site="gc-fixture"}', 'value': .9}])
         self.evaluate('HighMemoryUsage', self.bodies(limit=0), [])
 
     def test_network_bytes_per_second_and_loopback_guard(self):
@@ -364,13 +378,13 @@ class NativePromQLTests(unittest.TestCase):
         self.evaluate('HighNetworkReceive', self.bodies(counts=(0,) * 13, root=True, root_only=True), [{'labels': labels, 'value': 20000000}], evaluation='1m')
 
     def test_restart_increment_and_reset_keep_original_condition(self):
-        self.evaluate('ContainerRestarted', self.bodies(counts=(0, 1, 2)), [{'labels': '{name="leafy-backend"}', 'value': 2}], 'leafy-backend')
-        self.evaluate('ContainerRestarted', self.bodies(counts=(5, 0, 2), recreate=True), [{'labels': '{name="leafy-backend"}', 'value': 2}], 'leafy-backend')
+        self.evaluate('ContainerRestarted', self.bodies(counts=(0, 1, 2)), [{'labels': '{name="leafy-backend", site="gc-fixture"}', 'value': 2}], 'leafy-backend')
+        self.evaluate('ContainerRestarted', self.bodies(counts=(5, 0, 2), recreate=True), [{'labels': '{name="leafy-backend", site="gc-fixture"}', 'value': 2}], 'leafy-backend')
         self.evaluate('ContainerRestarted', self.bodies(counts=(5, 0, 1), recreate=True), [], 'leafy-backend')
 
     def test_started_at_changes_without_counter_increase(self):
         stamps = ['2026-11-10T00:00:00Z', '2026-11-10T00:01:00Z', '2026-11-10T00:02:00Z']
-        self.evaluate('ContainerRestarted', self.bodies(stamps=stamps), [{'labels': '{name="leafy-backend"}', 'value': 2}], 'leafy-backend')
+        self.evaluate('ContainerRestarted', self.bodies(stamps=stamps), [{'labels': '{name="leafy-backend", site="gc-fixture"}', 'value': 2}], 'leafy-backend')
 
     def test_gc_fixture_does_not_validate_integrated_docker_db_cpu(self):
         self.evaluate('HighCpuUsage', self.bodies(), [], 'leafy-db')
@@ -391,7 +405,7 @@ class NativePromQLTests(unittest.TestCase):
                 samples.extend({'series': key, 'values': ' '.join(values)} for key, values in all_series.items())
             spec = {'evaluation_interval': '5s', 'tests': [{'interval': '5s', 'input_series': samples,
                     'promql_expr_test': [{'expr': expr, 'eval_time': '10s',
-                    'exp_samples': [{'labels': '{name="leafy-backend"}', 'value': .8}]}]}]}
+                    'exp_samples': [{'labels': '{name="leafy-backend", site="gc-fixture"}', 'value': .8}]}]}]}
             path = Path(tmp) / 'source.yml'
             path.write_text(self.yaml.safe_dump(spec))
             result = subprocess.run([self.promtool, 'test', 'rules', str(path)], capture_output=True, text=True)
