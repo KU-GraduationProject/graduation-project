@@ -16,6 +16,10 @@ datasources:
     url: http://loki:3100
     editable: true
 
+  # Grafana 내장 Alertmanager 데이터소스는 서버 측 health check가 없다. 그래서 UI의 "Save & test"
+  # (/api/datasources/uid/leafy-alertmanager/health)는 항상 "Plugin unavailable"(500)을 보여 주지만 플러그인 누락이 아니다 (#63).
+  # 실제 조회는 정상이다. 확인: /api/alertmanager/leafy-alertmanager/api/v2/status 가 200 (Grafana 13.3 실측).
+  # 대시보드 Alertmanager 패널은 아래 "Alertmanager API"(Infinity, health check 지원)를 쓴다.
   - name: Alertmanager
     uid: leafy-alertmanager
     type: alertmanager

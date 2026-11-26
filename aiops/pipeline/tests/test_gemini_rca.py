@@ -260,18 +260,34 @@ class GeminiRcaFlowTests(GeminiMockCase):
         self.assertFalse(entry["remediation_dispatched"])
 
 
+def smoke_evidence():
+    """기존 CPU 장애 시나리오 형태의 증거. 지표 점은 실제 수집 형식처럼 시각 t를 가진다 (v2 빌더가 경보 시각 기준으로 읽는다)."""
+    alert = SimpleNamespace(labels=SimpleNamespace(alertname="HighCpuUsage", severity="warning"),
+                            annotations={"container": "leafy-backend", "summary": "CPU usage above 80% for 2m"},
+                            startsAt="2026-11-24T00:00:00Z")
+    at = datetime(2026, 11, 24, tzinfo=timezone.utc).timestamp()
+    metrics = {"cpu_usage": [{"values": [{"t": at - 120, "v": 0.4}, {"t": at - 60, "v": 4.93},
+                                         {"t": at, "v": 4.97}]}]}
+    logs = [{"ts": at - 30, "labels": {"container": "backend"}, "line": "ERROR HTTP 503 upstream timeout"},
+            {"ts": at - 10, "labels": {"container": "backend"}, "line": "WARN request queue saturated"}]
+    return alert, metrics, logs
+
+
+class SmokeEvidenceTest(unittest.TestCase):
+    def test_smoke_evidence_builds_prompt_without_api(self):
+        # 실제 API 없이 smoke 입력이 프롬프트 빌더를 통과하는지 확인 (#63: 지표 시각 t 누락으로 KeyError).
+        alert, metrics, logs = smoke_evidence()
+        prompt = main.prompt_builder.build(alert=alert, metrics=metrics, logs=logs, container_name="leafy-backend")
+        self.assertTrue(prompt)
+
+
 @unittest.skipUnless(os.getenv("GEMINI_SMOKE") == "1" and os.getenv("GEMINI_API_KEY"),
                      "실제 Gemini 호출은 GEMINI_SMOKE=1 과 GEMINI_API_KEY 가 있을 때만 실행 (비용·무료 한도 보호)")
 class GeminiSmokeTest(unittest.IsolatedAsyncioTestCase):
     """기존 CPU 장애 시나리오 형태의 증거로 실제 Gemini 1회 호출 → 기존 RCA 스키마 통과 확인."""
 
     async def test_real_gemini_rca_passes_existing_schema(self):
-        alert = SimpleNamespace(labels=SimpleNamespace(alertname="HighCpuUsage", severity="warning"),
-                                annotations={"container": "leafy-backend", "summary": "CPU usage above 80% for 2m"},
-                                startsAt="2026-11-24T00:00:00Z")
-        metrics = {"cpu_usage": [{"values": [{"v": 0.4}, {"v": 4.93}, {"v": 4.97}]}]}
-        logs = [{"ts": time.time(), "labels": {"container": "backend"}, "line": "ERROR HTTP 503 upstream timeout"},
-                {"ts": time.time(), "labels": {"container": "backend"}, "line": "WARN request queue saturated"}]
+        alert, metrics, logs = smoke_evidence()
         prompt = main.prompt_builder.build(alert=alert, metrics=metrics, logs=logs, container_name="leafy-backend")
         with patch.object(main.settings, "llm_provider", "gemini"), \
              self.assertLogs(main.logger, "INFO") as logs_out:
@@ -282,7 +298,7 @@ class GeminiSmokeTest(unittest.IsolatedAsyncioTestCase):
         print(f"\n[smoke] model={main.settings.gemini_model} elapsed={elapsed:.2f}s")
         print("\n".join(f"[smoke] {line}" for line in usage))
         print(f"[smoke] result={json.dumps(result.model_dump(), ensure_ascii=False)}")
-        self.assertNotEqual(result.root_cause, FALLBACK_ROOT_CAUSE)
+        self.assertFalse(result.root_cause.startswith("분석 실패"), result.root_cause)  # LLMAnalysisResult.invalid() 문구
         self.assertEqual(result.analysis_status, "valid", result.invalid_reasons)
 
 
