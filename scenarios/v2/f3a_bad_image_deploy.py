@@ -31,6 +31,7 @@ F3-a — 잘못된 이미지 배포 (scenarios-v2).
 from __future__ import annotations
 
 import os
+import re
 import shlex
 
 from v2 import supervisor
@@ -45,6 +46,12 @@ DEFAULT_DURATION_SECONDS = 180
 
 # DB 백업 대상(컨테이너·DB명). 자격증명은 컨테이너 env(POSTGRES_USER/PASSWORD/DB)로만 참조.
 DB_CONTAINER = os.getenv("F3A_DB_CONTAINER", "leafy-db")
+
+# DB 접속 모드. 측정 PC 앱 DB 는 Windows 호스트 PostgreSQL 이므로 기본 host.
+# container 는 기존 docker exec 경로를 옵션으로 남긴다(SCEN_DB_MODE=container|host).
+DB_MODE = os.getenv("SCEN_DB_MODE", os.getenv("F2C_DB_MODE", "host"))
+_HOST_RE = re.compile(r"[A-Za-z0-9_.:-]+")
+_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 DEFAULT_MAX_SECONDS = 300    # watchdog 자동 복구 상한(세션이 멈춰도 복구)
 BACKGROUND_DEFAULT = True    # F3-a 는 배경 트래픽 기본 ON
@@ -133,25 +140,86 @@ def restored_healthy(container_attrs: dict) -> bool:
 # 실행 전 DB 백업 프리플라이트 (UNVERIFIED — Docker/DB 필요)
 # --------------------------------------------------------------------------- #
 
-def preflight_backup(backup_dir: str, db_container: str = DB_CONTAINER) -> dict:
+def host_db_conn() -> dict:
+    """호스트 모드 백업 접속값(SCEN_ 우선, F2C_ 대체). 비밀번호는 PGPASSFILE 로만.
+
+    SCEN_PGDATABASE 와 백업 역할(SCEN_PGADMIN, 없으면 SCEN_PGUSER)이 없으면 거부한다.
+    """
+    host = os.getenv("SCEN_PGHOST") or os.getenv("F2C_DB_HOST") or "host.docker.internal"
+    port = os.getenv("SCEN_PGPORT") or os.getenv("F2C_DB_PORT") or "5432"
+    database = os.getenv("SCEN_PGDATABASE") or os.getenv("F2C_DB_NAME")
+    # 백업(pg_dump)은 전체 객체(시퀀스 포함)를 읽어야 하므로 운영자(관리자) 역할로 접속한다.
+    # 일반 앱 사용자는 시퀀스 권한이 없어 pg_dump 가 실패한다(C-h 는 정상 관리 작업).
+    user = (os.getenv("SCEN_PGADMIN") or os.getenv("F2C_ADMIN_USER")
+            or os.getenv("SCEN_PGUSER") or os.getenv("F2C_DB_USER"))
+    passfile = (os.getenv("SCEN_PGPASSFILE") or os.getenv("F2C_PGPASSFILE")
+                or os.getenv("PGPASSFILE"))
+    if not database or not user:
+        raise RuntimeError("host 모드 백업: SCEN_PGDATABASE 와 백업 역할(SCEN_PGADMIN/SCEN_PGUSER) 필요")
+    if not (_HOST_RE.fullmatch(host) and not host.startswith("-") and str(port).isdigit()
+            and _IDENT_RE.fullmatch(user) and _IDENT_RE.fullmatch(database)):
+        raise RuntimeError("host 모드 백업: 접속값 형식 오류")
+    return {"host": host, "port": str(int(port)), "database": database, "user": user,
+            "passfile": passfile, "pg_dump": os.getenv("SCEN_PG_DUMP", "pg_dump"),
+            "pg_restore": os.getenv("SCEN_PG_RESTORE", "pg_restore")}
+
+
+def pg_dump_host_argv(conn: dict) -> list[str]:
+    """호스트 TCP 로 custom(-Fc) 덤프. -w 로 프롬프트 금지 — 비밀번호는 argv 에 없다."""
+    return [conn["pg_dump"], "-Fc", "-w", "-h", conn["host"], "-p", conn["port"],
+            "-U", conn["user"], "-d", conn["database"]]
+
+
+def pg_restore_list_host_argv(conn: dict) -> list[str]:
+    """덤프 유효성 확인(pg_restore --list). 덤프는 stdin 으로 입력."""
+    return [conn["pg_restore"], "--list"]
+
+
+def host_env(conn: dict) -> dict:
+    """PGPASSFILE 만 비밀번호 경로로 전달. PGPASSWORD 는 제거(값 노출 방지)."""
+    env = {k: v for k, v in os.environ.items() if k != "PGPASSWORD"}
+    env["PGCONNECT_TIMEOUT"] = "5"
+    if conn.get("passfile"):
+        env["PGPASSFILE"] = conn["passfile"]
+    return env
+
+
+def host_restore_hint(backup_path: str, conn: dict) -> str:
+    """복원은 자동으로 하지 않는다 — 수동 명령만 안내. 비밀번호는 PGPASSFILE 로."""
+    return (f"복원(수동, host): {conn['pg_restore']} -w -h {conn['host']} -p {conn['port']} "
+            f"-U {conn['user']} -d {conn['database']} --clean --if-exists {backup_path}")
+
+
+def preflight_backup(backup_dir: str, db_container: str = DB_CONTAINER,
+                     mode: str | None = None) -> dict:
     """주입 전 DB 백업. 저장소 밖(backup_dir)에 -Fc 덤프 → pg_restore --list 검증.
-    실패하면 예외(주입 중단). 자격증명 값은 로그·출력·파일명에 남기지 않는다."""
-    import os
+
+    mode=host(기본): 호스트 TCP pg_dump(비밀번호는 PGPASSFILE 로만, argv 에 값 없음).
+    mode=container: 기존 docker exec 경로(컨테이너 env 로만). 실패하면 예외(주입 중단).
+    자격증명 값은 로그·출력·파일명에 남기지 않는다.
+    """
     import subprocess
     import time
 
+    mode = mode or DB_MODE
+    conn = host_db_conn() if mode == "host" else None
     os.makedirs(backup_dir, exist_ok=True)
     fname = f"leafy-{time.strftime('%Y%m%d-%H%M%S')}.dump"
     path = os.path.join(backup_dir, fname)
 
+    if mode == "host":
+        dump_argv, list_argv, run_env = pg_dump_host_argv(conn), pg_restore_list_host_argv(conn), host_env(conn)
+    else:
+        dump_argv, list_argv, run_env = pg_dump_argv(db_container), pg_restore_list_argv(db_container), None
+
     t0 = time.time()
     with open(path, "wb") as fh:
-        dump = subprocess.run(pg_dump_argv(db_container), stdout=fh, stderr=subprocess.DEVNULL)
+        dump = subprocess.run(dump_argv, stdout=fh, stderr=subprocess.DEVNULL, env=run_env)
     elapsed = round(time.time() - t0, 1)
 
     with open(path, "rb") as fh:
-        chk = subprocess.run(pg_restore_list_argv(db_container), stdin=fh,
-                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        chk = subprocess.run(list_argv, stdin=fh, stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, text=True, env=run_env)
     try:
         verify_backup(dump.returncode, chk.returncode, chk.stdout)
     except Exception:
@@ -161,10 +229,11 @@ def preflight_backup(backup_dir: str, db_container: str = DB_CONTAINER) -> dict:
         raise
 
     size = os.path.getsize(path)
+    hint = host_restore_hint(path, conn) if mode == "host" else restore_hint(path, db_container)
     # 자격증명 값은 출력하지 않는다 — 파일명·크기·소요 시간만.
-    print(f"[F3-a] DB 백업 OK: file={fname} size={size}B elapsed={elapsed}s", flush=True)
-    print(f"[F3-a] {restore_hint(path, db_container)}", flush=True)
-    return {"path": path, "file": fname, "size": size, "elapsed_s": elapsed}
+    print(f"[F3-a] DB 백업 OK: mode={mode} file={fname} size={size}B elapsed={elapsed}s", flush=True)
+    print(f"[F3-a] {hint}", flush=True)
+    return {"path": path, "file": fname, "size": size, "elapsed_s": elapsed, "mode": mode}
 
 
 # --------------------------------------------------------------------------- #
@@ -252,9 +321,13 @@ def dry_run() -> dict:
             "failing_command": failing_command(DEFAULT_MODE),
             "forbidden_targets": list(FORBIDDEN_TARGETS),
             "watchdog_max_seconds": DEFAULT_MAX_SECONDS, "background_default": BACKGROUND_DEFAULT,
-            "env": ["F3A_TARGET", "F3A_DB_CONTAINER", "F3A_BACKUP_DIR", "V2_COMPOSE_DIR",
-                    "V2_WORK_DIR", "V2_TRAFFIC_GEN"],
-            "note": "원본 이미지 고정(태그 변경 금지) + 실행 전 DB 백업 필수(backup_dir)"}
+            "db_mode": DB_MODE,
+            "env": ["F3A_TARGET", "F3A_BACKUP_DIR", "V2_COMPOSE_DIR", "V2_WORK_DIR",
+                    "V2_TRAFFIC_GEN", "SCEN_DB_MODE", "SCEN_PGHOST", "SCEN_PGPORT",
+                    "SCEN_PGDATABASE", "SCEN_PGUSER", "SCEN_PGPASSFILE",
+                    "F3A_DB_CONTAINER (container 모드)"],
+            "note": "원본 이미지 고정(태그 변경 금지) + 실행 전 DB 백업 필수(backup_dir); "
+                    "백업 기본 host 모드(Windows 호스트 PG), container 옵션"}
 
 
 def main():

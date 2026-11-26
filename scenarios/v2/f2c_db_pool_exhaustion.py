@@ -133,8 +133,9 @@ def inject(strength: str = DEFAULT_STRENGTH, hold_seconds: int | None = None,
         raise ValueError("hold_seconds must fit within max_seconds and the recovery budget")
     # Even API callers supplying a Target must explicitly authorize that exact target.
     target = target or Target.from_env()
-    if os.environ.get("F2C_CONFIRM_TARGET") != target.confirmation:
-        raise RuntimeFailure("F2C_CONFIRM_TARGET must match the selected test cluster")
+    confirm = os.environ.get("SCEN_CONFIRM_TARGET") or os.environ.get("F2C_CONFIRM_TARGET")
+    if confirm != target.confirmation:
+        raise RuntimeFailure("SCEN_CONFIRM_TARGET/F2C_CONFIRM_TARGET must match the selected test cluster")
     mark = run_mark(new_run_id())
     db = Psql(target)
     info = db.preflight(mark)

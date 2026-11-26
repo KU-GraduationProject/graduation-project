@@ -90,6 +90,58 @@ VARIANT_SPECS: dict[str, dict[str, dict]] = {
         "occasional": {"failures": ("int", 1, 3), "time_pattern": ("fixed", "spread")},
         "one-user-retry": {"failures": ("int", 1, 3), "then_success": ("fixed", True)},
     },
+    # ---- 2차 A군 (튜닝용 형태 변형; VARIANTS.md §2차) ----
+    "s1_b_recon_scan": {
+        "fast-sweep": {"strength": ("choice", ["medium", "strong"]), "time_pattern": ("fixed", "burst"),
+                       "background": ("choice", ["none", "normal_load"])},
+        "slow-sweep": {"strength": ("fixed", "weak"), "time_pattern": ("fixed", "spread"),
+                       "background": ("fixed", "normal_load")},
+        "intermittent": {"strength": ("choice", ["weak", "medium"]),
+                         "time_pattern": ("fixed", "intermittent")},
+    },
+    "s2_b_c2_beacon": {
+        "regular": {"strength": ("choice", ["weak", "medium", "strong"]),
+                    "duration_seconds": ("int", 480, 900)},
+        "fast-interactive": {"strength": ("fixed", "strong"), "duration_seconds": ("int", 240, 480)},
+    },
+    "s2_d_internal_recon": {
+        "few-hosts-slow": {"strength": ("fixed", "weak")},
+        "sweep": {"strength": ("choice", ["medium", "strong"]),
+                  "background": ("choice", ["none", "normal_load"])},
+    },
+    "s2_e_db_bulk_read": {
+        "steady": {"strength": ("choice", ["weak", "medium", "strong"]),
+                   "duration_seconds": ("int", 180, 420)},
+        "short-grab": {"strength": ("fixed", "strong"), "duration_seconds": ("int", 60, 120)},
+    },
+    "f1_a_cpu_overload": {
+        "sustained": {"strength": ("choice", ["medium", "strong"]), "duration_seconds": ("int", 240, 480)},
+        "moderate": {"strength": ("fixed", "weak"), "duration_seconds": ("int", 300, 600)},
+    },
+    "f1_c_oom_restart": {
+        "loop": {"strength": ("choice", ["weak", "medium", "strong"]),
+                 "duration_seconds": ("int", 120, 240)},
+    },
+    "f3_b_bad_env_config": {
+        "storage-endpoint": {"key": ("fixed", "STORAGE_ENDPOINT"), "duration_seconds": ("int", 120, 240)},
+    },
+    "c_b_short_load_spike": {
+        "spike": {"strength": ("choice", ["weak", "medium", "strong"])},
+    },
+    "c_d_normal_restart": {
+        "single": {"wait_seconds": ("int", 90, 150)},
+    },
+    "c_h_admin_backup": {
+        "single": {},
+    },
+    "c_j_allowed_external_call": {
+        "regular": {"strength": ("choice", ["weak", "medium", "strong"]),
+                    "duration_seconds": ("int", 480, 900)},
+    },
+    "c_l_broken_link": {
+        "sparse": {"strength": ("choice", ["weak", "medium", "strong"]),
+                   "background": ("fixed", "normal_load")},
+    },
 }
 
 
