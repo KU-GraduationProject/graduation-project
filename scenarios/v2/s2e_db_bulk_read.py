@@ -101,9 +101,10 @@ def inject(strength: str = DEFAULT_STRENGTH, duration_seconds: int = DEFAULT_DUR
 def dry_run() -> dict:
     return {"plan": plan_reads(), "sql_preview": scan_sql("example_table"),
             "transport": "v2.f2c_runtime (F2-c 와 같은 접속·확인 토큰)",
-            "env": ["F2C_DB_MODE", "F2C_DB_NAME", "F2C_ADMIN_USER", "F2C_DB_USER",
-                    "F2C_EXPECTED_SYSTEM_ID", "F2C_DB_HOST", "F2C_DB_PORT", "F2C_DB_CONTAINER",
-                    "F2C_PGPASSFILE", "F2C_CONFIRM_TARGET", "V2_WORK_DIR", "V2_TRAFFIC_GEN"],
+            "env": ["SCEN_DB_MODE", "SCEN_PGDATABASE", "SCEN_PGADMIN", "SCEN_PGUSER",
+                    "SCEN_EXPECTED_SYSTEM_ID", "SCEN_PGHOST", "SCEN_PGPORT", "SCEN_PGPASSFILE",
+                    "SCEN_CONFIRM_TARGET", "SCEN_DB_CONTAINER (container 모드)",
+                    "(기존 F2C_* 별칭도 지원)", "V2_WORK_DIR", "V2_TRAFFIC_GEN"],
             "pair_control": "c_h_admin_backup",
             "note": "READ ONLY 트랜잭션·쓰기/DDL 키워드 거부, 결과는 해시 한 줄"}
 

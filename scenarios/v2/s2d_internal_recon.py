@@ -31,9 +31,17 @@ DEFAULT_MAX_SECONDS = 900
 BACKGROUND_DEFAULT = True
 
 
+# 호스트 DB 가 컨테이너 밖(Windows 호스트 PostgreSQL)일 때를 위한 Docker 내부 게이트웨이
+# 이름. 이 고정 이름들만 예외로 허용하고, 그 밖의 외부 주소·임의 도메인·IP 는 여전히 금지한다.
+INTERNAL_GATEWAY_HOSTS = {"host.docker.internal", "gateway.docker.internal"}
+
+
 def assert_internal(hosts) -> None:
-    """내부 서비스 이름만 허용(점·콜론이 없는 compose 서비스명). 외부 주소·IP 금지."""
+    """내부 서비스 이름(compose 서비스명)만 허용. 예외: Docker 내부 게이트웨이 고정 이름.
+    그 외 점·콜론·슬래시·공백 포함 이름이나 숫자로 시작하는 이름(IP 등)은 외부로 보고 거부."""
     for h in hosts:
+        if h in INTERNAL_GATEWAY_HOSTS:
+            continue
         if not h or any(c in h for c in ".:/ ") or h[0].isdigit():
             raise ValueError(f"내부 서비스 이름만 허용: {h!r}")
 

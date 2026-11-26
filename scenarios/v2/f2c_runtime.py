@@ -69,23 +69,40 @@ class Target:
     def from_env(cls, *, allow_injection: bool = True):
         """Load an explicit target and, by default, require its confirmation token.
 
-        Missing or invalid configuration raises a safe RuntimeFailure. Disabling
-        confirmation here is for inspection; inject still enforces confirmation.
+        Each field reads the SCEN_* alias first, then the original F2C_* name. The
+        measurement DB is a Windows-host PostgreSQL, so mode defaults to host with
+        host.docker.internal:5432; docker mode and all strict guards (separate
+        admin/holder roles, expected cluster id, confirmation token) are unchanged.
+        Missing or invalid configuration raises a safe RuntimeFailure.
         """
         env = os.environ
-        required = ("F2C_DB_MODE", "F2C_DB_NAME", "F2C_ADMIN_USER", "F2C_DB_USER",
-                    "F2C_EXPECTED_SYSTEM_ID", "F2C_DB_HOST", "F2C_DB_PORT")
-        if any(not env.get(k) for k in required):
-            raise RuntimeFailure("explicit F2-c target configuration is required; see F2C_RUNTIME.md")
+
+        def pick(scen, f2c, default=None):
+            return env.get(scen) or env.get(f2c) or default
+
+        mode = pick("SCEN_DB_MODE", "F2C_DB_MODE", "host")
+        host_default = "host.docker.internal" if mode == "host" else ""
+        # Database and the two roles are always explicit: no silent production default.
+        database = pick("SCEN_PGDATABASE", "F2C_DB_NAME")
+        admin = pick("SCEN_PGADMIN", "F2C_ADMIN_USER")
+        user = pick("SCEN_PGUSER", "F2C_DB_USER")
+        system_id = pick("SCEN_EXPECTED_SYSTEM_ID", "F2C_EXPECTED_SYSTEM_ID")
+        if not all((database, admin, user, system_id)):
+            raise RuntimeFailure(
+                "explicit DB target required (SCEN_PGDATABASE/SCEN_PGADMIN/SCEN_PGUSER/"
+                "SCEN_EXPECTED_SYSTEM_ID or the F2C_* names); see F2C_RUNTIME.md")
         try:
-            target = cls(env[required[0]], env[required[1]], env[required[2]],
-                         env[required[3]], env[required[4]], env[required[5]],
-                         int(env[required[6]]), env.get("F2C_DB_CONTAINER", ""),
-                         env.get("F2C_PSQL", "psql"), env.get("F2C_PGPASSFILE", ""))
+            target = cls(mode, database, admin, user, system_id,
+                         pick("SCEN_PGHOST", "F2C_DB_HOST", host_default),
+                         int(pick("SCEN_PGPORT", "F2C_DB_PORT", "5432")),
+                         pick("SCEN_DB_CONTAINER", "F2C_DB_CONTAINER", ""),
+                         pick("SCEN_PSQL", "F2C_PSQL", "psql"),
+                         pick("SCEN_PGPASSFILE", "F2C_PGPASSFILE", "") or env.get("PGPASSFILE", ""))
         except ValueError:
-            raise RuntimeFailure("invalid F2-c port") from None
-        if allow_injection and env.get("F2C_CONFIRM_TARGET") != target.confirmation:
-            raise RuntimeFailure("F2C_CONFIRM_TARGET must match the selected test cluster")
+            raise RuntimeFailure("invalid DB port") from None
+        confirm = pick("SCEN_CONFIRM_TARGET", "F2C_CONFIRM_TARGET")
+        if allow_injection and confirm != target.confirmation:
+            raise RuntimeFailure("SCEN_CONFIRM_TARGET/F2C_CONFIRM_TARGET must match the selected test cluster")
         return target
 
 

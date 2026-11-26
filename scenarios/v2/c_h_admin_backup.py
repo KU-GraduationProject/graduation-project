@@ -25,9 +25,24 @@ def inject(backup_dir: str | None = None):
 
 
 def dry_run() -> dict:
-    return {"dump_argv": f3a.pg_dump_argv(), "verify_argv": f3a.pg_restore_list_argv(),
+    mode = f3a.DB_MODE
+    if mode == "host":
+        try:
+            conn = f3a.host_db_conn()                 # 접속값이 설정돼 있으면 실제 argv
+            dump_argv = f3a.pg_dump_host_argv(conn)   # 비밀번호 없음(PGPASSFILE)
+            verify_argv = f3a.pg_restore_list_host_argv(conn)
+        except RuntimeError:
+            # dry-run 은 접속 없이도 돌아야 한다 — 미설정이면 형태만 표시.
+            dump_argv = ["pg_dump", "-Fc", "-w", "-h", "<SCEN_PGHOST>", "-p", "<SCEN_PGPORT>",
+                         "-U", "<SCEN_PGUSER>", "-d", "<SCEN_PGDATABASE>"]
+            verify_argv = ["pg_restore", "--list"]
+    else:
+        dump_argv, verify_argv = f3a.pg_dump_argv(), f3a.pg_restore_list_argv()
+    return {"mode": mode, "dump_argv": dump_argv, "verify_argv": verify_argv,
             "pair": ["f2_c_db_pool_exhaustion", "s2_e_db_bulk_read"],
-            "env": ["CH_BACKUP_DIR", "F3A_DB_CONTAINER"], "note": "pg_dump 1회, 읽기 전용"}
+            "env": ["CH_BACKUP_DIR", "SCEN_DB_MODE", "SCEN_PGHOST", "SCEN_PGPORT",
+                    "SCEN_PGDATABASE", "SCEN_PGUSER", "SCEN_PGPASSFILE", "F3A_DB_CONTAINER"],
+            "note": "pg_dump 1회, 읽기 전용(host 모드 기본, container 옵션)"}
 
 
 def main(**kw):

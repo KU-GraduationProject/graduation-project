@@ -37,6 +37,14 @@ Docker의 Leafy 애플리케이션은 기존 Host DB 접속 설정을 유지한�
 | `F2C_PGPASSFILE` | 선택: 기존 libpq 비밀번호 파일 경로. Docker는 컨테이너 내부 경로 |
 | `F2C_MAX_SECONDS` | 선택: 충전·유지·복구 시간의 Watchdog 상한, 기본 420초 |
 
+2차부터 각 변수는 `SCEN_*` 별칭을 먼저 읽고 없으면 위 `F2C_*` 이름을 읽는다. 측정 PC 앱 DB 가
+Windows 호스트 PostgreSQL 이므로 **기본값이 host 모드**다: `SCEN_DB_MODE`(기본 `host`),
+`SCEN_PGHOST`(기본 `host.docker.internal`), `SCEN_PGPORT`(기본 `5432`), `SCEN_PGDATABASE`,
+`SCEN_PGADMIN`, `SCEN_PGUSER`, `SCEN_EXPECTED_SYSTEM_ID`, `SCEN_PGPASSFILE`(또는 `PGPASSFILE`),
+`SCEN_CONFIRM_TARGET`, `SCEN_DB_CONTAINER`(container 모드). `SCEN_PGDATABASE`·역할·`SCEN_EXPECTED_SYSTEM_ID`
+가 없으면 거부한다(운영 DB 오인 방지). C-h·F3 백업은 전체 객체(시퀀스 포함)를 읽어야 하므로
+`SCEN_PGADMIN` 역할로 `pg_dump` 한다.
+
 대상 확인 문자열:
 
 - Host: `host:<host>:<port>:<database>:<system_identifier>`
