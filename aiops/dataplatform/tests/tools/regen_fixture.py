@@ -70,8 +70,9 @@ def rca_line() -> dict:
               "evidence": old["evidence"], "confidence": old["confidence"],
               "analysis_status": "valid", "invalid_reasons": []}
     dump = pipeline_compat.llm_output().LLMAnalysisResult(**result).model_dump()
-    assert dump == result, (dump, result)
-    envelope["result"] = result
+    # The model may add default-valued fields (e.g. target_evidence, #72); the given values must survive.
+    assert {k: dump[k] for k in result} == result, (dump, result)
+    envelope["result"] = dump
     row["line"] = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
     row["line_sha256"] = canonical.sha256_text(row["line"])
     row["record_key"] = canonical.loki_record_key(json.loads(row["stream_labels"]), row["entry_ts_ns"], row["line"])
