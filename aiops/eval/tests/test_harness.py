@@ -21,7 +21,7 @@ FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
 def answer(**kw):
     base = {"root_cause": "x", "incident_class": "attack", "action_type": "NOTIFY", "action_targets": [],
-            "threat_level": "medium", "evidence": ["A1", "L1"], "confidence": 0.8}
+            "target_evidence": [], "threat_level": "medium", "evidence": ["A1", "L1"], "confidence": 0.8}
     base.update(kw)
     return json.dumps(base)
 
@@ -35,14 +35,14 @@ def fake_chat(body):
         content = answer()
     elif "T06:00:00Z" in user:      # 대조 → 과잉대응(RESTART), class 오답
         content = answer(incident_class="failure", action_type="RESTART",
-                         action_targets=["leafy-frontend"], evidence=["A1"], confidence=0.6)
+                         action_targets=["leafy-frontend"], target_evidence=["A1"], evidence=["A1"], confidence=0.6)
     elif "T08:00:00Z" in user:      # 평가 분할 → 없는 증거 ID
         content = answer(evidence=["L99"])
     elif seed % 2:                  # 장애형, 홀수 seed → 출력 잘림
         return dict(meta, message={"content": '{"root_cause": "S3 fail'}, done_reason="length")
     else:                           # 장애형, 짝수 seed → 정답
         content = answer(incident_class="failure", action_type="RESTART", action_targets=["leafy-minio"],
-                         evidence=["A1"], confidence=0.9)
+                         target_evidence=["A1"], evidence=["A1"], confidence=0.9)
     return dict(meta, message={"content": content})
 
 
@@ -117,6 +117,19 @@ class RunTest(unittest.TestCase):
         self.assertEqual(s["confidence_when_action_wrong"]["mean"], 0.6)
         self.assertIsNotNone(s["prompt_tokens"])
         self.assertIsNotNone(s["latency_s"])
+        # 두 정답 기준과 대상 지표
+        self.assertEqual(s["action_ideal_accuracy"], round(2 / 9, 4))  # minio 2 (login 이상 조치는 LOCK_ACCOUNT)
+        self.assertEqual(s["json_valid_rate"], round(8 / 9, 4))
+        self.assertEqual(s["target_match_rate"], 1.0)                  # minio 대상 일치 2/2
+        self.assertEqual(s["target_hallucination_rate"], 0.0)
+        self.assertEqual(s["downgrade_rate"], 0.0)
+
+    def test_eval_requests_pin_ollama_settings(self):
+        body = harness.chat_request({"system": "s", "user": "u", "evidence_ids": ["A1"],
+                                     "target_values": {"A1": ["leafy-backend"]}}, 7)
+        self.assertEqual(body["model"], "llama3.1:8b")
+        self.assertEqual(body["options"], {"temperature": 0.3, "num_ctx": 4096, "num_predict": 400, "seed": 7})
+        self.assertEqual(body["format"]["properties"]["action_targets"]["items"]["enum"], ["leafy-backend"])
 
     def test_legacy_has_no_evidence_ids(self):
         self.assertIsNone(self.summary["legacy"]["evidence_cited_rate"])
@@ -155,6 +168,100 @@ class RunTest(unittest.TestCase):
             code = harness.main(["--fixtures", FIXTURES, "--reps", "1", "--builder", "both", "--out", d])
             self.assertEqual(code, 0)
             self.assertTrue(os.path.exists(os.path.join(d, "summary.json")))
+
+
+class ScoreTest(unittest.TestCase):
+    def result(self, **kw):
+        base = {"analysis_status": "valid", "action_type": "NOTIFY", "action_targets": [], "threat_level": "medium",
+                "incident_class": "attack", "evidence": ["A1"], "target_validation": "not_applicable",
+                "target_reason": None, "proposed_action": None, "confidence": 0.8}
+        base.update(kw)
+        return {"scenario_id": "s1_c_login_bruteforce", "result": base}
+
+    def test_downgraded_hallucination_counts_both_ways(self):
+        sc = harness.score(self.result(target_validation="downgraded", target_reason="target_not_in_evidence",
+                                       proposed_action="LOCK_ACCOUNT"))
+        self.assertTrue(sc["action_correct"])          # 최종 NOTIFY = 현재 대체 조치
+        self.assertFalse(sc["action_ideal_correct"])   # 이상 조치는 LOCK_ACCOUNT
+        self.assertTrue(sc["downgraded"])
+        self.assertTrue(sc["target_hallucinated"])
+
+    def test_ideal_action_hit_with_validated_target(self):
+        sc = harness.score(self.result(action_type="LOCK_ACCOUNT", action_targets=["account:s1c_test"],
+                                       target_validation="validated"))
+        self.assertTrue(sc["action_ideal_correct"])
+        self.assertFalse(sc["action_correct"])
+        self.assertFalse(sc["target_hallucinated"])
+        self.assertIsNone(sc["target_match"])          # 레지스트리 대상이 서술형이라 일치 채점 제외
+
+    def test_multi_step_ideal(self):
+        rec = {"scenario_id": "s2_e_db_bulk_read", "result": self.result(action_type="ISOLATE",
+               action_targets=["leafy-backend"], target_validation="validated")["result"]}
+        sc = harness.score(rec)
+        self.assertTrue(sc["action_ideal_correct"])     # ISOLATE+KILL_SESSIONS 중 하나
+        self.assertIsNone(sc["target_match"])           # 대상이 서술형('조회 세션' 등)
+
+
+class E2EScoreTest(unittest.TestCase):
+    def setUp(self):
+        from eval import e2e_score
+        self.e2e = e2e_score
+        self.dir = tempfile.mkdtemp()
+        self.runs = os.path.join(self.dir, "runs.jsonl")
+        with open(self.runs, "w", encoding="utf-8") as fh:
+            for sid, variant, start, end in (("f2_a_minio_outage", "full-stop", "10:00", "10:05"),
+                                             ("c_e_password_mistype", "occasional", "11:00", "11:05"),
+                                             ("c_g_jvm_normal_memory", "unlisted-variant", "12:00", "12:05")):
+                fh.write(json.dumps({"scenario_id": sid, "variant_id": variant, "seed": 1, "status": "ok",
+                                     "started_at": f"2026-11-20T{start}:00+00:00",
+                                     "ended_at": f"2026-11-20T{end}:00+00:00"}) + "\n")
+
+    def entry(self, starts, **result):
+        base = {"root_cause": "x", "incident_class": "failure", "action_type": "RESTART",
+                "action_targets": ["leafy-minio"], "target_evidence": ["A1"], "threat_level": "medium",
+                "evidence": ["A1"], "confidence": 0.9, "analysis_status": "valid", "invalid_reasons": [],
+                "target_validation": "validated", "target_reason": None, "proposed_action": None}
+        base.update(result)
+        return {"schema_version": "2.0", "alert_name": "MinioDown", "alert_fingerprint": "fp" + starts,
+                "alert_starts_at": f"2026-11-20T{starts}Z", "result": base}
+
+    def write(self, entries, loki=False):
+        path = os.path.join(self.dir, "rca.json" if loki else "rca.jsonl")
+        with open(path, "w", encoding="utf-8") as fh:
+            if loki:   # Loki query_range 응답 형식
+                json.dump({"status": "success", "data": {"resultType": "streams", "result": [
+                    {"stream": {"job": "aiops-llm"}, "values": [["1", json.dumps(e)] for e in entries]}]}}, fh)
+            else:
+                fh.write("\n".join(json.dumps(e) for e in entries) + "\n")
+        return path
+
+    def test_pairs_scores_and_excludes(self):
+        entries = [self.entry("10:02:00"),
+                   self.entry("11:03:00", action_type="NOTIFY", action_targets=[], target_evidence=[],
+                              incident_class="benign", threat_level="low", target_validation="downgraded",
+                              target_reason="target_not_in_evidence", proposed_action="RESTART"),
+                   self.entry("12:01:00"),            # 평가 분할 → 기본 제외
+                   self.entry("15:00:00")]            # 실행 기록 없음
+        for loki in (False, True):
+            out = os.path.join(self.dir, f"out{loki}")
+            with mock.patch("builtins.print"):
+                code = self.e2e.main(["--results", self.write(entries, loki), "--runs", self.runs, "--out", out])
+            self.assertEqual(code, 0)
+            with open(os.path.join(out, "summary.json"), encoding="utf-8") as fh:
+                doc = json.load(fh)
+            s = doc["summary"]["e2e"]
+            self.assertEqual(s["runs"], 2)
+            self.assertEqual(s["action_accuracy"], 0.5)          # minio RESTART 정답, 대조는 NOTIFY(정답 NONE)
+            self.assertEqual(s["target_match_rate"], 1.0)
+            self.assertEqual(s["target_hallucination_rate"], 0.5)
+            self.assertEqual(s["downgrade_rate"], 0.5)
+            self.assertEqual(sorted(r["reason"] for r in doc["skipped"]), ["eval_split_excluded", "no_run"])
+
+    def test_include_eval(self):
+        path = self.write([self.entry("12:01:00")])
+        with mock.patch("builtins.print"):
+            self.assertEqual(self.e2e.main(["--results", path, "--runs", self.runs]), 1)
+            self.assertEqual(self.e2e.main(["--results", path, "--runs", self.runs, "--include-eval"]), 0)
 
 
 class LegacyEvalRegressionTest(unittest.TestCase):
