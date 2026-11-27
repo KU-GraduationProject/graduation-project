@@ -6,27 +6,25 @@
 ## 1. 측정 설정 — Ollama로 고정
 
 평가 기준 모델은 Ollama `llama3.1:8b`(temperature 0.3, num_ctx 4096, num_predict 400)다.
-앱 기본값(`LLM_PROVIDER=gemini`)은 바꾸지 않는다. 측정할 때만 셸에서 변수를 지정해 띄운다(`.env`는 수정하지 않는다).
+앱 기본값도 `LLM_PROVIDER=ollama`다(#74). `.env`에 `LLM_PROVIDER=gemini`를 넣어 두었다면 측정 전에 지우거나 `ollama`로 바꾼다.
+셸에 지정한 값이 `.env`보다 우선한다.
 
 - `LLM_MODEL=llama3.1:8b`는 compose에 고정돼 있다.
 - temperature·num_ctx·num_predict는 pipeline 기본값(0.3 / 4096 / 400)이다. `LLM_TEMPERATURE`·`LLM_NUM_CTX`·`LLM_NUM_PREDICT`를 셸에 설정하지 않는다.
 - `PROMPT_BUILDER`는 기본 `v2`다. legacy 비교가 필요할 때만 `PROMPT_BUILDER=legacy`.
 
-macOS / Linux (저장소 루트):
+Ollama 컨테이너는 `--profile ollama`를 붙여야 뜬다.
 
-```bash
-LLM_PROVIDER=ollama docker compose --profile ollama up -d
-```
+| 장비 | 명령 (저장소 루트) |
+|---|---|
+| 맥 (all-in-one) | `docker compose --profile ollama up -d` |
+| NVIDIA GPU PC (all-in-one) | `docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile ollama up -d` |
+| GPU PC (AIOps 분리 구성) | `docker compose -f docker-compose.aiops.yml -f docker-compose.gpu.yml -f deploy/aiops-pc/remediation-remote.example.yml --profile ollama up -d` |
 
-Windows RTX (PowerShell, 저장소 루트):
+맥에 네이티브 Ollama 앱이 떠 있으면 `127.0.0.1:11434`가 겹쳐 Ollama 컨테이너가 뜨지 못한다. 측정 전에 네이티브 Ollama를 종료한다.
 
-```powershell
-$env:LLM_PROVIDER = "ollama"; docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile ollama up -d
-```
-
-분리 구성(AIOps PC 단독)은 `docker-compose.aiops.yml`에 같은 방식으로 `LLM_PROVIDER=ollama`와 `--profile ollama`를 붙인다.
-
-확인: pipeline 로그에 `[LLM] model=llama3.1:8b options={'temperature': 0.3, 'num_ctx': 4096, 'num_predict': 400} ...`가 찍혀야 한다. `[LLM] provider=gemini`가 보이면 측정을 멈추고 다시 띄운다.
+확인: pipeline 로그에 `[LLM] model=llama3.1:8b options={'temperature': 0.3, 'num_ctx': 4096, 'num_predict': 400} ...`가 찍혀야 한다
+(Ollama 경로 로그에는 `provider=` 표기가 없다 — `tools/measurement` 가 이 형식을 읽는다). `[LLM] provider=gemini`가 보이면 측정을 멈추고 다시 띄운다.
 모델이 없으면 `docker exec ollama ollama pull llama3.1:8b`.
 
 ## 2. 측정 중 남는 것

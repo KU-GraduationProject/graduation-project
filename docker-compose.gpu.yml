@@ -1,6 +1,6 @@
 # Windows(RTX) Ollama 실행용: LLM_PROVIDER=ollama docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile ollama up -d
 # Mac 에서는 이 파일 없이 실행한다 (Docker Desktop for Mac 은 GPU 를 지원하지 않는다)
-# 기본 Gemini 경로(LLM_PROVIDER=gemini)는 이 파일도, Ollama 컨테이너도 필요 없다
+# LLM_PROVIDER=gemini 로 바꾼 경우에는 이 파일도, Ollama 컨테이너도 필요 없다
 services:
   ollama:
     gpus: all

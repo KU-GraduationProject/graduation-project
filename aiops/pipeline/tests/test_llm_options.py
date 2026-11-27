@@ -83,5 +83,27 @@ class LlmOptionsTest(unittest.TestCase):
             self.assertEqual(body["options"]["seed"], 42)
 
 
+
+class DefaultProviderTest(unittest.TestCase):
+    """LLM_PROVIDER 를 지정하지 않으면 로컬 Ollama 를 쓴다 (#74). 설정은 import 시점에 정해져 별도 프로세스로 확인한다."""
+
+    def _provider(self, value=None):
+        import subprocess
+        env = {k: v for k, v in os.environ.items() if k != "LLM_PROVIDER"}
+        if value is not None:
+            env["LLM_PROVIDER"] = value
+        out = subprocess.run([sys.executable, "-c", "from config import settings; print(settings.llm_provider)"],
+                             cwd=os.path.join(os.path.dirname(__file__), ".."), env=env,
+                             capture_output=True, text=True, check=True)
+        return out.stdout.strip()
+
+    def test_default_is_ollama(self):
+        self.assertEqual(self._provider(), "ollama")
+        self.assertEqual(self._provider(""), "ollama")
+
+    def test_gemini_still_selectable(self):
+        self.assertEqual(self._provider(" Gemini "), "gemini")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -68,7 +68,7 @@ LLM은 무엇을(action_type)·어디에(대상)만 추천한다. `action_risk`�
 | M3 | 호스트 대상 안내가 KILL_SESSIONS 대상을 `leafy-db`로 고정 | 관측 target(예: 호스트 PostgreSQL 이름)과 달라 `action_targets_do_not_match_observation`으로 제안 거부 | 관측 target을 쓰도록 수정 |
 | M4 | 대상별 근거 기록이 없음 | 사람이 대상의 근거를 확인할 수 없음 | `target_evidence` 추가 |
 | M5 | 로그인 로그의 계정 필드(`login_id` 등)가 압축 로그 줄에 안 보일 수 있음 | 계정 근거를 증거로 인용할 수 없음 | 압축 줄에 계정 필드 포함 |
-| M6 | 앱 기본 `LLM_PROVIDER=gemini`(#56), 평가 하네스는 Ollama 직접 호출 | 운영 판단 모델과 평가 모델이 다름 | 하네스 모델·옵션을 코드에 고정(llama3.1:8b, 0.3/4096/400). E2E 측정 설정은 `docs/llm/E2E_SCORING.md`. 앱 기본값은 바꾸지 않음(Q4) |
+| M6 | 앱 기본 `LLM_PROVIDER=gemini`(#56), 평가 하네스는 Ollama 직접 호출 | 운영 판단 모델과 평가 모델이 다름 | 하네스 모델·옵션을 코드에 고정(llama3.1:8b, 0.3/4096/400). 앱 기본값도 #74에서 ollama로 변경 |
 | M7 | Docker/배포/DB 대상 허용 규칙이 설정 파일이 아니라 Remediation 코드에 있고, pipeline 컨테이너에는 정책 파일이 마운트되지 않음 | pipeline이 "정책 설정을 읽어서" 서비스 허용 여부를 미리 알 수 없음 | 중복 정의하지 않음. 관측 target 일치만 검사하고 나머지는 Remediation에 맡김(제안 P1) |
 
 ## 6. Remediation 쪽 제안 (구현하지 않음)
@@ -82,6 +82,6 @@ LLM은 무엇을(action_type)·어디에(대상)만 추천한다. `action_risk`�
 - **Q1.** REVOKE_SESSION·DISABLE_FEATURE는 실행기가 준비돼 있지만 Notion 1차 범위(#30)에 따라 LLM 허용 목록에서 뺐다. 2차 조치를 LLM이 추천해도 되는가? DISABLE_FEATURE의 `feature_id`는 로그 증거로 근거를 대기 어렵다.
 - **Q2.** LOCK_ACCOUNT의 계정 값은 로그 `login_id`/`user`류 필드에서만 인정했다. 앱이 로그에 남기는 계정 필드 이름이 그 밖에 있는가?
 - **Q3.** KILL_SESSIONS의 `min_age_seconds`·`max_sessions`를 LLM이 정해야 하는가, 정책이 정해야 하는가? 이번 변경에서는 LLM이 보내지 않는다.
-- **Q4.** 운영 기본 `LLM_PROVIDER=gemini`와 평가 모델(llama3.1:8b) 중 어느 쪽 결과를 판단 품질의 기준으로 삼을지.
+- **Q4.** (#74에서 해결) 운영 기본도 `LLM_PROVIDER=ollama`(llama3.1:8b)로 평가 모델과 맞췄다.
 - **Q5.** 이상 조치(expected_action_ideal)를 정답으로 승격할지. 이번 하네스는 두 기준을 모두 보고하고 정답 기준은 바꾸지 않는다.
 - **Q6.** 실행기가 관측 target 하나만 받으므로, S2-e처럼 이상 조치가 여러 단계(`ISOLATE+KILL_SESSIONS`)인 경우 LLM이 다단계를 내야 하는가, Remediation 계획(`propose_plan`)이 만드는가?

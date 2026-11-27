@@ -67,7 +67,7 @@ ACTION_RANK = {"NONE": 0, "NOTIFY": 1, "THROTTLE": 2, "LOCK_ACCOUNT": 2, "KILL_S
                "RESTART": 3, "RECREATE": 3, "ROLLBACK": 3, "PAUSE": 4, "ISOLATE": 4}
 NO_TARGET = ("NONE", "NOTIFY")
 
-# 평가는 Ollama 로 고정한다. 앱 기본 LLM_PROVIDER(gemini)·환경 변수와 무관하다 (docs/llm/E2E_SCORING.md).
+# 평가는 Ollama 로 고정한다. 앱 LLM_PROVIDER·환경 변수와 무관하다 (docs/llm/E2E_SCORING.md).
 EVAL_PROVIDER = "ollama"
 EVAL_MODEL = "llama3.1:8b"
 LLM_OPTIONS = {"temperature": 0.3, "num_ctx": 4096, "num_predict": 400}
