@@ -126,7 +126,7 @@
 | S2-c 데이터 반출 | critical | ISOLATE | ISOLATE | 네트워크 |
 | F1-b 메모리 압박·누수 | medium | RESTART | RESTART | 메트릭 |
 | F2-a MinIO 중단 | medium | RESTART | RESTART | 메트릭, 앱 로그 |
-| F2-c 커넥션 풀 고갈 | high | RESTART | KILL_SESSIONS | 메트릭, 앱 로그 |
+| F2-c 커넥션 풀 고갈 | high | NOTIFY | KILL_SESSIONS | 메트릭, 앱 로그 |
 | F3-a 잘못된 이미지 배포 | high | NOTIFY | ROLLBACK | 메트릭, 앱 로그 |
 | C-a 인가 대량 전송 | low | NONE | NONE | 네트워크 |
 | C-g JVM 평상시 메모리 | low | NONE | NONE | 메트릭 |

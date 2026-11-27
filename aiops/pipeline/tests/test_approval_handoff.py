@@ -15,7 +15,7 @@ IDENTITY = {"site":"gc", "service":"backend", "source":"pc2", "runtime":"contain
 
 def raw():
     return {"root_cause":"Observed CPU saturation", "incident_class":"failure", "action_type":"THROTTLE",
-            "action_targets":["leafy-backend"], "threat_level":"medium", "confidence":.9,
+            "action_targets":["leafy-backend"], "target_evidence":[], "threat_level":"medium", "confidence":.9,
             "evidence":["CPU > threshold"]}
 
 

@@ -63,11 +63,14 @@ from v2 import registry, variants  # noqa: E402
 BUILDERS = ("legacy", "v2")
 CONTROL_PREFIX = "c_"   # 대조 시나리오 (registry id 규칙)
 # 조치 강도 순위: 과잉/과소 대응 판정용. 같은 순위끼리(PAUSE/ISOLATE)는 오답이지만 과잉·과소는 아니다.
-ACTION_RANK = {"NONE": 0, "NOTIFY": 1, "THROTTLE": 2, "RESTART": 3, "PAUSE": 4, "ISOLATE": 4}
+ACTION_RANK = {"NONE": 0, "NOTIFY": 1, "THROTTLE": 2, "LOCK_ACCOUNT": 2, "KILL_SESSIONS": 2,
+               "RESTART": 3, "RECREATE": 3, "ROLLBACK": 3, "PAUSE": 4, "ISOLATE": 4}
+NO_TARGET = ("NONE", "NOTIFY")
 
-# 측정 재현을 위해 pipeline 과 같은 LLM 설정을 쓴다 (seed 만 반복마다 바꾼다)
-LLM_OPTIONS = {"temperature": settings.llm_temperature, "num_ctx": settings.llm_num_ctx,
-               "num_predict": settings.llm_num_predict}
+# 평가는 Ollama 로 고정한다. 앱 기본 LLM_PROVIDER(gemini)·환경 변수와 무관하다 (docs/llm/E2E_SCORING.md).
+EVAL_PROVIDER = "ollama"
+EVAL_MODEL = "llama3.1:8b"
+LLM_OPTIONS = {"temperature": 0.3, "num_ctx": 4096, "num_predict": 400}
 
 
 # ─── 픽스처 ───────────────────────────────────────────────────────────────────
@@ -144,10 +147,10 @@ def _row(scenario_id: str) -> dict | None:
 # ─── LLM 호출 ────────────────────────────────────────────────────────────────
 def chat_request(prompt: dict, seed: int) -> dict:
     return {
-        "model": settings.llm_model,
+        "model": EVAL_MODEL,
         "messages": [{"role": "system", "content": prompt["system"]},
                      {"role": "user", "content": prompt["user"]}],
-        "format": output_schema(prompt.get("evidence_ids")),
+        "format": output_schema(prompt.get("evidence_ids"), prompt.get("target_values")),
         "stream": False,
         "options": dict(LLM_OPTIONS, seed=seed),
     }
@@ -179,11 +182,12 @@ def run_one(fx: dict, builder: str, prompt: dict, rep: int, seed_base: int, chat
         result = parse_analysis(content, evidence_ids=prompt.get("evidence_ids"),
                                 done_reason=data.get("done_reason"),
                                 prompt_eval_count=data.get("prompt_eval_count"),
-                                num_ctx=LLM_OPTIONS["num_ctx"], num_predict=LLM_OPTIONS["num_predict"])
+                                num_ctx=LLM_OPTIONS["num_ctx"], num_predict=LLM_OPTIONS["num_predict"],
+                                target_values=prompt.get("target_values"))
     record = {
         "fixture": fx["_file"], "scenario_id": fx["scenario_id"], "variant_id": fx.get("variant_id"),
         "split": fx["_split"], "builder": builder, "rep": rep, "seed": seed,
-        "model": settings.llm_model, "options": dict(LLM_OPTIONS, seed=seed),
+        "provider": EVAL_PROVIDER, "model": EVAL_MODEL, "options": dict(LLM_OPTIONS, seed=seed),
         "prompt_tokens_est": est_tokens(prompt["system"] + prompt["user"]), "prompt_eval_count": data.get("prompt_eval_count"),
         "eval_count": data.get("eval_count"), "done_reason": data.get("done_reason"),
         "latency_s": round(latency, 3),
@@ -198,28 +202,50 @@ def run_one(fx: dict, builder: str, prompt: dict, rep: int, seed_base: int, chat
     return record
 
 
+def _concrete_targets(row: dict) -> list[str]:
+    """레지스트리 targets 중 실제 이름(leafy-*)만. "공격 대상 계정" 같은 서술은 대상 일치 채점에서 뺀다."""
+    return [t for t in row.get("targets", []) if t.startswith("leafy-")]
+
+
 def score(record: dict) -> dict:
+    """
+    한 실행(record: scenario_id, result)의 채점. 오프라인 하네스와 E2E 채점(eval/e2e_score.py)이 같이 쓴다.
+    정답 기준 두 가지: expected_action(현재 대체 조치) / expected_action_ideal(이상 조치, '+'로 여러 개).
+    """
     row = _row(record["scenario_id"])
     if row is None:
         raise KeyError(f"registry 에 없는 scenario_id: {record['scenario_id']}")
     r = record["result"]
     valid = r["analysis_status"] == "valid"
     exp_action = row["expected_action"]
+    ideal = row["expected_action_ideal"].split("+")
+    action = r["action_type"]
+    proposed = r.get("proposed_action") or action      # NOTIFY 로 낮추기 전 LLM 이 고른 조치
+    expected_targets = _concrete_targets(row)
     out = {
-        "expected": {"action_type": exp_action, "threat_level": row["threat_level"],
-                     "incident_class": row["incident_class"]},
+        "expected": {"action_type": exp_action, "action_ideal": ideal, "threat_level": row["threat_level"],
+                     "incident_class": row["incident_class"], "targets": expected_targets},
         "is_control": record["scenario_id"].startswith(CONTROL_PREFIX),
         "valid": valid,
         # invalid 는 오답으로 센다 (분석 실패를 맞힌 것으로 치지 않는다)
-        "action_correct": valid and r["action_type"] == exp_action,
+        "action_correct": valid and action == exp_action,
+        "action_ideal_correct": valid and action in ideal,
         "threat_correct": valid and r["threat_level"] == row["threat_level"],
         "class_correct": valid and r["incident_class"] == row["incident_class"],
         "evidence_cited": valid and bool(r["evidence"]),
         "over_response": None, "under_response": None,
+        # 대상 지표 (유효한 분석에서 LLM 이 대상이 필요한 조치를 고른 경우만)
+        "downgraded": valid and r.get("target_validation") == "downgraded",
+        "target_proposed": valid and proposed not in NO_TARGET,
+        "target_hallucinated": None, "target_match": None,
     }
     if valid:
-        diff = ACTION_RANK[r["action_type"]] - ACTION_RANK[exp_action]
+        diff = ACTION_RANK[action] - ACTION_RANK[exp_action]
         out["over_response"], out["under_response"] = diff > 0, diff < 0
+    if out["target_proposed"] and r.get("target_validation") in ("validated", "downgraded"):
+        out["target_hallucinated"] = r.get("target_reason") == "target_not_in_evidence"
+    if valid and action not in NO_TARGET and expected_targets:
+        out["target_match"] = bool(r["action_targets"]) and r["action_targets"][0] in expected_targets
     return out
 
 
@@ -268,7 +294,13 @@ def summarize(records: list[dict]) -> dict:
             "runs": len(recs),
             "fixtures": len({r["fixture"] for r in recs}),
             "splits": dict(Counter(r["split"] for r in recs)),
+            "json_valid_rate": _rate(r["valid"] for r in recs),
             "action_accuracy": _rate(r["action_correct"] for r in recs),
+            "action_ideal_accuracy": _rate(r["action_ideal_correct"] for r in recs),
+            "target_match_rate": _rate(r["target_match"] for r in recs),
+            "target_hallucination_rate": _rate(r["target_hallucinated"] for r in recs),
+            "downgrade_rate": _rate(r["downgraded"] for r in recs if r["valid"]),
+            "downgrade_by_reason": dict(Counter(r["result"].get("target_reason") for r in recs if r["downgraded"])),
             "threat_accuracy": _rate(r["threat_correct"] for r in recs),
             "incident_class_accuracy": _rate(r["class_correct"] for r in recs),
             "evidence_cited_rate": _rate(r["evidence_cited"] for r in recs) if has_ids else None,
@@ -292,7 +324,10 @@ def summarize(records: list[dict]) -> dict:
 
 
 _TABLE_ROWS = (
-    ("runs", "실행 수"), ("action_accuracy", "action 정확도"), ("threat_accuracy", "threat_level 정확도"),
+    ("runs", "실행 수"), ("json_valid_rate", "JSON 유효율"),
+    ("action_accuracy", "action 정확도(현재 대체 조치)"), ("action_ideal_accuracy", "action 정확도(이상 조치)"),
+    ("target_match_rate", "대상 일치율"), ("target_hallucination_rate", "증거에 없는 대상 생성률"),
+    ("downgrade_rate", "다운그레이드율"), ("threat_accuracy", "threat_level 정확도"),
     ("incident_class_accuracy", "incident_class 정확도"), ("evidence_cited_rate", "evidence 인용 비율"),
     ("control_over_response_rate", "대조 과잉대응률"), ("control_under_response_rate", "대조 과소대응률"),
     ("incident_over_response_rate", "사고 과잉대응률"), ("incident_under_response_rate", "사고 과소대응률"),
@@ -315,6 +350,9 @@ def render_table(summary: dict) -> str:
                                 ("confidence_when_action_wrong", "confidence(오답)")]
     for key, label in rows:
         lines.append(f"| {label} | " + " | ".join(cell(summary[b].get(key)) for b in builders) + " |")
+    for reason in sorted({k for b in builders for k in summary[b]["downgrade_by_reason"]}):
+        lines.append(f"| downgrade: {reason} | " + " | ".join(
+            str(summary[b]["downgrade_by_reason"].get(reason, 0)) for b in builders) + " |")
     reasons = sorted({k for b in builders for k in summary[b]["invalid_by_reason"]})
     for reason in reasons:
         lines.append(f"| invalid: {reason} | " + " | ".join(

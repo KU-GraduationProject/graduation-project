@@ -33,6 +33,7 @@ VALID_RCA = {
     "incident_class": "failure",
     "action_type": "THROTTLE",
     "action_targets": ["leafy-backend"],
+    "target_evidence": [],
     "threat_level": "medium",
     "evidence": ["cpu_usage: latest=2.1, peak=2.4", "HTTP 200 still returned"],
     "confidence": 0.9,
@@ -239,7 +240,8 @@ class GeminiRcaFlowTests(GeminiMockCase):
 
     async def test_gemini_rca_reaches_manual_approval_request(self):
         # v2 프롬프트는 증거 ID 를 쓴다. 실제 프롬프트에 있는 경보 항목 [A1] 을 인용한다.
-        self.generate.return_value = response(json.dumps(dict(VALID_RCA, evidence=["A1"])))
+        # 대상(leafy-backend)은 ALERT [A1] 에 나온다 — 대상 근거로 인용해야 조치가 유지된다
+        self.generate.return_value = response(json.dumps(dict(VALID_RCA, evidence=["A1"], target_evidence=["A1"])))
         seen, entry = await self.run_flow()
         sent_prompt = self.generate.await_args.kwargs["contents"]
         self.assertIn("leafy-backend", sent_prompt)

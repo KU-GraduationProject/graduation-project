@@ -55,7 +55,7 @@ class ActionTypesTest(unittest.TestCase):
 
     def test_scale_is_rejected_by_parser(self):
         r = parse_analysis('{"root_cause":"x","incident_class":"failure","action_type":"SCALE",'
-                           '"action_targets":[],"threat_level":"low","evidence":[],"confidence":0.5}',
+                           '"action_targets":[],"target_evidence":[],"threat_level":"low","evidence":[],"confidence":0.5}',
                            evidence_ids=[])
         self.assertEqual(r.analysis_status, "invalid")
         self.assertIn("invalid_enum:action_type", r.invalid_reasons)

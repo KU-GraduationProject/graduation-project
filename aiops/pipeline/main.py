@@ -937,7 +937,8 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
     입력이 잘린 경우(truncated)와 설정 오류·재시도 소진(LLMCallError)은 다시 물어도 같으므로 재시도하지 않는다.
     """
     evidence_ids = prompt.get("evidence_ids")   # legacy 프롬프트는 증거 ID 가 없다 (None)
-    fmt = output_schema(evidence_ids)
+    target_values = prompt.get("target_values")  # legacy 프롬프트는 대상 후보가 없다 (None)
+    fmt = output_schema(evidence_ids, target_values)
     last_raw: str | None = None
     result = LLMAnalysisResult.invalid(["llm_call_failed"])
 
@@ -953,6 +954,7 @@ async def call_llm(prompt: dict) -> LLMAnalysisResult:
                 last_raw, evidence_ids=evidence_ids,
                 done_reason=data.get("done_reason"), prompt_eval_count=data.get("prompt_eval_count"),
                 num_ctx=settings.llm_num_ctx, num_predict=settings.llm_num_predict,
+                target_values=target_values,
             )
             if result.analysis_status == "valid":
                 return result
