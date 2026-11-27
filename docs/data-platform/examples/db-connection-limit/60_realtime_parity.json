@@ -52,6 +52,7 @@
     "incident_class": "failure",
     "action_type": "NOTIFY",
     "action_targets": [],
+    "target_evidence": [],
     "threat_level": "high",
     "evidence": [
       "db log: FATAL 53300 sorry, too many clients already (2 lines)",
@@ -60,6 +61,9 @@
     ],
     "confidence": 0.74,
     "analysis_status": "valid",
-    "invalid_reasons": []
+    "invalid_reasons": [],
+    "target_validation": "unchecked",
+    "target_reason": null,
+    "proposed_action": null
   }
 }

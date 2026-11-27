@@ -12,7 +12,7 @@
 | `30`~`35` | Gold (현재 build) | JSONL |
 | `40`, `41` | Lineage run / edge (현재 build) | JSONL |
 | `50`, `51` | Manifest(전체 21건, 대체된 build 포함) / current 포인터 | JSONL / JSON |
-| `60` | 기존 Pipeline 코드(`0443c6f`)로 계산한 파리티 기대값. `aiops/pipeline`은 `2117eaf`까지 변경 없음. 단 `llm_result_model_dump`는 #70에서 현재 `LLMAnalysisResult`(`ffc996c`)로 다시 계산 | JSON |
+| `60` | 기존 Pipeline 코드(`0443c6f`)로 계산한 파리티 기대값. `aiops/pipeline`은 `2117eaf`까지 변경 없음. 단 `llm_result_model_dump`는 #70에서 현재 `LLMAnalysisResult`(`ffc996c`)로 다시 계산했고, #79에서 #72의 기본값 필드(`target_evidence` 등)를 반영해 `tests/tools/regen_fixture.py`로 재계산 | JSON |
 
 fixture 규약:
 
