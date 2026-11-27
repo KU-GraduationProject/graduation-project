@@ -3,12 +3,14 @@
     "identity": {"site": "gc-mac", "service": "backend", "runtime": "container", "target": "leafy-backend", "source": "gc-mac-docker"},
     "match": {"site": "gc-mac", "target": "leafy-backend"},
     "logs": {"site": "gc-mac", "service": "backend", "runtime": "container", "container_name": "leafy-backend"},
-    "metrics": {"job": "leafy-remote-containers", "instance": "100.64.0.2:8080", "id": "/docker/0000000000000000000000000000000000000000000000000000000000000000"}
+    "metrics": {"job": "leafy-telemetry", "instance": "100.64.0.2:9108", "id": "/docker/0000000000000000000000000000000000000000000000000000000000000000", "site": "gc-mac", "service": "backend", "runtime": "container", "target": "leafy-backend", "source": "gc-mac-docker"},
+    "metrics_profile": "gc-telemetry-v1"
   },
   {
     "identity": {"site": "gc-mac", "service": "frontend", "runtime": "container", "target": "leafy-frontend", "source": "gc-mac-docker"},
     "match": {"site": "gc-mac", "target": "leafy-frontend"},
     "logs": {"site": "gc-mac", "service": "frontend", "runtime": "container", "container_name": "leafy-frontend"},
-    "metrics": {"job": "leafy-remote-containers", "instance": "100.64.0.2:8080", "id": "/docker/0000000000000000000000000000000000000000000000000000000000000001"}
+    "metrics": {"job": "leafy-telemetry", "instance": "100.64.0.2:9108", "id": "/docker/0000000000000000000000000000000000000000000000000000000000000001", "site": "gc-mac", "service": "frontend", "runtime": "container", "target": "leafy-frontend", "source": "gc-mac-docker"},
+    "metrics_profile": "gc-telemetry-v1"
   }
 ]

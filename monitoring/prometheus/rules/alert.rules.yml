@@ -4,6 +4,8 @@ groups:
 
       # cAdvisor on Mac ARM (Docker Desktop)에는 name 라벨이 없다.
       # container_name_info (Pipeline /metrics) 의 id→name 매핑을 on(id) 조인으로 붙인다.
+      # 분리 구성(#61): Leafy 장비 collector(deploy/leafy-pc/telemetry)가 같은 지표와 container_name_info를 site 라벨과 함께 낸다.
+      # 그래서 컨테이너 경보는 by (site, name)으로 집계한다. all-in-one은 site가 없어 기존과 같은 결과다.
 
       # [역할] 컨테이너 CPU 과부하 탐지
       # [근거] Datadog 2024: CPU 급증은 DDoS/악성 프로세스 신호 1위
@@ -14,7 +16,7 @@ groups:
       #        container_name_info 조인으로 보완
       - alert: HighCpuUsage
         expr: >
-          sum by (name) (
+          sum by (site, name) (
             irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total"}[30s])
             * on(id) group_left(name) container_name_info
           ) > 0.5
@@ -41,7 +43,7 @@ groups:
       #        시계열을 함께 노출하므로 on(id) 1:1 매칭은 평가 오류가 난다
       - alert: HighMemoryUsage
         expr: >
-          max by (name) (
+          max by (site, name) (
             (
               container_memory_working_set_bytes{id=~"/docker/.+"}
               / (container_spec_memory_limit_bytes{id=~"/docker/.+"} > 0)
@@ -77,7 +79,7 @@ groups:
       #        Pipeline 다운 시 신호 없음 (aiops_docker_status_scrape_success 로 확인)
       - alert: ContainerRestarted
         expr: >
-          max by (name) (
+          max by (site, name) (
             sum_over_time(
               (
                 (
@@ -93,7 +95,7 @@ groups:
             )
           ) >= 2
           or
-          max by (name) (
+          max by (site, name) (
             changes(aiops_docker_container_started_at_seconds{name="leafy-backend"}[10m])
           ) >= 2
         for: 0m

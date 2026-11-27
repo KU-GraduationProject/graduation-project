@@ -4,7 +4,7 @@ groups:
   rules:
   - alert: HighCpuUsage
     expr: |
-      sum by (name) (
+      sum by (site, name) (
         irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total", instance="cadvisor:8080", job="cadvisor"}[30s])
         * on(id) group_left(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata"}
       ) > 0.5 and on(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata", name="leafy-frontend"}
@@ -18,7 +18,7 @@ groups:
       container: leafy-frontend
   - alert: HighCpuUsage
     expr: |
-      sum by (name) (
+      sum by (site, name) (
         irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total", instance="cadvisor:8080", job="cadvisor"}[30s])
         * on(id) group_left(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata"}
       ) > 0.5 and on(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata", name="leafy-backend"}
@@ -32,7 +32,7 @@ groups:
       container: leafy-backend
   - alert: ContainerRestarted
     expr: |
-      max by (name) (
+      max by (site, name) (
         sum_over_time(
           (
             (
@@ -46,7 +46,7 @@ groups:
             ) + 0
           )[10m:5s]
         )
-      ) >= 2 or max by (name) (
+      ) >= 2 or max by (site, name) (
         changes(aiops_docker_container_started_at_seconds{instance="pipeline:8000", job="pipeline-metadata", name="leafy-backend"}[10m])
       ) >= 2
     for: 0m
@@ -60,7 +60,7 @@ groups:
       container: leafy-backend
   - alert: HighCpuUsage
     expr: |
-      sum by (name) (
+      sum by (site, name) (
         irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total", instance="cadvisor:8080", job="cadvisor"}[30s])
         * on(id) group_left(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata"}
       ) > 0.5 and on(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata", name="leafy-db"}
@@ -74,7 +74,7 @@ groups:
       container: leafy-db
   - alert: HighCpuUsage
     expr: |
-      sum by (name) (
+      sum by (site, name) (
         irate(container_cpu_usage_seconds_total{id=~"/docker/.+",cpu="total", instance="cadvisor:8080", job="cadvisor"}[30s])
         * on(id) group_left(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata"}
       ) > 0.5 and on(name) container_name_info{instance="pipeline:8000", job="pipeline-metadata", name="leafy-minio"}

@@ -43,12 +43,15 @@ class Sample:
     metric: str
     labels: dict[str, str]
     value: float
+    ts: int | None = None  # upstream sample timestamp (ms), kept on export
 
 
 def parse_metrics(body: str, upstream: bool = True) -> list[Sample]:
     """Strict Prometheus 0.0.4 subset, only approved resource/freshness families.
 
-    Explicit timestamps are rejected: timestamp freshness must be the scrape time.
+    Sample timestamps are kept: real cAdvisor always writes them and only refreshes
+    values every housekeeping cycle. Re-stamping with the scrape time would make
+    irate() see repeated values as zero rate. Freshness is checked with container_last_seen.
     All label keys are checked before any privacy filtering or enrichment.
     """
     samples = []
@@ -60,8 +63,8 @@ def parse_metrics(body: str, upstream: bool = True) -> list[Sample]:
         if upstream and prefix not in RESOURCE_TYPES:
             continue
         match = LINE.fullmatch(line)
-        if not match or match[4]:
-            raise ContractError('invalid exposition or explicit timestamp')
+        if not match:
+            raise ContractError('invalid exposition')
         labels = {}
         text = match[2] or ''
         pos = 0
@@ -82,15 +85,15 @@ def parse_metrics(body: str, upstream: bool = True) -> list[Sample]:
         if key in seen:
             raise ContractError('duplicate resource series')
         seen.add(key)
-        samples.append(Sample(match[1], labels, value))
+        samples.append(Sample(match[1], labels, value, int(match[4]) if match[4] else None))
     return samples
 
 
-def line(metric: str, labels: dict[str, str], value: float | int) -> str:
+def line(metric: str, labels: dict[str, str], value: float | int, ts: int | None = None) -> str:
     def escape(s):
         return s.replace('\\', '\\\\').replace('\n', '\\n').replace('"', '\\"')
     encoded = ','.join(f'{k}="{escape(v)}"' for k, v in sorted(labels.items()))
-    return f'{metric}{{{encoded}}} {value}'
+    return f'{metric}{{{encoded}}} {value}' + (f' {ts}' if ts is not None else '')
 
 
 def started_time(value: str) -> float | None:
@@ -224,7 +227,9 @@ def resources(cfg, items, raw, now=None):
             # No name on root: it cannot be interpreted as an application container.
         elif raw_id.startswith('/docker/'):
             cid = raw_id[len('/docker/'):]
-            if cid not in items or not CID.fullmatch(cid):
+            if not CID.fullmatch(cid):
+                continue  # Docker Desktop service cgroups (e.g. /docker/buildx) are not containers.
+            if cid not in items:
                 raise ContractError('cAdvisor id has no exact Docker metadata match')
             item = items[cid]
             if not item['running']:
@@ -256,7 +261,7 @@ def resources(cfg, items, raw, now=None):
         if key in normalized:
             raise ContractError('normalization created duplicate series')
         normalized.add(key)
-        out.append(line(sample.metric, clean, sample.value))
+        out.append(line(sample.metric, clean, sample.value, sample.ts))
     if any(s.metric == NET and s.labels.get('id') == '/' for s in parsed) and not any(
             s.metric == LAST_SEEN and s.labels.get('id') == '/' for s in parsed):
         raise ContractError('root network freshness missing')
