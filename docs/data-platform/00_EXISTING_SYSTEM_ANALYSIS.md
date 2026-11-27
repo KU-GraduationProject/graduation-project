@@ -57,8 +57,8 @@ JH의 Loki(`127.0.0.1:3100`), Prometheus(`127.0.0.1:9090`), Alertmanager(`127.0.
 1. `resolve_identity()`가 alert labels/annotations와 `OBSERVATION_BINDINGS`로 다섯 identity(`site/service/runtime/target/source`)를 확정한다. 결과 상태: `resolved | source_unknown | source_unmapped | identity_conflict | ambiguous_source` ([identity.py:107-165](../../aiops/pipeline/identity.py#L107-L165)).
 2. `CorrelationContext.around(service, startsAt, 5분)`으로 같은 UTC 창을 만든다. 시각 비교는 `to_instant()`로 instant 변환 후에만 한다(offset 없는 시각 거부) ([correlation.py:117-186](../../aiops/pipeline/correlation.py#L117-L186)).
 3. 세 collector가 **binding이 지정한 exact selector로만** 조회하고 반환 label을 다시 검증한다. 범위를 넓히는 fallback이 없다.
-4. binding이 없거나 scoped evidence가 모두 없으면 LLM을 호출하지 않고 `confidence=0, action_type=NONE` 결과를 남긴다 ([main.py:298-301](../../aiops/pipeline/main.py#L298-L301)).
-5. dedup: `alertname + identity + 원래 식별 label` 해시, 300초, **프로세스 메모리**. 분석 이력 `deque(maxlen=20)`도 메모리뿐이다 ([main.py:38-48](../../aiops/pipeline/main.py#L38-L48), [identity.py:168-176](../../aiops/pipeline/identity.py#L168-L176)).
+4. binding이 없거나 scoped evidence가 모두 없으면 LLM을 호출하지 않고 `LLMAnalysisResult.invalid`(사유 `observation_unresolved`·`evidence_unavailable`)로 분석 실패 결과를 남긴다: `action_type=NOTIFY`, 대상 없음, `confidence=0`, `analysis_status=invalid`. NONE으로 메우지 않는다 ([main.py:332-335](../../aiops/pipeline/main.py#L332-L335), [llm_output.py:75-88](../../aiops/pipeline/schemas/llm_output.py#L75-L88)).
+5. dedup: `alertname + identity + 원래 식별 label` 해시, 300초, **프로세스 메모리**. 메모리의 분석 이력 `deque(maxlen=20)`는 최근 20건뿐이고, RCA 결과는 경보마다 Loki `{job="aiops-llm"}`에 저장된다(전송 실패 시 `storage_status=api_error`). 남지 않는 것은 RCA까지 가지 못한 경보(Pipeline 정지 중 수신, dedup 억제, 분석 중 예외)다 ([main.py:44-54](../../aiops/pipeline/main.py#L44-L54), [main.py:363](../../aiops/pipeline/main.py#L363), [identity.py:168-176](../../aiops/pipeline/identity.py#L168-L176)).
 
 **현재 main의 실제 구성에서 `OBSERVATION_BINDINGS`는 어디에도 설정되어 있지 않다**(기본 `[]`, `docker-compose.aiops.yml`·`deploy/` 검색 결과 없음). 따라서 main을 그대로 배포하면 모든 RCA가 `source_unknown/unmapped` + LLM 미호출이다. 데이터 플랫폼도 같은 binding을 써야 하므로(§7) **실데이터 적재는 OI-09의 BLOCKED 항목에 그대로 묶인다.** Mock 기반 개발은 영향받지 않는다.
 

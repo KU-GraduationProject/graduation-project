@@ -1,7 +1,25 @@
 # Leafy AIOps Data Platform — STEP 0 공통 계약
 
-> 상태: **설계 제안, 승인 전.** 이 디렉터리는 문서와 합성 fixture만 담는다. 코드·인프라·설정은 만들지 않았고, 실제 장비·컨테이너·시나리오는 실행하지 않았다.
-> 기준 코드: `origin/main` @ `2117eaf` (최초 작성 `0443c6f`, 2026-11-17 재검증 — [08](08_CONSISTENCY_REVIEW.md) §4). **승인 전에는 Track A~D 구현을 시작하지 않는다.**
+> 상태 (2026-11-28, `origin/main` @ `0b00ca9` 기준). 구현 세부와 구현 중 결정은 [aiops/dataplatform/README.md](../../aiops/dataplatform/README.md)를 따른다.
+>
+> **구현됨** — [aiops/dataplatform/](../../aiops/dataplatform/)
+> - STEP 0 계약 문서·합성 fixture: 이 디렉터리, [examples/](examples/) (#36, PR #37)
+> - Airflow Phase별 DAG와 오케스트레이션: `airflow/dags/`, `orchestration/` (#38, PR #39)
+> - 계약 코드·저장소와 Bronze·Silver·Gold·Lineage·mock 원천: `contracts/`, `storage/`, `bronze/`, `silver/`, `gold/`, `lineage/`, `mock_sources/` (#40, PR #42)
+> - DAG를 실제 진입점(`orchestration/phases.py`)에 연결, mock 원천으로 E2E 확인 (#41, PR #43)
+> - 사건 자동 발견·배치 스케줄: `orchestration/discover.py`, `airflow/dags/dp_incident_discover.py` (#68, PR #69)
+> - fixture RCA envelope를 현재 LLM 출력 형식에 맞춤: `silver/normalize.py`, [examples/](examples/) (#70, PR #76)
+>
+> **진행 중**
+> - fixture LLM 출력 기대값에 `target_evidence` 반영: #79 (PR #80)
+> - Gold 사건과 시나리오 실행 기록 연결(`gold.scenario_link`): #71
+>
+> **미구현**
+> - 정책 결정·조치 연결(`remediation_link`): Issue #77, 코드 없음
+> - 실데이터 원천 연결: `DP_LOKI_URL`/`DP_PROMETHEUS_URL`을 주지 않으면 mock 원천을 읽는다. 실제 Loki/Prometheus 적재는 OI-09 binding이 풀린 뒤 사용자 승인 단계다 ([05](05_PARALLEL_TRACKS.md) §7)
+> - Parquet codec·DuckDB(DEC-02, pyarrow 미설치), MinIO 저장소 어댑터(DEC-03, 현재 로컬 `LocalFsStore`)
+>
+> 00~08 계약 문서의 기준 코드는 STEP 0 작성 시점 `2117eaf`(최초 `0443c6f`, 2026-11-17 재검증 — [08](08_CONSISTENCY_REVIEW.md) §4)이다.
 
 ## 목표
 
@@ -45,7 +63,7 @@ GC PC ──Tailscale──▶ JH Fluentd ─▶ Loki ─┐                 ┌
 | DEC-02 | 의존성 | `pyarrow`(Parquet·S3 FS) + `duckdb`(계산). DuckDB `httpfs`는 런타임 다운로드가 필요할 수 있어 오프라인 번들 또는 pyarrow로 읽기. 버전 고정. Airflow 이미지와 Python 버전 정합(CI 3.11) |
 | DEC-03 | Lake 저장소 이미지 | Leafy는 MinIO 공식 배포 중단으로 소스 빌드 이미지(`gicks/minio:RELEASE.2025-09-07…`)를 쓴다([docker-compose.yml:175-176](../../docker-compose.yml#L175-L176)). 같은 이미지로 **별도 인스턴스**를 쓸지, 다른 S3 호환 저장소를 쓸지, 당분간 `LocalFsStore`만 쓸지 결정. 조건부 쓰기 지원 여부 확인 |
 | DEC-13 | `area:data-platform` 라벨 | 추가 권장. 없으면 `aiops/dataplatform/*` PR에 영역 라벨이 자동으로 붙지 않음 |
-| DEC-18 | 테이블 형식 | 02의 자체 manifest·current 포인터·`supersedes`는 Delta Lake(`deltalake`/delta-rs)의 트랜잭션 로그·time travel과 역할이 겹친다. 자체 manifest 유지 vs Delta 채택을 STEP 0.5 storage 코드 전에 결정. Delta를 택해도 레코드 단위 lineage edge(03)는 별도로 필요하다. **미결정** |
+| DEC-18 | 테이블 형식 | **결정됨: 자체 manifest 유지.** Delta Lake가 아니라 02의 자체 manifest·current 포인터·`supersedes`를 쓴다. 계약·fixture·검증이 manifest 기준이다([aiops/dataplatform/README.md](../../aiops/dataplatform/README.md) 결정 기록 DEC-18). 레코드 단위 lineage edge(03)는 별도로 둔다 |
 | DEC-16 | 브랜치 이름 | **결정됨:** Issue #36 생성, 브랜치 `docs/36-data-platform-step0` |
 
 ### Track 착수 전
