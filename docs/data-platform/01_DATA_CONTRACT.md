@@ -251,7 +251,11 @@ MAJOR가 `1`이 아니거나 필수 필드가 없으면 quarantine(`unsupported_
 | `site`,`source`,`service`,`runtime`,`target` | string | N | |
 | `identity_status` | string | Y | |
 | `evidence_sources` | string(JSON) | Y | 원문 그대로 |
-| `root_cause`,`action_type`,`action_description`,`threat_level` | string | N | `LLMAnalysisResult`로 재검증한 값 |
+| `root_cause`,`action_type` | string | N | `LLMAnalysisResult`로 재검증한 값 |
+| `action_description` | string | Y | 원문 `result`에 있을 때만(#29 이전 LLM 출력). 현재 출력에는 없어 null |
+| `threat_level` | string | N | `LLMAnalysisResult`로 재검증한 값 |
+| `incident_class` | string | Y | LLM이 낸 사건 분류(**예측값**, 평가 정답 아님). 키가 없는 #29 이전 envelope(`llm_output_legacy` 표시)과 Pipeline 분석 실패(`analysis_status=invalid`)는 null. 나머지 필드는 같은 모델로 검증하고, 그 외 검증 실패는 `invalid_value` quarantine |
+| `analysis_status` | string | Y | Pipeline 파서 메타 `valid`·`invalid` 원문. 없으면(#29 이전) null |
 | `action_targets`,`evidence` | list<string> | N | |
 | `confidence` | double | N | |
 | `fallback_reason` | string | Y | `source_unresolved`([main.py:300](../../aiops/pipeline/main.py#L300)) · `llm_parse_failure`([main.py:888](../../aiops/pipeline/main.py#L888)) — root_cause 문자열 **완전 일치**로만 판정 |

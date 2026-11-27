@@ -58,6 +58,7 @@
 | `value_revised` | 신규 | Silver | 같은 metric 점이 다른 값으로 재획득됨 |
 | `nonfinite_value` | 신규 | Silver | NaN/Inf |
 | `legacy_unversioned` | 신규 | Silver | 버전 없는 과거 RCA envelope |
+| `llm_output_legacy` | 신규 | Silver | `incident_class`가 없는 #29 이전 LLM 출력. 나머지 필드는 검증 통과, `incident_class=null` |
 | `window_open` | 신규 | Silver/Gold | 닫히지 않은 창에서만 획득됨 |
 | `partial_acquisition` | 신규 | Silver | `partial`/`truncated` 획득에서만 나온 행 |
 | `reacquisition_incomplete` | 신규 | Gold(채널) | 같은 쿼리의 앞선 획득은 `ok`라 채널 상태는 최선 상태를 따르지만, 나중 재획득이 `partial`/`truncated`/`failed`로 끝남 ([02](02_STORAGE_DESIGN.md) §7) |

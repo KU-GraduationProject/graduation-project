@@ -276,6 +276,20 @@ def alert_event(row: dict, acq: dict) -> Normalized:
     return Normalized(pk, values, set(), (fmt_ts(starts), pk))
 
 
+def _llm_result(raw: dict) -> dict:
+    """Revalidate with the Pipeline's `LLMAnalysisResult` unchanged. Two shapes lack `incident_class`:
+    envelopes written before the field existed (key absent) and the Pipeline's own failed analysis
+    (`LLMAnalysisResult.invalid()`: null + `analysis_status="invalid"`). Every other field is still
+    validated by the same model, and the class stays null — it is never guessed."""
+    model = pipeline_compat.llm_output().LLMAnalysisResult
+    missing = "incident_class" not in raw
+    if not missing and not (raw["incident_class"] is None and raw.get("analysis_status") == "invalid"):
+        return model(**raw).model_dump()
+    # any valid class lets the model check the rest; the placeholder is discarded below
+    probe = model(**{**raw, "incident_class": pipeline_compat.load("schemas.actions").INCIDENT_CLASSES[0]})
+    return {**probe.model_dump(), "incident_class": None}
+
+
 def rca_result(row: dict, acq: dict) -> Normalized:
     rec = _envelope(row)
     try:
@@ -283,19 +297,23 @@ def rca_result(row: dict, acq: dict) -> Normalized:
         alert_event_id = _alert_event_id(rec)
     except (ValueError, TypeError) as exc:
         raise Quarantine("invalid_timestamp", str(exc)) from exc
+    raw = rec["result"]
     try:
-        result = pipeline_compat.llm_output().LLMAnalysisResult(**rec["result"]).model_dump()
+        result = _llm_result(raw)
     except Exception as exc:  # pydantic ValidationError or a non-dict result
         raise Quarantine("invalid_value", f"result: {exc}") from exc
     flags = set() if rec.get("schema_version") else {"legacy_unversioned"}
+    if "incident_class" not in raw:
+        flags.add("llm_output_legacy")
     evidence = rec.get("evidence_sources")
     values = {"rca_id": row["record_key"], "rca_time": fmt_ts(rca_time), "loki_ts_ns": row["entry_ts_ns"],
               "envelope_schema_version": rec.get("schema_version"), "alert_event_id": alert_event_id,
               "alert_name": rec["alert_name"], "alert_fingerprint": rec.get("alert_fingerprint"),
               **_envelope_identity(rec), "identity_status": rec.get("identity_status"),
               "evidence_sources": canonical_str(evidence) if evidence is not None else None,
-              "root_cause": result["root_cause"], "action_type": result["action_type"],
-              "action_description": result["action_description"], "threat_level": result["threat_level"],
+              "root_cause": result["root_cause"], "incident_class": result["incident_class"],
+              "analysis_status": raw.get("analysis_status"), "action_type": result["action_type"],
+              "action_description": raw.get("action_description"), "threat_level": result["threat_level"],
               "action_targets": list(result["action_targets"]), "evidence": list(result["evidence"]),
               "confidence": float(result["confidence"]),
               "fallback_reason": enums.FALLBACK_ROOT_CAUSES.get(result["root_cause"]),
