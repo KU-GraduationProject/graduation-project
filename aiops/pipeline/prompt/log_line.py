@@ -151,6 +151,8 @@ def is_priority(entry: dict) -> bool:
 # 판단에 필요한 필드만 남긴다. user_agent·detail·pid·session 같은 긴/잡음 필드는 뺀다.
 # 시각은 줄 안의 원래 표기(+09:00 등) 대신 Loki 수집 시각(UTC)을 builder 가 붙인다.
 COMPACT_CHARS = 180
+# 계정 필드. 로그인 로그는 login_id(요청 필드)·loginId(앱 메시지)를 쓴다.
+_ACCOUNT_KEYS = ("user", "principal", "login_id", "loginId", "username")
 _COMPACT_FIELDS = (
     (("request_method", "http_method"), "", 10),
     (("request_uri", "uri"), "", 100),
@@ -160,7 +162,7 @@ _COMPACT_FIELDS = (
     (("state_code", "sql_state_code"), "sqlstate=", 8),
     (("exception_class",), "exc=", 60),
     (("exception_message",), "exc_msg=", 80),
-    (("user", "principal"), "user=", 30),
+    (_ACCOUNT_KEYS, "user=", 64),
     (("dbname",), "db=", 30),
     (("source_ip", "remote_addr", "remote_host"), "src=", 40),
     (("query_decoded",), "q=", 80),
@@ -230,3 +232,23 @@ def pattern_key(entry: dict) -> tuple:
     template = _DIGITS.sub("#", _HEXISH.sub("*", f["message"]))[:80]
     return (labels.get("service") or labels.get("container") or "?", f["severity"], f["method"],
             _DIGITS.sub("#", path) + ("?" + query_keys if query_keys else ""), f["status"], template)
+
+
+# 텍스트 메시지 안의 계정 표기 (예: "[AUTH] 로그인 실패 loginId=s1c_test reason=wrong_password")
+_ACCOUNT_IN_TEXT = re.compile(r"\b(?:loginId|login_id|username|user)=([^\s,;|&\"']+)")
+
+
+def account_values(entry: dict, pattern) -> list[str]:
+    """
+    로그 줄에 나온 계정 ID. 로그 값은 신뢰하지 않는다 — pattern(형식)에 맞는 값만 돌려주고,
+    호출 측은 그 값이 프롬프트에 실제로 보이는지 다시 확인한다.
+    """
+    rec = _record(entry)
+    found = []
+    if rec is not None and entry.get("labels", {}).get("log_format") not in ("text", "json_invalid"):
+        found += [str(rec[k]) for k in _ACCOUNT_KEYS if isinstance(rec.get(k), (str, int))]
+        text = str(rec.get("message", ""))
+    else:
+        text = entry["line"] if rec is None else _raw_text(rec)
+    found += _ACCOUNT_IN_TEXT.findall(text)
+    return [v for v in dict.fromkeys(found) if pattern.fullmatch(v)]

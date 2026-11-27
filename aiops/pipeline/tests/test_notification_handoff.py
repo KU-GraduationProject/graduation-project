@@ -121,7 +121,7 @@ class NotificationHandoffTests(unittest.IsolatedAsyncioTestCase):
     def test_team_proposal_candidates_remain_recommendations(self):
         def parse(action):
             return parse_analysis(json.dumps({"root_cause": "x", "incident_class": "failure",
-                "action_type": action, "action_targets": [], "threat_level": "low",
+                "action_type": action, "action_targets": [], "target_evidence": [], "threat_level": "low",
                 "evidence": [], "confidence": .5}), evidence_ids=None)
         for action in ACTION_TYPES:
             self.assertEqual(parse(action).action_type, action)

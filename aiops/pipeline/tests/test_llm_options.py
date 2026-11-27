@@ -24,6 +24,7 @@ _CONTENT = {
     "incident_class": "failure",
     "action_type": "RESTART",
     "action_targets": ["leafy-backend"],
+    "target_evidence": [],
     "threat_level": "high",
     "evidence": ["cpu_usage: latest=4.9"],
     "confidence": 0.9,

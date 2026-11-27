@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from schemas.llm_output import LLM_FIELDS, output_schema, parse_analysis  # noqa: E402
 
 GOOD = {"root_cause": "4xx burst from one source.", "incident_class": "attack",
-        "action_type": "NOTIFY", "action_targets": [], "threat_level": "medium",
+        "action_type": "NOTIFY", "action_targets": [], "target_evidence": [], "threat_level": "medium",
         "evidence": ["A1", "L1"], "confidence": 0.7}
 IDS = ["A1", "M1", "L1", "L2"]
 
@@ -55,8 +55,13 @@ class StrictParseTest(unittest.TestCase):
                            ("incident_class", "unknown")):
             r = parse(dict(GOOD, **{field: bad}))
             self.assertIn(f"invalid_enum:{field}", r.invalid_reasons, field)
-        r = parse(dict(GOOD, action_type="RESTART", action_targets=["aiops-pipeline"]))
+        # 형식이 틀린 대상(공백·경로·다른 접두어)은 분석 무효
+        r = parse(dict(GOOD, action_type="RESTART", action_targets=["../etc/passwd"]))
         self.assertIn("invalid_enum:action_targets", r.invalid_reasons)
+        # 형식은 맞지만 관측 target 이 아닌 대상은 NOTIFY 로 낮춘다 (schemas/targets.py)
+        r = parse(dict(GOOD, action_type="RESTART", action_targets=["aiops-pipeline"], target_evidence=["A1"]),
+                  target_values={"A1": ["leafy-backend"]})
+        self.assertEqual((r.analysis_status, r.action_type, r.target_reason), ("valid", "NOTIFY", "target_not_in_evidence"))
 
     def test_unknown_evidence_id(self):
         r = parse(dict(GOOD, evidence=["L1", "L9"]))

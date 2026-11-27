@@ -23,13 +23,15 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 from correlation import to_instant
-from prompt.log_line import is_priority, pattern_key, render_compact
+from prompt.log_line import account_values, is_priority, pattern_key, render_compact
 from prompt.network_section import build_network_section_v2
-from schemas.actions import (ACCOUNT_TARGET_PREFIX, ACTION_TARGETS, ACTION_TYPES, INCIDENT_CLASSES,
-                             NO_TARGET_ACTIONS, THREAT_LEVELS)
+from schemas.actions import (ACCOUNT_ID_PATTERN, ACCOUNT_TARGET_PREFIX, ACTION_TYPES, INCIDENT_CLASSES,
+                             NO_TARGET_ACTIONS, TARGET_NAME_PATTERN, THREAT_LEVELS)
 
 # 섹션별 토큰 예산 (num_ctx 4096 - num_predict 400 = 3696 안에 system 포함)
-SECTION_BUDGETS = {"alert": 300, "metrics": 350, "logs": 1300, "network": 500}
+SECTION_BUDGETS = {"alert": 300, "metrics": 350, "logs": 1300, "network": 500, "targets": 80}
+MAX_ACCOUNT_CANDIDATES = 5
+_ACCOUNT_RE = re.compile(ACCOUNT_ID_PATTERN)
 CHARS_PER_TOKEN = 3          # 보수적 추정 (로그·숫자는 영어 산문보다 토큰이 많다)
 MAX_SERIES_PER_METRIC = 2
 REPS_PER_PATTERN = 2
@@ -42,7 +44,8 @@ FIELDS (all required):
 - root_cause: at most 2 sentences (max 400 characters): the cause and why the chosen action fits.
 - incident_class: one of {" | ".join(INCIDENT_CLASSES)}. benign = normal activity or a false positive.
 - action_type: one of {" | ".join(ACTION_TYPES)}.
-- action_targets: target names from {", ".join(ACTION_TARGETS)}. For LOCK_ACCOUNT use ["{ACCOUNT_TARGET_PREFIX}<account id seen in the input>"] instead. Must be [] when action_type is {" or ".join(NO_TARGET_ACTIONS)}.
+- action_targets: exactly one value from the ACTION TARGETS section, or [] when action_type is {" or ".join(NO_TARGET_ACTIONS)}. LOCK_ACCOUNT takes an "{ACCOUNT_TARGET_PREFIX}<id>" value; every other action takes the alert target. Use only listed values; if no listed value fits, choose NOTIFY.
+- target_evidence: the IDs of the input items where the chosen target value appears; [] when action_targets is [].
 - threat_level: one of {" | ".join(THREAT_LEVELS)}.
 - evidence: the IDs (1 to 5) of the input items you relied on, e.g. ["A1","L2"]. Only IDs that appear in the input.
 - confidence: number from 0.0 to 1.0.
@@ -63,9 +66,9 @@ Input marked "truncated", "omitted" or "value lookup failed" is incomplete: say 
 
 
 # 관측 대상이 호스트(예: 호스트 PostgreSQL)일 때. Docker 조치 대상이 아니다.
-HOST_NOTE = ("\n\nThe alert target is a host, not a Docker container: action_targets must be [] and "
-             "action_type must be NONE or NOTIFY, except KILL_SESSIONS with action_targets [\"leafy-db\"] "
-             "when the database connection pool is exhausted. Missing evidence is unknown, never healthy.")
+HOST_NOTE = ("\n\nThe alert target is a host, not a Docker container: action_type must be NONE or NOTIFY, "
+             "except KILL_SESSIONS on the alert target when the database connection limit is exhausted. "
+             "Missing evidence is unknown, never healthy.")
 
 
 def est_tokens(text: str) -> int:
@@ -327,7 +330,8 @@ def _metrics_section(metrics: dict, anchor_epoch: float, budget):
     return "\n".join(lines), ids, bool(omitted), omitted
 
 
-def _logs_section(logs: list, rule, log_meta: dict | None, budget):
+def _logs_section(logs: list, rule, log_meta: dict | None, budget, targets: dict):
+    """targets 에 {L 증거 ID: [그 줄에 보이는 account:<id>]} 를 채운다."""
     meta = log_meta or {}
     window = (f", {utc(meta['start'])} ~ {utc(meta['end'])}" if meta.get("start") and meta.get("end") else "")
     status = (getattr(logs, "report", None) or {}).get("status")
@@ -378,6 +382,11 @@ def _logs_section(logs: list, rule, log_meta: dict | None, budget):
             continue
         lines.extend(block)
         ids.append(f"L{i}")
+        shown = "\n".join(block)
+        accounts = [ACCOUNT_TARGET_PREFIX + v for e in entries[:REPS_PER_PATTERN]
+                    for v in account_values(e, _ACCOUNT_RE) if v in shown]
+        if accounts:
+            targets[f"L{i}"] = list(dict.fromkeys(accounts))
     if omitted_lines:
         lines.append(f"({omitted_lines} lines omitted in {omitted_groups} patterns: budget)")
     return "\n".join(lines), ids, bool(omitted_lines), omitted_lines
@@ -392,25 +401,49 @@ def _network_section(network, policy, budget):
     return text, ids, bool(hidden), hidden
 
 
+def _targets_section(targets: dict) -> tuple[str, dict]:
+    """대상 후보 목록. 이 목록 밖의 값은 출력 스키마가 막고, 파서가 다시 검사한다."""
+    lines = ["\n=== ACTION TARGETS (the only values allowed in action_targets) ==="]
+    kept, accounts = {}, 0
+    for eid, values in targets.items():
+        for v in values:
+            is_account = v.startswith(ACCOUNT_TARGET_PREFIX)
+            if is_account and accounts >= MAX_ACCOUNT_CANDIDATES:
+                continue
+            accounts += is_account
+            kept.setdefault(eid, []).append(v)
+            lines.append(f"- {v} ({'account' if is_account else 'alert target'}, appears in {eid})")
+    if not kept:
+        lines.append("none: action_targets must be [] (NONE or NOTIFY only)")
+    return "\n".join(lines), kept
+
+
 class PromptBuilderV2:
     def build(self, alert, metrics: dict, logs: list[dict], container_name: str | None = None,
               network=None, rule=None, received_at=None, log_meta: dict | None = None,
               policy=None, identity=None, evidence_sources=None) -> dict:
         """
-        반환: system, user, evidence_ids(프롬프트에 붙인 ID), truncated(섹션 하나라도 잘림),
+        반환: system, user, evidence_ids(프롬프트에 붙인 ID), target_values({증거 ID: 대상 후보}),
+        truncated(섹션 하나라도 잘림),
         sections(섹션별 추정 토큰·예산·잘림·생략 수), builder="v2".
         """
         if policy is None:
             from prompt.builder import _load_policy
             policy = _load_policy()
         anchor = to_instant(alert.startsAt).timestamp()
+        # 관측 target 은 ALERT(A1)에 나온다. 계정은 LOGS 줄에서 모은다 (_logs_section).
+        target_values = ({"A1": [container_name]}
+                         if container_name and re.fullmatch(TARGET_NAME_PATTERN, container_name) else {})
         parts = {
             "alert": _alert_section(alert, container_name, rule, received_at, SECTION_BUDGETS["alert"],
                                     identity, evidence_sources),
             "metrics": _metrics_section(metrics, anchor, SECTION_BUDGETS["metrics"]),
-            "logs": _logs_section(logs if logs is not None else [], rule, log_meta, SECTION_BUDGETS["logs"]),
+            "logs": _logs_section(logs if logs is not None else [], rule, log_meta, SECTION_BUDGETS["logs"],
+                                  target_values),
             "network": _network_section(network, policy, SECTION_BUDGETS["network"]),
         }
+        targets_text, target_values = _targets_section(target_values)
+        parts["targets"] = (targets_text, [], False, 0)
         sections, evidence_ids, texts = {}, [], []
         for name, (text, ids, truncated, omitted) in parts.items():
             texts.append(text)
@@ -425,6 +458,7 @@ class PromptBuilderV2:
             "system": system,
             "user": user,
             "evidence_ids": evidence_ids,
+            "target_values": target_values,
             "truncated": any(s["truncated"] for s in sections.values()),
             "sections": sections,
             "builder": "v2",
