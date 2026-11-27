@@ -1,7 +1,7 @@
 # 팀원 Leafy compose(back/deploy/)에 병합할 logging 설정 예시. 이 파일 자체로 실행하지 않는다.
 #
 # 이 저장소에서는 back/deploy/ compose를 볼 수 없다. 서비스 이름(frontend/backend/minio)과
-# 기존 environment는 실제 파일 기준으로 맞춘다. 아래는 logging 블록, site 라벨과 백엔드 JSON 전환만 다룬다.
+# 기존 environment는 실제 파일 기준으로 맞춘다. 아래는 logging 블록, site·workload 라벨과 백엔드 JSON 전환만 다룬다.
 #
 # 중앙 Fluentd가 기대하는 것
 #   - labels: com.docker.compose.service  -> Loki label service (canonical identity)
@@ -32,6 +32,9 @@ x-aiops-log-opts: &aiops-log-opts
 
 x-aiops-site-labels: &aiops-site-labels
   aiops.site: "${LEAFY_SITE:?LEAFY_SITE 를 .env 에 설정 (이 Leafy 장비 이름, 예: gc-mac)}"
+  # Remediation이 조작해도 되는 업무 컨테이너 표시 (#62). Agent 허용 목록·대상 바인딩은 이 라벨이 있는 컨테이너만 받는다.
+  # 라벨은 컨테이너를 다시 만들어야 붙으므로, 붙인 뒤 tools/split_setup.py leafy 로 id를 읽는다.
+  io.leafy.remediation: workload
 
 services:
   frontend:
