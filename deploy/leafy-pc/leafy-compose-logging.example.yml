@@ -1,17 +1,20 @@
 # 팀원 Leafy compose(back/deploy/)에 병합할 logging 설정 예시. 이 파일 자체로 실행하지 않는다.
 #
 # 이 저장소에서는 back/deploy/ compose를 볼 수 없다. 서비스 이름(frontend/backend/minio)과
-# 기존 environment는 실제 파일 기준으로 맞춘다. 아래는 logging 블록과 백엔드 JSON 전환만 다룬다.
+# 기존 environment는 실제 파일 기준으로 맞춘다. 아래는 logging 블록, site 라벨과 백엔드 JSON 전환만 다룬다.
 #
 # 중앙 Fluentd가 기대하는 것
 #   - labels: com.docker.compose.service  -> Loki label service (canonical identity)
 #     compose 서비스 이름이 frontend / backend / minio 가 아니면 service 값이 달라져
 #     Pipeline({service="backend"})과 Loki 규칙이 로그를 찾지 못한다.
 #   - tag: 기존과 같은 frontend / backend / minio  -> Loki label container (LEGACY, 프롬프트 표시용)
+#   - labels: aiops.site  -> Loki label site, target(=container_name). 분리 구성에서 로그가 어느 장비에서 왔는지 표시한다.
+#     컨테이너 라벨(labels:)로 붙이고 logging 옵션 labels로 드라이버가 함께 보내야 한다.
+#     없으면 로그는 저장되지만 site가 없다(출처 미확인). LEAFY_SITE는 .env에 장비 이름으로 둔다 (예: gc-mac).
 
 x-aiops-log-opts: &aiops-log-opts
   fluentd-address: "${AIOPS_TAILSCALE_IP:?AIOPS_TAILSCALE_IP 를 .env 에 설정 (AIOps PC의 tailscale ip -4)}:24224"
-  labels: "com.docker.compose.service"
+  labels: "com.docker.compose.service,aiops.site"
   # true: AIOps PC가 꺼져 있어도 Leafy 컨테이너가 기동한다 (false면 연결 실패 시 컨테이너 시작 자체가 실패).
   #   대가: Docker는 async일 때 종료 시 아직 못 보낸 큐를 버린다 (moby fluentd 드라이버 ForceStopAsyncSend=async).
   #   실측: 기동 후 0.25초 안에 종료하면 0/5, 0.5초 이후 종료는 5/5 전달. Fluentd가 준비돼 있어도 같다.
@@ -27,8 +30,13 @@ x-aiops-log-opts: &aiops-log-opts
   mode: "non-blocking"
   max-buffer-size: "4m"
 
+x-aiops-site-labels: &aiops-site-labels
+  aiops.site: "${LEAFY_SITE:?LEAFY_SITE 를 .env 에 설정 (이 Leafy 장비 이름, 예: gc-mac)}"
+
 services:
   frontend:
+    labels:
+      <<: *aiops-site-labels
     logging:
       driver: fluentd
       options:
@@ -36,6 +44,8 @@ services:
         tag: "frontend"
 
   backend:
+    labels:
+      <<: *aiops-site-labels
     environment:
       # 최종 JSON 로그 (팀원 구현 클래스). 중앙 Fluentd는 TEXT도 받지만 탐지/상관분석은 JSON을 기준으로 한다.
       LOG_FORMAT: com.leafy.global.logging.LeafyJsonFormatter
@@ -46,6 +56,8 @@ services:
         tag: "backend"
 
   minio:
+    labels:
+      <<: *aiops-site-labels
     logging:
       driver: fluentd
       options:
