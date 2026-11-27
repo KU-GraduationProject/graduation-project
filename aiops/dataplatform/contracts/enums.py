@@ -23,7 +23,7 @@ OVERALL_STATUSES = ("complete", "partial", "insufficient")
 # 04 §3 record flags
 QUALITY_FLAGS = ("log_truncated", "log_partial_incomplete", "log_parse_error", "log_time_parse_error",
                  "source_mismatch", "event_time_fallback", "identity_unverified", "duplicate", "value_revised",
-                 "nonfinite_value", "legacy_unversioned", "window_open", "partial_acquisition",
+                 "nonfinite_value", "legacy_unversioned", "llm_output_legacy", "window_open", "partial_acquisition",
                  "reacquisition_incomplete", "masked")
 
 EVENT_TIME_SOURCES = ("loki_entry", "body_timestamp", "receiver_fallback", "prometheus_sample")
