@@ -8,6 +8,10 @@ listed in `LABEL_ORDER` (recovered from their recorded `raw_sha256`).
 Series preflight: streams that returned rows exist inside the window. An acquisition whose
 preflight was `present` but returned nothing exists only outside the window (lookback), and
 one recorded `absent` does not exist at all — the same three cases 04 §2 distinguishes.
+
+Discovery (`dp_incident_discover`) queries the bare selector `{job="aiops-llm"}`, which no fixture
+acquisition used. A query that is not a recorded acquisition query but selects `job="aiops-llm"` is
+answered by label match over every fixture entry plus entries added with `add_loki_entry` (tests).
 """
 from __future__ import annotations
 
@@ -84,6 +88,22 @@ class FixtureSources:
         self.lookback_start = {json.dumps(parse_selector(a["query_text"]), sort_keys=True): a["window_start"]
                                for a in acquisitions if a["source_system"] == "loki" and a["query_text"]}
         self.calls: list[tuple[str, dict]] = []
+        self.extra_loki: list[tuple[int, dict, str, str]] = []
+
+    def add_loki_entry(self, ts_ns: int, labels: dict, line: str) -> None:
+        """Extra Loki entry answered only to label-matched `job="aiops-llm"` queries (discovery tests)."""
+        self.extra_loki.append((ts_ns, labels, line, f"extra:{len(self.extra_loki)}"))
+
+    def _loki_rows(self, query: str) -> list[tuple[int, dict, str, str]]:
+        if query in self.loki:
+            return self.loki[query]
+        wanted = parse_selector(query)
+        if wanted.get("job") != "aiops-llm":
+            return []
+        found = {r[3]: r for rows in self.loki.values() for r in rows}
+        found.update({r[3]: r for r in self.extra_loki})
+        return sorted((r for r in found.values() if all(r[1].get(k) == v for k, v in wanted.items())),
+                      key=lambda r: (r[0], r[3]))
 
     # ---- request dispatch -------------------------------------------------------------
     def handle(self, path: str, query: str | dict) -> tuple[int, bytes]:
@@ -104,7 +124,7 @@ class FixtureSources:
 
     def loki_query_range(self, p: dict) -> bytes:
         start, end, limit = int(p["start"]), int(p["end"]), int(p.get("limit", 100))
-        rows = [r for r in self.loki.get(p["query"], []) if start <= r[0] <= end][:limit]
+        rows = [r for r in self._loki_rows(p["query"]) if start <= r[0] <= end][:limit]
         order = self.loki_order.get(p["query"])
         streams: dict[str, dict] = {}
         for ts, labels, line, _ in rows:

@@ -1,7 +1,7 @@
 """
 ### Phase 4 — 검증 (Track D `dp_validate`)
 
-`dp_gold` asset이 갱신되면 실행한다. 검사를 병렬로 돌리고 하나라도 실패하면 DAG가 실패한다.
+`dp_gold` asset이 갱신되면 실행하고, 갱신이 없어도 매일 19:00 UTC(04:00 KST)에 1회 실행한다. 검사를 병렬로 돌리고 하나라도 실패하면 DAG가 실패한다.
 - `check_manifests`: manifest가 가리키는 파일의 존재·행 수·bytes·sha256 (DQ-B02)
 - `check_raw_pages`: raw page 존재와 압축 전 sha256, acquisition `row_count` (DQ-B02)
 - `check_pointers`: `current` 포인터가 commit된 manifest와 그 데이터셋을 가리키는지
@@ -10,14 +10,19 @@
 
 manifest가 참조하지 않는 데이터 파일(orphan)은 경고로만 보고하고 삭제하지 않는다.
 """
-from airflow.sdk import dag, task
+from airflow.sdk import AssetOrTimeSchedule, CronTriggerTimetable, dag, task
 
 from dp_assets import GOLD, START
 from orchestration import phases
 from orchestration import validate as checks
 
 
-@dag(dag_id="dp_validate", schedule=[GOLD], start_date=START, max_active_runs=1,
+# Gold 갱신 직후 + 일 1회(05 §5 Track D 후속). 일 1회 실행은 build가 없는 날에도 포인터·orphan을 검사한다.
+DAILY = CronTriggerTimetable("0 19 * * *", timezone="UTC")
+
+
+@dag(dag_id="dp_validate", schedule=AssetOrTimeSchedule(timetable=DAILY, assets=GOLD), start_date=START,
+     catchup=False, max_active_runs=1,
      tags=["data-platform", "phase:4-validate"], doc_md=__doc__)
 def dp_validate():
     @task
