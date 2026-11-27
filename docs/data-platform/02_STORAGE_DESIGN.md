@@ -42,7 +42,9 @@ lake-bronze/
   v1/acquisition/acq_date=YYYY-MM-DD/{acquisition_id}.parquet
   v1/loki_entry/stream_class={sc}/acq_date=YYYY-MM-DD/{acquisition_id}/part-0000.parquet
   v1/prometheus_sample/acq_date=YYYY-MM-DD/{acquisition_id}/part-0000.parquet
+  v1/scenario_run_entry/acq_date=YYYY-MM-DD/{acquisition_id}/part-0000.parquet
   raw/{loki|prometheus}/acq_date=YYYY-MM-DD/{acquisition_id}/page-0000.json.gz
+  raw/scenario_run_log/acq_date=YYYY-MM-DD/{acquisition_id}/page-0000.jsonl.gz   ← 실행 기록 파일 원문 바이트
 lake-silver/
   v1/{dataset}/event_date=YYYY-MM-DD/{silver_build_id}/part-0000.parquet
   v1/quarantine/acq_date=YYYY-MM-DD/{silver_build_id}/part-0000.parquet
@@ -131,6 +133,8 @@ lake-meta/
 | 반환 검증 | stream selector 조건은 반환 stream label로, `\| json \|` 본문 필터 조건(Network `observer`·`observer_instance`)은 파싱한 본문으로 `matches()` → 아니면 `source_mismatch`(원문은 보존). 기존 `NetworkCollector`의 body 재검증과 같다 | 모든 series label 검증 |
 | 부하 보호 | Airflow pool `loki_read`=1, 요청 timeout 30s, 페이지 간 지연, 요청 창 ≤ 15분 | pool `prom_read`=1 |
 | 실패 | 페이지 일부 실패 → 받은 페이지는 저장하고 `partial` commit, checkpoint 진행 안 함 | `failed`(사유) |
+
+시나리오 실행 기록(`scenario_run`, [01](01_DATA_CONTRACT.md) §2.5)은 HTTP 원천이 아니라 `DP_SCENARIO_RUN_LOG` 파일을 읽기 전용으로 한 번 읽는다(pool 없음, 페이지 1개). 경로 미설정 `not_attempted`, 파일 없음·읽기 실패 `failed`. Leafy 장비와 AIOps 장비가 나뉜 구성에서는 파일을 자동 전송하지 않고, 사람이 AIOps 장비로 복사한다.
 
 ## 7. 부분 실패 처리
 

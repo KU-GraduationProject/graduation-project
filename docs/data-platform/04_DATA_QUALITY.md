@@ -12,10 +12,10 @@
 | `empty_unverified` | 성공, 행 0, `series_preflight=absent` | 데이터 없음 **또는** 라벨·수집 경로 문제 — 구분 불가 |
 | `truncated` | `max_pages` 도달 또는 페이지네이션 불가로 limit에서 멈춤(같은 ns가 limit 이상이면 `status_reason=same_ts_overflow`, [02](02_STORAGE_DESIGN.md) §6) | 일부만 수집 |
 | `partial` | 일부 페이지 실패(받은 페이지는 보존) → `status_reason` = `page_failed:<사유>` (사유는 `failed`와 같은 어휘, 예: `page_failed:timeout`). 또는 원천 응답이 경고를 담음 → `source_warnings` (§1.1) | 일부만 수집되었을 수 있음 |
-| `failed` | 첫 페이지부터 실패. `status_reason` ∈ `api_error`·`timeout`·`connection_error`·`invalid_response`·`auth_error` | **수집 실패** — 데이터 유무 알 수 없음 |
+| `failed` | 첫 페이지부터 실패. `status_reason` ∈ `api_error`·`timeout`·`connection_error`·`invalid_response`·`auth_error`. 실행 기록 파일(`scenario_run`)은 `file_not_found`·`read_error` | **수집 실패** — 데이터 유무 알 수 없음 |
 | `source_mismatch` | 반환 label이 scope selector와 다름 | 다른 출처 데이터. 원문 보존, 하류 사용 금지 |
 | `scope_unavailable` | binding·selector 없음. `status_reason` ∈ `source_unknown`·`collector_unmapped`·`no_matching_series` | **수집 시도 안 함** |
-| `not_attempted` | 상위 단계 실패·채널 비활성으로 건너뜀 | 수집 시도 안 함 |
+| `not_attempted` | 상위 단계 실패·채널 비활성으로 건너뜀. 실행 기록 경로(`DP_SCENARIO_RUN_LOG`) 미설정은 `run_log_unconfigured` | 수집 시도 안 함 |
 
 ### 1.1 기존 Collector 상태와의 대응
 
@@ -63,6 +63,7 @@
 | `partial_acquisition` | 신규 | Silver | `partial`/`truncated` 획득에서만 나온 행 |
 | `reacquisition_incomplete` | 신규 | Gold(채널) | 같은 쿼리의 앞선 획득은 `ok`라 채널 상태는 최선 상태를 따르지만, 나중 재획득이 `partial`/`truncated`/`failed`로 끝남 ([02](02_STORAGE_DESIGN.md) §7) |
 | `masked` | 신규 | Gold | `mask_secrets` 적용 전후의 렌더 결과가 다름(비밀값 패턴이 실제로 치환됨) |
+| `run_log_quarantined` | 신규 | Gold(`scenario_link`) | 시나리오 실행 기록 줄 중 quarantine된 것이 있음 — 그 줄이 짝이었을 수 있어 `no_run`·`paired`를 확정하지 못함 |
 
 `truncated`와 `skipped`는 레코드 플래그가 아니라 **집계 값**이다: `truncated`는 `bronze.acquisition.limit_hit`/`status`와 `gold.incident_channel.truncated`, `skipped`는 `gold.incident_channel.skipped`(+`skipped_reasons`)와 manifest `quality.skipped`(Silver 파싱 단계의 quarantine 수). 기존 Network collector의 `skipped`(파싱 실패 + scope 불일치)는 이 계약에서 **파싱 실패 = quarantine**, **scope 불일치 = Gold `skipped`**로 나뉜다.
 
@@ -118,6 +119,8 @@ related 채널은 overall에 반영하지 않고 채널 행으로만 보고한�
 | DQ-G05 | Gold | `identity_status != resolved`이면 evidence 0행 | BLOCK |
 | DQ-G06 | Gold | 선택 상한(30/20/5/8) 준수 | WARN |
 | DQ-G07 | Gold | Network flow bytes는 `connection`만 합산(`connection_threshold` 제외) | BLOCK |
+| DQ-G08 | Gold | 어떤 Gold 행에도 평가 정답 레이블 키(`threat_level`·`expected_action`·`expected_action_ideal`·`incident_class`)가 없음. 스키마 수준은 테스트로도 고정 | BLOCK |
+| DQ-G09 | Gold | `gold.scenario_link`는 build당 정확히 1행(`no_run`·`ambiguous_run`·`run_log_unavailable`도 행으로 남김) | BLOCK |
 | DQ-L01 | Lineage | [03](03_LINEAGE.md) §7 전체 | BLOCK |
 
 manifest `quality` 섹션 키: `flag_counts {flag: n}`, `quarantined`, `skipped`(Silver), `status_counts {status: n}`(Bronze), `rules {DQ-ID: "pass|warn|fail"}`. 해당 계층에 없는 키는 생략한다(fixture는 `rules` 생략 — 규칙 실행기는 Track D 범위).

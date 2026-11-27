@@ -28,9 +28,15 @@ def prometheus_sample_file(acquisition_id: str) -> str:
             f"{acquisition_id}/part-0000.parquet")
 
 
+def scenario_run_entry_file(acquisition_id: str) -> str:
+    return (f"s3://lake-bronze/v1/scenario_run_entry/acq_date={build_date(acquisition_id)}/"
+            f"{acquisition_id}/part-0000.parquet")
+
+
 def raw_page(source_system: str, acquisition_id: str, page: int) -> str:
+    ext = "jsonl" if source_system == "scenario_run_log" else "json"  # the run log file is JSON Lines
     return (f"s3://lake-bronze/raw/{source_system}/acq_date={build_date(acquisition_id)}/"
-            f"{acquisition_id}/page-{page:04d}.json.gz")
+            f"{acquisition_id}/page-{page:04d}.{ext}.gz")
 
 
 def silver_file(dataset: str, build_id: str, event_date: str) -> str:

@@ -17,7 +17,9 @@ from storage.store import LocalFsStore
 PK = {"silver.db_log": "db_log_id", "silver.app_log": "log_id", "silver.network_event": "network_event_id",
       "silver.metric_point": "metric_point_id", "silver.alert_event": "alert_event_id",
       "silver.rca_result": "rca_id", "silver.transport_issue": "transport_issue_id",
-      "silver.quarantine": "quarantine_id"}
+      "silver.scenario_run": "scenario_run_id", "silver.quarantine": "quarantine_id"}
+BRONZE_ROWS = {"loki": "bronze.loki_entry", "prometheus": "bronze.prometheus_sample",
+               "scenario_run_log": "bronze.scenario_run_entry"}
 
 
 # ---- coverage ----------------------------------------------------------------------------
@@ -67,7 +69,7 @@ def _parents(store: LocalFsStore, inputs: list[str]):
     for manifest_id in inputs:
         manifest = manifest_by_id(store, manifest_id)
         acq = output_rows(store, manifest, "bronze.acquisition")[0]
-        dataset = "bronze.loki_entry" if acq["source_system"] == "loki" else "bronze.prometheus_sample"
+        dataset = BRONZE_ROWS[acq["source_system"]]
         for row in output_rows(store, manifest, dataset):
             yield acq, dataset, row
 

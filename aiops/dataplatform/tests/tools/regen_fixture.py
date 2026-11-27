@@ -1,11 +1,15 @@
-"""Recompute the STEP 0 fixture's derived values with the data platform code itself (#70).
+"""Recompute the STEP 0 fixture's derived values with the data platform code itself (#70, #71).
 
 The fixture (docs/data-platform/examples/db-connection-limit) has no hand-editable derived
 values: a Bronze line change moves its raw page sha, record key, Silver/Gold rows, lineage
-edges and manifest sha. This script sets the RCA envelope to the current Pipeline output shape
-(`LLMAnalysisResult.model_dump()`), re-acquires that query from the mock sources and replays the
-fixture history (tests/fixture_data.replay_fixture), then writes back only the rebuilt values.
-Rows keep the fixture serialization (schema column order, manifest key order).
+edges and manifest sha. Hand-written inputs are `00`~`02` (request, bindings, scenario run log).
+This script
+  - sets the RCA envelope to the current Pipeline output shape (`LLMAnalysisResult.model_dump()`)
+    and re-acquires that query from the mock sources (#70),
+  - acquires `02_scenario_runs.jsonl` as the plan's `scenario_run` item (#71),
+  - replays the fixture history (tests/fixture_data.replay_fixture) and writes every Silver/Gold
+    build's rows, edges, manifest and current pointer back in manifest order.
+Rows keep the fixture serialization (schema column order, manifest and pointer key order).
 
 Writes only inside the fixture directory (intermediate stores are temporary directories that are
 removed on exit, and no bytecode is written). Running it on an up-to-date fixture changes nothing:
@@ -19,11 +23,15 @@ sys.dont_write_bytecode = True
 import json  # noqa: E402
 import os  # noqa: E402
 import tempfile  # noqa: E402
+from collections import defaultdict  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 DATAPLATFORM = Path(__file__).resolve().parents[2]
 FIXTURE = DATAPLATFORM.parents[1] / "docs/data-platform/examples/db-connection-limit"
 RCA_ACQ = "acq_20261110T032007Z_ba6da055"
+SCENARIO_ACQ, SCENARIO_REQUESTED = "acq_20261110T032009Z_5a3e91c4", "2026-11-10T03:20:09.000000Z"
+SCENARIO_SILVER, SCENARIO_SILVER_CREATED = "sb_20261110T032010Z_e3b7c215", "2026-11-10T03:20:13.600000Z"
+LAYERS = ("bronze", "silver", "gold")
 os.environ["DP_FIXTURE_DIR"] = str(FIXTURE)
 sys.path[:0] = [str(DATAPLATFORM), str(DATAPLATFORM / "tests")]
 
@@ -40,19 +48,39 @@ def write_rows(name: str, rows: list[dict]) -> None:
     (FIXTURE / name).write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), "utf-8")
 
 
-def like(new, old):
-    """`new` with the key order of `old` (fixture serialization); keys must match."""
-    if isinstance(new, dict):
-        assert sorted(new) == sorted(old), (sorted(new), sorted(old))
-        return {k: like(new[k], old[k]) for k in old}
-    if isinstance(new, list) and isinstance(old, list) and len(new) == len(old):
-        return [like(n, o) for n, o in zip(new, old)]
+def write_json(name: str, value) -> None:
+    (FIXTURE / name).write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", "utf-8")
+
+
+def shaped(new, template):
+    """`new` with the key order of `template` (fixture serialization); keys `template` lacks go last, sorted."""
+    if isinstance(new, dict) and isinstance(template, dict):
+        keys = [k for k in template if k in new] + sorted(k for k in new if k not in template)
+        return {k: shaped(new[k], template.get(k)) for k in keys}
+    if isinstance(new, list) and isinstance(template, list) and template:
+        return [shaped(n, template[min(i, len(template) - 1)]) for i, n in enumerate(new)]
     return new
+
+
+def ordered(dataset: str, row: dict) -> dict:
+    cols = [c for c, _, _ in schemas.columns(dataset)]
+    assert set(row) == set(cols), (dataset, set(row) ^ set(cols))
+    return {c: row[c] for c in cols}
+
+
+def upsert_manifest(manifests: list[dict], manifest: dict) -> list[dict]:
+    """50 is ordered by layer, then creation time."""
+    rest = [m for m in manifests if m["build_id"] != manifest["build_id"]]
+    rank = lambda m: (LAYERS.index(m["layer"]), m["created_at"])  # noqa: E731
+    at = next((i for i, m in enumerate(rest) if rank(m) > rank(manifest)), len(rest))
+    return rest[:at] + [manifest] + rest[at:]
 
 
 def check_roundtrip() -> None:
     """The rewrite below reproduces untouched files byte for byte only if this holds."""
     for name in list(fx.DATASET_FILE.values()) + ["50_manifests.jsonl"]:
+        if not (FIXTURE / name).exists():
+            continue  # created by this script
         text = (FIXTURE / name).read_text("utf-8")
         again = "".join(json.dumps(json.loads(line), ensure_ascii=False) + "\n" for line in text.splitlines())
         assert again == text, f"{name}: not in the fixture serialization"
@@ -112,8 +140,37 @@ def rca_acquisition() -> None:
     write_rows("50_manifests.jsonl", manifests)
 
 
+def scenario_acquisition() -> None:
+    """C. (#71) Acquire `02_scenario_runs.jsonl` as the plan's `scenario_run` item in the first run."""
+    item = next(i for i in plan_incident(fx.request(), fx.bindings_raw()) if i["stream_class"] == "scenario_run")
+    with tempfile.TemporaryDirectory() as tmp:
+        store = LocalFsStore(tmp)
+        run = fx.run_context(fx.runs()[fx.FIRST_RUN], clock=fx.Clock(SCENARIO_REQUESTED),
+                             hex8=fx.Hex([SCENARIO_ACQ[-8:]]))
+        res = acquire(item, store, run, run_log_path=str(FIXTURE / "02_scenario_runs.jsonl"))
+        built = store.read_manifest("bronze", res["build_id"])
+        assert built["build_id"] == SCENARIO_ACQ and built["build_status"] == "ok", built["build_status"]
+        acq = output_rows(store, built, "bronze.acquisition")[0]
+        rows = output_rows(store, built, "bronze.scenario_run_entry")
+    acqs = [a for a in fx.jsonl("10_bronze_acquisition.jsonl") if a["acquisition_id"] != SCENARIO_ACQ]
+    at = next((i for i, a in enumerate(acqs) if a["requested_at"] > acq["requested_at"]), len(acqs))
+    write_rows("10_bronze_acquisition.jsonl", acqs[:at] + [ordered("bronze.acquisition", acq)] + acqs[at:])
+    write_rows("14_bronze_scenario_run_entry.jsonl", [ordered("bronze.scenario_run_entry", r) for r in rows])
+    manifests = fx.manifests()
+    template = next(m for m in manifests if m["build_id"] == RCA_ACQ)
+    manifests = upsert_manifest(manifests, shaped(built, template))
+    if not any(m["build_id"] == SCENARIO_SILVER for m in manifests):
+        # replay_silver needs the build's run, id suffix and creation time; the replay rewrites the rest
+        silver = next(m for m in manifests if m["layer"] == "silver" and fx.main_dataset(m) == "silver.rca_result")
+        manifests = upsert_manifest(manifests, {**silver, "manifest_id": f"mf_{SCENARIO_SILVER}",
+                                                "build_id": SCENARIO_SILVER, "created_at": SCENARIO_SILVER_CREATED,
+                                                "outputs": [{"dataset": "silver.scenario_run"}]})
+    write_rows("50_manifests.jsonl", manifests)
+
+
 def replay() -> None:
-    """C. Replay the fixture history and write back every Silver/Gold build's rows, edges and manifest."""
+    """D. Replay the fixture history and write back every Silver/Gold build's rows, edges, manifest and pointer.
+    Each row file is its builds' rows in manifest order; replaced builds keep only their manifest."""
     manifests = fx.manifests()
     with tempfile.TemporaryDirectory() as tmp:
         store = LocalFsStore(tmp)
@@ -125,27 +182,35 @@ def replay() -> None:
             if dataset.startswith("bronze."):
                 continue
             key = "child_version" if dataset == "lineage.edge" else "_dataset_version"
-            cols = [c for c, _, _ in schemas.columns(dataset)]
-            out, done = [], set()
-            for row in fx.jsonl(name):
-                build = row[key]
-                if build not in built:
-                    out.append(row)
-                elif build not in done:
-                    done.add(build)
-                    for new in output_rows(store, built[build], dataset):
-                        assert set(new) == set(cols), (dataset, set(new) ^ set(cols))
-                        out.append({c: new[c] for c in cols})
+            old = defaultdict(list)
+            for row in fx.jsonl(name) if (FIXTURE / name).exists() else []:
+                old[row[key]].append(row)
+            out = []
+            for m in manifests:
+                build = m["build_id"]
+                if build in built and build not in fx.REPLACED:
+                    out.extend(ordered(dataset, r) for r in output_rows(store, built[build], dataset))
+                else:
+                    out.extend(old.get(build, []))
             write_rows(name, out)
-        write_rows("50_manifests.jsonl", [like(built[m["build_id"]], m) if m["build_id"] in built else m
+        write_rows("50_manifests.jsonl", [shaped(built[m["build_id"]], m) if m["build_id"] in built else m
                                           for m in manifests])
-        for p in fx.load_json("51_current_pointers.json"):
-            scope = ({"incident_id": p["incident_id"]} if p["layer"] == "gold"
-                     else {"dataset": p["dataset"], "coverage_id": p["coverage_id"]})
-            current = store.read_pointer(p["layer"], **scope)
-            # `updated_at` is the replay clock's value, not derived from the data
-            assert {k: v for k, v in current.items() if k != "updated_at"} == \
-                   {k: v for k, v in p.items() if k != "updated_at"}, (p, current)
+        old = fx.load_json("51_current_pointers.json")
+        scope = lambda p: (p["layer"], p.get("dataset"), p.get("coverage_id"), p.get("incident_id"))  # noqa: E731
+        pointers = []
+        for p in store.pointers():
+            match = next((o for o in old if scope(o) == scope(p)), None)
+            if match:
+                # `updated_at` is the replay clock's value, not derived from the data: keep the fixture's
+                assert {k: v for k, v in p.items() if k != "updated_at"} == \
+                       {k: v for k, v in match.items() if k != "updated_at"}, (match, p)
+                pointers.append(match)
+            else:  # a new coverage of an existing run: same pointer commit time as its siblings
+                sibling = next(o for o in old if o["run_id"] == p["run_id"])
+                pointers.append(shaped({**p, "updated_at": sibling["updated_at"]}, sibling))
+        assert all(any(scope(o) == scope(p) for p in pointers) for o in old)
+        write_json("51_current_pointers.json", sorted(pointers, key=lambda p: (LAYERS.index(p["layer"]),
+                                                                                  p["dataset"])))
 
 
 def parity(dump: dict) -> None:
@@ -161,6 +226,7 @@ def main() -> int:
     check_roundtrip()
     dump = rca_line()
     rca_acquisition()
+    scenario_acquisition()
     replay()
     parity(dump)
     print(f"fixture regenerated: {FIXTURE}")

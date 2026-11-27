@@ -74,7 +74,7 @@ class S01Schemas(unittest.TestCase):
         for dataset, row in all_rows():
             self.assertEqual(schemas.check_row(dataset, row), [], dataset)
             checked[dataset] += 1
-        self.assertEqual(len(checked), 18)  # 19 datasets; silver.transport_issue has 0 rows (empty build)
+        self.assertEqual(len(checked), 21)  # 22 datasets; silver.transport_issue has 0 rows (empty build)
 
 
 class S02Vocabulary(unittest.TestCase):
@@ -86,12 +86,14 @@ class S02Vocabulary(unittest.TestCase):
                                   ("label_profile", enums.LABEL_PROFILES), ("reason_code", enums.QUARANTINE_REASONS),
                                   ("link_type", enums.LINK_TYPES), ("allowlist_decision", enums.ALLOWLIST_DECISIONS),
                                   ("overall_status", enums.OVERALL_STATUSES), ("series_preflight", enums.SERIES_PREFLIGHT),
-                                  ("orchestrator", enums.ORCHESTRATORS)):
+                                  ("orchestrator", enums.ORCHESTRATORS), ("link_status", enums.LINK_STATUSES),
+                                  ("run_log_status", enums.ACQ_STATUSES)):
                 if column not in row:
                     continue
                 if column == "status":
                     vocab = {"bronze.acquisition": enums.ACQ_STATUSES, "gold.incident_channel": enums.CHANNEL_STATUSES,
-                             "lineage.run": enums.RUN_STATUSES}[dataset]
+                             "lineage.run": enums.RUN_STATUSES,
+                             "silver.scenario_run": None}[dataset]  # run.py status kept as written
                 if column == "severity":
                     vocab = enums.SEVERITIES if dataset.startswith(("silver.app", "silver.db", "gold.evidence")) \
                         else None

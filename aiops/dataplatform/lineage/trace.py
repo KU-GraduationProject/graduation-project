@@ -11,7 +11,8 @@ from collections import defaultdict
 from storage.manifest import output_rows
 from storage.store import LocalFsStore
 
-PK = {"bronze.loki_entry": "bronze_id", "bronze.prometheus_sample": "bronze_id", "silver.app_log": "log_id",
+PK = {"bronze.loki_entry": "bronze_id", "bronze.prometheus_sample": "bronze_id",
+      "bronze.scenario_run_entry": "bronze_id", "silver.scenario_run": "scenario_run_id", "silver.app_log": "log_id",
       "silver.db_log": "db_log_id", "silver.network_event": "network_event_id",
       "silver.metric_point": "metric_point_id", "silver.alert_event": "alert_event_id",
       "silver.rca_result": "rca_id", "silver.transport_issue": "transport_issue_id",
@@ -116,7 +117,8 @@ def integrity(store: LocalFsStore, require_runs: bool = True) -> list[str]:
             for row in output_rows(store, manifest, dataset):
                 key = (row[PK[dataset]] if dataset in PK else
                        f"{row['incident_id']}:{row['rca_id']}" if dataset == "gold.rca_link" else
-                       row["incident_id"] if dataset in ("gold.incident",) else row.get("evidence_id"))
+                       row["incident_id"] if dataset in ("gold.incident", "gold.scenario_link") else
+                       row.get("evidence_id"))
                 if dataset == "gold.incident_channel":
                     continue  # channel rows are summaries, not derived records (03 §7 lists evidence/incident/link)
                 if (dataset, key) not in children:
@@ -126,7 +128,8 @@ def integrity(store: LocalFsStore, require_runs: bool = True) -> list[str]:
             for mid in manifest["inputs"]:
                 parent = lake.manifests.get(mid.removeprefix("mf_"))
                 for out in (parent or {}).get("outputs", []):
-                    if out["dataset"] in ("bronze.loki_entry", "bronze.prometheus_sample"):
+                    if out["dataset"] in ("bronze.loki_entry", "bronze.prometheus_sample",
+                                          "bronze.scenario_run_entry"):
                         for row in output_rows(store, parent, out["dataset"]):
                             if (parent["build_id"], row["bronze_id"]) not in explained:
                                 errors.append(f"{build_id}: bronze {row['bronze_id']} has no Silver child")

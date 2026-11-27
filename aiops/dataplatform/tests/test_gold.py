@@ -1,26 +1,38 @@
 """Track C — Gold tests (docs/data-platform/05 §5 ①~⑥) and real-time parity (60_realtime_parity.json)."""
+import importlib.util
 import json
 import os
 import sys
 import tempfile
 import unittest
 from collections import Counter
+from pathlib import Path
 
 HERE = os.path.dirname(__file__)
 sys.path.insert(0, os.path.join(HERE, ".."))
 sys.path.insert(0, HERE)
 
 import fixture_data as fx  # noqa: E402
-from contracts import pipeline_compat  # noqa: E402
+from contracts import enums, pipeline_compat, schemas  # noqa: E402
+from contracts.canonical import fmt_ts, parse_ts  # noqa: E402
 from gold import render  # noqa: E402
-from gold.build import build_gold, channel_status, plan_gold  # noqa: E402
+from gold.build import build_gold, channel_status, pair_runs, plan_gold  # noqa: E402
 from gold.checks import GoldCheckError, check_build  # noqa: E402
 from lineage.trace import integrity, trace  # noqa: E402
 from storage.manifest import output_rows  # noqa: E402
 from storage.store import LocalFsStore  # noqa: E402
 
 GOLD_FILES = ("gold.incident", "gold.incident_channel", "gold.evidence_log", "gold.evidence_metric",
-              "gold.evidence_network_flow", "gold.rca_link", "lineage.edge")
+              "gold.evidence_network_flow", "gold.rca_link", "gold.scenario_link", "lineage.edge")
+SCENARIO_FIXTURES = Path(HERE).resolve().parents[2] / "scenarios" / "v2" / "fixtures.py"
+
+
+def scenario_fixtures():
+    """scenarios/v2/fixtures.py loaded by path (read only; the data platform never imports it in production)."""
+    spec = importlib.util.spec_from_file_location("scenarios_v2_fixtures_reference", SCENARIO_FIXTURES)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class GoldTest(unittest.TestCase):
@@ -105,8 +117,9 @@ class GoldTest(unittest.TestCase):
         store = LocalFsStore(tmp.name)
         _, current = fx.replay_fixture(store)
         self.assertIsNone(plan_gold(store, fx.plan_record()))  # same inputs: no-op
-        todo = {"incident": fx.plan_record(), "silver_inputs": {}, "acquisitions": current["inputs"][7:]}
-        for mid in current["inputs"][:7]:
+        silver = [m for m in current["inputs"] if m.startswith("mf_sb_")]
+        todo = {"incident": fx.plan_record(), "silver_inputs": {}, "acquisitions": current["inputs"][len(silver):]}
+        for mid in silver:
             built = store.read_manifest("silver", mid.removeprefix("mf_"))
             todo["silver_inputs"][fx.main_dataset(built)] = [mid]
         result = build_gold(todo["incident"], todo["silver_inputs"], todo["acquisitions"], store,
@@ -142,7 +155,75 @@ class GoldTest(unittest.TestCase):
                           incident["transport_check_status"], incident["transport_loss_suspected"]),
                          ("partial", 12, 1, "empty_unverified", False))
         self.assertEqual(Counter(e["relation"] for e in self.rows["lineage.edge"]),
-                         {"selected_from": 10, "aggregated_from": 43, "linked_from": 1, "anchored_on": 1})
+                         {"selected_from": 10, "aggregated_from": 43, "linked_from": 1, "anchored_on": 2,
+                          "run_candidate": 1})
+
+    # the fixture incident pairs with exactly one ok run of 02_scenario_runs.jsonl (#71)
+    def test_scenario_link_of_fixture(self):
+        [link] = self.rows["gold.scenario_link"]
+        runs = {r["scenario_run_id"]: r for r in fx.jsonl("28_silver_scenario_run.jsonl")}
+        self.assertEqual(len(runs), 3)
+        self.assertEqual((link["link_status"], link["pair_time"], link["pair_time_source"], link["grace_s"],
+                          link["scenario_id"], link["run_log_status"], len(link["candidate_run_ids"])),
+                         ("paired", self.rows["gold.incident"][0]["anchor_time"], "alert_starts_at", 300,
+                          "f2_c_db_pool_exhaustion", "ok", 1))
+        run = runs[link["scenario_run_id"]]
+        self.assertEqual((link["run_started_at"], link["run_ended_at"], link["variant_id"], link["seed"]),
+                         (run["started_at"], run["ended_at"], run["variant_id"], run["seed"]))
+        edges = [(e["relation"], e["parent_dataset"], e["parent_key"]) for e in self.rows["lineage.edge"]
+                 if e["child_dataset"] == "gold.scenario_link"]
+        self.assertEqual(sorted(edges), [("anchored_on", "silver.alert_event", self.rows["gold.incident"][0]["alert_event_id"]),
+                                         ("run_candidate", "silver.scenario_run", link["scenario_run_id"])])
+
+
+class ScenarioLinkTest(unittest.TestCase):
+    """`pair_runs` = `scenarios/v2/fixtures.pair_context` (#71), with the Gold anchor as the pairing instant."""
+
+    CASES = [  # ([(started_at, ended_at, status)], instant)
+        ([], "2026-11-10T03:00:00+00:00"),
+        ([("2026-11-10T02:58:00+00:00", "2026-11-10T03:02:00+00:00", "ok")], "2026-11-10T03:00:00+00:00"),
+        ([("2026-11-10T03:00:00+00:00", "2026-11-10T03:02:00+00:00", "ok")], "2026-11-10T03:00:00+00:00"),  # = start
+        ([("2026-11-10T02:50:00+00:00", "2026-11-10T02:55:00+00:00", "ok")], "2026-11-10T03:00:00+00:00"),  # = end+300
+        ([("2026-11-10T02:50:00+00:00", "2026-11-10T02:54:59+00:00", "ok")], "2026-11-10T03:00:00+00:00"),  # 1s late
+        ([("2026-11-10T03:00:01+00:00", "2026-11-10T03:02:00+00:00", "ok")], "2026-11-10T03:00:00+00:00"),  # 1s early
+        ([("2026-11-10T02:58:00+00:00", "2026-11-10T03:02:00+00:00", "error")], "2026-11-10T03:00:00+00:00"),
+        ([("2026-11-10T02:58:00+00:00", "2026-11-10T03:02:00+00:00", "error"),
+          ("2026-11-10T02:59:00+00:00", "2026-11-10T03:01:00+00:00", "ok")], "2026-11-10T03:00:00+00:00"),
+        ([("2026-11-10T02:58:00+00:00", "2026-11-10T03:02:00+00:00", "ok"),
+          ("2026-11-10T02:52:00+00:00", "2026-11-10T02:57:00+00:00", "ok")], "2026-11-10T03:00:00+00:00"),
+        ([("2026-11-10T02:58:00.250000+00:00", "2026-11-10T03:02:00+00:00", "ok")],
+         "2026-11-10T02:58:00.249000+00:00"),
+    ]
+
+    @unittest.skipUnless(SCENARIO_FIXTURES.exists(), "scenarios/v2 not mounted (e.g. inside dp-airflow)")
+    def test_pairing_equals_pair_context(self):
+        reference = scenario_fixtures()
+        for runs, instant in self.CASES:
+            raw = [{"scenario_id": f"s{i}", "variant_id": None, "seed": None, "started_at": start, "ended_at": end,
+                    "status": status} for i, (start, end, status) in enumerate(runs)]
+            run, reason = reference.pair_context(raw, instant, 300)
+            silver = [{"scenario_run_id": f"s{i}", "started_at": fmt_ts(parse_ts(r["started_at"])),
+                       "ended_at": fmt_ts(parse_ts(r["ended_at"])), "status": r["status"]} for i, r in enumerate(raw)]
+            status, hits = pair_runs(silver, parse_ts(instant), 300)
+            with self.subTest(runs=runs, instant=instant):
+                self.assertEqual(status, "paired" if run else reason)
+                if run:
+                    self.assertEqual([h["scenario_run_id"] for h in hits], [run["scenario_id"]])
+
+    @unittest.skipUnless(SCENARIO_FIXTURES.exists(), "scenarios/v2 not mounted (e.g. inside dp-airflow)")
+    def test_answer_labels_are_never_gold_columns(self):
+        self.assertEqual(enums.ANSWER_LABEL_KEYS, scenario_fixtures().ANSWER_LABEL_KEYS)
+        for dataset in enums.GOLD_DATASETS:
+            columns = {c for c, _, _ in schemas.columns(dataset)}
+            self.assertEqual(columns & set(enums.ANSWER_LABEL_KEYS), set(), dataset)
+
+    def test_label_key_in_a_gold_row_blocks_commit(self):
+        link = {"incident_id": "inc_x", "threat_level": "high"}
+        rows = {"gold.incident": [], "gold.incident_channel": [], "gold.evidence_log": [], "gold.evidence_metric": [],
+                "gold.evidence_network_flow": [], "gold.rca_link": [], "gold.scenario_link": [link]}
+        edges = [{"child_dataset": "gold.scenario_link", "child_key": "inc_x"}]
+        with self.assertRaisesRegex(GoldCheckError, "DQ-G08"):
+            check_build(rows, edges, resolved=True)
 
 
 class ChannelRuleTest(unittest.TestCase):

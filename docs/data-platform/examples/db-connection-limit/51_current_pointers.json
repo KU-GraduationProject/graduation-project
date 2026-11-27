@@ -61,6 +61,16 @@
   },
   {
     "layer": "silver",
+    "dataset": "silver.scenario_run",
+    "coverage_id": "cov_5b41b7fe5b97551425b25901",
+    "build_id": "sb_20261110T032010Z_e3b7c215",
+    "manifest_id": "mf_sb_20261110T032010Z_e3b7c215",
+    "previous_build_id": null,
+    "updated_at": "2026-11-10T03:20:14.000000Z",
+    "run_id": "run_4069680f5feed7639ed0"
+  },
+  {
+    "layer": "silver",
     "dataset": "silver.transport_issue",
     "coverage_id": "cov_7b4548ac2f563cea40bec2a4",
     "build_id": "sb_20261110T032010Z_c1486845",
