@@ -85,17 +85,20 @@ class LlmOptionsTest(unittest.TestCase):
 
 
 class DefaultProviderTest(unittest.TestCase):
-    """LLM_PROVIDER 를 지정하지 않으면 로컬 Ollama 를 쓴다 (#74). 설정은 import 시점에 정해져 별도 프로세스로 확인한다."""
+    """LLM_PROVIDER 를 지정하지 않으면 로컬 Ollama 를 쓴다 (#74)."""
 
     def _provider(self, value=None):
-        import subprocess
+        # config 는 import 시점에 값을 정한다 — 전역 모듈을 건드리지 않게 별도 이름으로 새로 불러온다
+        import importlib.util
         env = {k: v for k, v in os.environ.items() if k != "LLM_PROVIDER"}
         if value is not None:
             env["LLM_PROVIDER"] = value
-        out = subprocess.run([sys.executable, "-c", "from config import settings; print(settings.llm_provider)"],
-                             cwd=os.path.join(os.path.dirname(__file__), ".."), env=env,
-                             capture_output=True, text=True, check=True)
-        return out.stdout.strip()
+        path = os.path.join(os.path.dirname(__file__), "..", "config.py")
+        with mock.patch.dict(os.environ, env, clear=True):
+            spec = importlib.util.spec_from_file_location("_config_default_check", path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        return module.settings.llm_provider
 
     def test_default_is_ollama(self):
         self.assertEqual(self._provider(), "ollama")
