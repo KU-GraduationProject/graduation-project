@@ -131,7 +131,7 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
-    # 선택 실행: LLM_PROVIDER=ollama 일 때만 --profile ollama 로 띄운다 (기본 RCA 는 Gemini API)
+    # 기본 RCA 공급자(LLM_PROVIDER=ollama)용. --profile ollama 로 띄운다 (LLM_PROVIDER=gemini 면 필요 없다)
     profiles: ["ollama"]
     # GPU 는 docker-compose.gpu.yml 에서 켠다
     ports:
@@ -150,8 +150,8 @@ services:
     build: ./aiops/pipeline
     container_name: aiops-pipeline
     environment:
-      # RCA LLM: gemini(기본) | ollama(--profile ollama 와 함께). Gemini 키는 이 서비스에만 전달한다.
-      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      # RCA LLM: ollama(기본, --profile ollama 와 함께) | gemini. Gemini 키는 이 서비스에만 전달한다.
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
       LLM_TIMEOUT: "180"

@@ -14,8 +14,8 @@ class Settings:
     llm_num_predict: int = int(os.getenv("LLM_NUM_PREDICT", "400"))
     # 비우면 호출에 seed 를 넣지 않는다 (Ollama 가 매번 무작위 seed 사용).
     llm_seed: int | None = int(os.getenv("LLM_SEED")) if os.getenv("LLM_SEED") else None
-    # RCA LLM 공급자: gemini(기본, GPU·Ollama 불필요) | ollama(기존 로컬 경로)
-    llm_provider: str = (os.getenv("LLM_PROVIDER") or "gemini").strip().lower()
+    # RCA LLM 공급자: ollama(기본, 로컬 llama3.1:8b — 평가와 같은 조건) | gemini(GPU 없이 빠르게 시험할 때)
+    llm_provider: str = (os.getenv("LLM_PROVIDER") or "ollama").strip().lower()
     # 키는 환경변수로만 받는다. 로그·예외 메시지에 넣지 않는다.
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_model: str = os.getenv("GEMINI_MODEL") or "gemini-3.5-flash-lite"
