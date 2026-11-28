@@ -87,7 +87,7 @@ def telemetry_expression(expr, gc):
     expr = re.sub(r"\{([^{}]*)\}", lambda m: "{" + m[1] + scope + "}", expr)
     # Preserve identity through the original sum/max aggregations. Thresholds,
     # units, windows, reset handling, fallback suppression and timing stay intact.
-    return re.sub(r"\b(sum|max) by \(name\)", lambda m: m[1] + " by (" + DIMENSIONS + ")", expr)
+    return re.sub(r"\b(sum|max) by \((?:site,\s*)?name\)", lambda m: m[1] + " by (" + DIMENSIONS + ")", expr)
 
 
 def log_rule(original, ident):
@@ -112,7 +112,7 @@ def log_rule(original, ident):
     return rule
 
 
-def render(config):
+def render(config, scenario_config=None):
     validate(config)
     gc, endpoint = config["gc"], config["telemetry"]
     src = {"cadvisor": endpoint, "pipeline": endpoint}
@@ -169,6 +169,22 @@ def render(config):
                 matcher = re.search(r'\bservice(=~|=)"([^"\\]*)"', selector)
                 if matcher and (matcher[2] == service if matcher[1] == "=" else re.fullmatch(matcher[2], service)):
                     logs.append(log_rule(rule, identity(gc, service, target["name"])))
+    scenario_excluded = []
+    if scenario_config is not None:
+        import scenario_v2
+        policy = yaml.safe_load((ROOT / "aiops/policy/allowlist.yml").read_text())
+        scenario_logs, scenario_prom, scenario_excluded = scenario_v2.build(config, scenario_config, policy)
+        if scenario_config["network"]:
+            excluded = [e for e in excluded if not e.startswith(("UnauthorizedDataTransfer:", "UnauthorizedTransferEarly:"))]
+            network_scope = {k: scenario_config["network"][k] for k in ("observer", "observer_instance")}
+            for binding in bindings:
+                if binding["identity"]["service"] == "backend":
+                    binding["network"] = network_scope
+        parse_bindings(json.dumps(bindings))
+        # Replace the equivalent 4xx candidate rather than alerting twice.
+        logs = [r for r in logs if r["alert"] != "VulnerabilityScanningDetected"]
+        logs.extend(scenario_logs)
+        prom_rules["groups"].append({"name": "release-scenario-v2", "interval": "5s", "rules": scenario_prom})
     loki_rules = {"groups": [{"name": "release-gc-app-and-host-logs", "interval": "5s", "rules": logs}]}
     scrape = yaml.safe_load((ROOT / "monitoring/prometheus/drafts/oi02-04/scrape.candidate.yml").read_text())["scrape_configs"][0]
     scrape["job_name"] = endpoint["job"]
@@ -177,6 +193,12 @@ def render(config):
     prom_config = {"global": {"scrape_interval": "5s", "evaluation_interval": "5s"},
                    "alerting": {"alertmanagers": [{"static_configs": [{"targets": ["alertmanager:9093"]}]}]},
                    "rule_files": ["/etc/prometheus/release/prometheus.rules.yml"], "scrape_configs": [scrape]}
+    if scenario_config is not None and scenario_config["postgres_exporter"]:
+        exporter = scenario_config["postgres_exporter"]
+        pg_ident = {k: pg[k] for k in ("site", "source", "target")}
+        pg_ident.update(service="db", runtime="host")
+        prom_config["scrape_configs"].append({"job_name": exporter["job"], "honor_labels": False,
+            "static_configs": [{"targets": [exporter["instance"]], "labels": pg_ident}]})
     am = yaml.safe_load((ROOT / "monitoring/alertmanager/alertmanager.yml").read_text())
     am["route"]["group_by"] = ["alertname", *FIELDS]
     fluent = (ROOT / "leafy/fluentd/fluent.conf").read_text()
@@ -199,12 +221,15 @@ def render(config):
     producer["targets"] = {s: t["name"] for s, t in gc["targets"].items()}
     manifest = {"deployment_allowed": False, "runtime_accepted": False,
                 "scope": "GC Docker and optional host PG; partial M5 deployment candidate",
-                "excluded": excluded + ["HighNginxRequestRate: dedicated nginx exporter mapping pending",
+                "excluded": excluded + scenario_excluded + ["HighNginxRequestRate: dedicated nginx exporter mapping pending",
                                          "HighPostgresConnections: host exporter unit/series mapping pending"],
                 "gates": ["Docker Desktop cAdvisor compatibility", "JH-to-GC approved private transport/ACL",
                           "GC logging labels/container recreation approval", "dedicated PG receiver if enabled",
                           "real scrape/evaluation 5s and duplicate-source audit", "AM->Pipeline->Loki E2E"],
                 "profile_sha256": hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()}
+    if scenario_config is not None:
+        manifest["scenario_profile_sha256"] = hashlib.sha256(json.dumps(scenario_config, sort_keys=True).encode()).hexdigest()
+        manifest["gates"].extend(["scenario-v2 attack/failure AND benign control runs", "new response profiles require manual incident-bound plans"])
     docs = {"prometheus.rules.yml": prom_rules, "loki/fake/release.rules.yml": loki_rules,
             "prometheus.yml": prom_config, "alertmanager.yml": am, "gc.logging.override.yml": logging}
     # Compose merges volumes by container target. Each operating rule/config
@@ -237,6 +262,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--scenario-profile", type=Path, help="optional verified scenario-v2 observer/exporter inventory")
     args = parser.parse_args()
     try:
         # Never write into an operating mount or an existing review bundle.
@@ -244,7 +270,8 @@ def main():
         if output.exists() or ROOT.is_relative_to(output) or any(output.is_relative_to(ROOT / p) for p in
                 ("monitoring", "leafy", "aiops", "deploy", "back", ".git")):
             raise ValueError("output must be a new review directory outside operating paths")
-        rendered = render(json.loads(args.profile.read_text(encoding="utf-8-sig")))
+        scenario = json.loads(args.scenario_profile.read_text(encoding="utf-8-sig")) if args.scenario_profile else None
+        rendered = render(json.loads(args.profile.read_text(encoding="utf-8-sig")), scenario)
         output.mkdir(parents=True)
         for name, text in rendered.items():
             path = output / name

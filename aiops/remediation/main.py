@@ -27,6 +27,7 @@ import evidence as evidence_mod
 import recovery as recovery_mod
 import store as store_mod
 import plans as plans_mod
+import response_profiles
 import service_verification as service_verification_mod
 from actions.notify import Notifier
 from executor.base import RECOVERY_ACTION, DisabledExecutor, ExecutionResult
@@ -460,12 +461,17 @@ async def _propose_action(request, previous=None, link_kind=None, steps=None,
     rca_auto = request.operation == "propose_rca_action" and _auto_execute_enabled()
     strict_proposal = request.operation in {"propose_manual_action", "propose_plan", "replan_action",
                                             "propose_rca_action"}
-    manual_intent = strict_proposal and not rca_auto
+    response_profile = response_profiles.profile_for(alert)
+    manual_intent = (strict_proposal and not rca_auto) or response_profile is not None
     if request.operation == "internal_recovery" and not internal_recovery:
         raise HTTPException(400, "internal_operation_forbidden")
     if analysis.get("action_type") in {"UNLOCK_ACCOUNT", "ENABLE_FEATURE"} and not internal_recovery:
         raise HTTPException(409, "restoration_requires_verified_parent_request")
     try:
+        if response_profile and request.operation != "propose_plan":
+            response_profiles.validate_response(alert, analysis)
+            if str(analysis.get("action_type", "NONE")).upper() not in {"NONE", "NOTIFY"} and not strict_proposal:
+                raise ValueError("response_profile_requires_incident_bound_plan")
         if strict_proposal:
             if request.operation == "propose_rca_action":
                 if request.force_manual:
@@ -491,6 +497,7 @@ async def _propose_action(request, previous=None, link_kind=None, steps=None,
                 steps = [{"analysis": analysis, "plan": request.plan}]
             for step in steps:
                 step_analysis = step["analysis"]
+                response_profiles.validate_response(alert, step_analysis)
                 _extension_parameters(step_analysis["action_type"], step_analysis.get("action_parameters", {}))
                 step_decision = policy_engine.decide_from_analysis(step_analysis)
                 allowed, reason = policy_engine.execution_allowed(step_decision.action_type, step_decision.targets)
