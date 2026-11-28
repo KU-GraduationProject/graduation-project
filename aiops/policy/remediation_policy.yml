@@ -236,6 +236,261 @@ actions:
     notify: approval_request
     evidence_required: [verified_admin_contract, feature_allowlist, resource_version]
 
+# Managed extensions: explicit operator config and signed plans; restore is a separately approved child.
+  BLOCK_EGRESS:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+    prerequisite_steps: [capture]
+
+  BLOCK_PATH:
+    action_risk: medium
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  CLEAN_DISK:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  DISABLE_DB_ROLE:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  DISABLE_KEY:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  ENABLE_DB_ROLE:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  ENABLE_KEY:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  EXPIRE_SILENCE:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  MAINTENANCE_MODE:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  PACKET_CAPTURE:
+    action_risk: medium
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  RATE_LIMIT:
+    action_risk: medium
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  RECORD_INCIDENT:
+    action_risk: low
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  RESTART_HOST_SVC:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  RESTORE_BUCKET:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  RESTORE_DB:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  RESTORE_LOG_LEVEL:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  RESTORE_NGINX:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  RESTRICT_BUCKET:
+    action_risk: medium
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  SET_LOG_LEVEL:
+    action_risk: low
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  SILENCE_ALERT:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  UNBLOCK_EGRESS:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  PROMOTE_RESTORED_DB:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
+  ROLLBACK_DB_PROMOTION:
+    action_risk: high
+    performs_action: true
+    requires_approval: true
+    auto_execute: false
+    executor_ready: true
+    requires_targets: true
+    recovery_mode: none
+    notify: approval_request
+    evidence_required: [immutable_operator_plan, verified_target, durable_approval]
+
 # ── 정책이 알고 있으나 지원하지 않는 조치 ─────────────────────────────────────
 # 여기에 있으면 "모르는 조치"가 아니라 "지원하지 않는 조치"로 사유가 기록된다.
 unsupported:
@@ -253,108 +508,10 @@ proposed_actions:
     stage: 1
     prerequisites: [read_only_capture_contract,evidence_storage_limits]
     risk_origin: integration_review_default
-  BLOCK_EGRESS:
-    action_risk: high
-    executor: network
-    executor_ready: false
-    stage: 2
-    prerequisites: [network_backend,approved_egress_rules,restore_network]
-    risk_origin: notion_proposal
   BACKUP_DB:
     action_risk: medium
     executor: db
     executor_ready: false
     stage: candidate1
     prerequisites: [db_executor,backup_permissions,backup_integrity]
-    risk_origin: integration_review_default
-  RESTORE_DB:
-    action_risk: high
-    executor: db
-    executor_ready: false
-    stage: candidate1
-    prerequisites: [db_executor,manual_approval,validated_backup,restore_plan]
-    risk_origin: integration_review_default
-  DISABLE_DB_ROLE:
-    action_risk: high
-    executor: db
-    executor_ready: false
-    stage: 2
-    prerequisites: [db_executor,role_allowlist,restore_role]
-    risk_origin: notion_proposal
-  SET_LOG_LEVEL:
-    action_risk: low
-    executor: observation
-    executor_ready: false
-    stage: candidate1
-    prerequisites: [service_logging_api,ttl,restore_log_level]
-    risk_origin: integration_review_default
-  PACKET_CAPTURE:
-    action_risk: medium
-    executor: observation
-    executor_ready: false
-    stage: candidate1
-    prerequisites: [capture_executor,time_limit,privacy,storage_access_control]
-    risk_origin: integration_review_default
-  SILENCE_ALERT:
-    action_risk: high
-    executor: observation
-    executor_ready: false
-    stage: 2
-    prerequisites: [alertmanager_api,manual_approval,expiry]
-    risk_origin: integration_review_default
-  BLOCK_PATH:
-    action_risk: medium
-    executor: nginx
-    executor_ready: false
-    stage: 2
-    prerequisites: [nginx_executor,validate_config,restore_config]
-    risk_origin: notion_proposal
-  RATE_LIMIT:
-    action_risk: medium
-    executor: nginx
-    executor_ready: false
-    stage: 2
-    prerequisites: [nginx_executor,proxy_nat_review,restore_config]
-    risk_origin: notion_proposal
-  MAINTENANCE_MODE:
-    action_risk: high
-    executor: nginx
-    executor_ready: false
-    stage: 2
-    prerequisites: [nginx_executor,availability_review,restore_config]
-    risk_origin: notion_proposal
-  RESTRICT_BUCKET:
-    action_risk: medium
-    executor: minio
-    executor_ready: false
-    stage: 2
-    prerequisites: [minio_executor,app_account_separation,restore_bucket_policy]
-    risk_origin: notion_proposal
-  DISABLE_KEY:
-    action_risk: high
-    executor: minio
-    executor_ready: false
-    stage: 2
-    prerequisites: [minio_executor,key_identity,credential_dependencies,restore_access]
-    risk_origin: notion_proposal
-  RESTART_HOST_SVC:
-    action_risk: high
-    executor: host
-    executor_ready: false
-    stage: 2
-    prerequisites: [host_executor,host_identity,service_allowlist,service_health_verification]
-    risk_origin: notion_proposal
-  CLEAN_DISK:
-    action_risk: high
-    executor: host
-    executor_ready: false
-    stage: 2
-    prerequisites: [host_executor,approved_delete_targets,irreversibility_review]
-    risk_origin: notion_proposal
-  RECORD_INCIDENT:
-    action_risk: low
-    executor: record
-    executor_ready: false
-    stage: 2
-    prerequisites: [github_executor,incident_closure,record_deduplication]
     risk_origin: integration_review_default

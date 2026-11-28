@@ -9,7 +9,7 @@ ACTION_FAMILIES = {
     "THROTTLE": "docker", "UNTHROTTLE": "docker",
     "ISOLATE": "docker", "RECONNECT": "docker", "CAPTURE": "observation",
     "BLOCK_EGRESS": "network", "KILL_SESSIONS": "db",
-    "BACKUP_DB": "db", "RESTORE_DB": "db", "DISABLE_DB_ROLE": "db",
+    "BACKUP_DB": "db", "RESTORE_DB": "db", "PROMOTE_RESTORED_DB": "db", "ROLLBACK_DB_PROMOTION": "db", "DISABLE_DB_ROLE": "db",
     "ROLLBACK": "deployment", "RECREATE": "deployment",
     "LOCK_ACCOUNT": "app_api", "REVOKE_SESSION": "app_api",
     "DISABLE_FEATURE": "app_api", "UNLOCK_ACCOUNT": "app_api", "ENABLE_FEATURE": "app_api",
@@ -19,6 +19,9 @@ ACTION_FAMILIES = {
     "RESTRICT_BUCKET": "minio", "DISABLE_KEY": "minio",
     "RESTART_HOST_SVC": "host", "CLEAN_DISK": "host", "RECORD_INCIDENT": "record",
 }
+ACTION_FAMILIES.update({"UNBLOCK_EGRESS": "network", "ENABLE_DB_ROLE": "db", "RESTORE_LOG_LEVEL": "observation",
+                        "EXPIRE_SILENCE": "observation", "RESTORE_NGINX": "nginx", "RESTORE_BUCKET": "minio",
+                        "ENABLE_KEY": "minio"})
 DOCKER_ACTIONS = frozenset({"RESTART", "PAUSE", "UNPAUSE", "THROTTLE",
                             "UNTHROTTLE", "ISOLATE", "RECONNECT"})
 RECOVERY_ACTIONS = frozenset({"UNPAUSE", "UNTHROTTLE", "RECONNECT"})

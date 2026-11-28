@@ -1,0 +1,14 @@
+# Add after docker-compose.aiops.yml. Review private configs and target bindings.
+# This only mounts adapters; it does NOT enable execution or approval by itself.
+services:
+  remediation:
+    environment:
+      REMEDIATION_EGRESS_CONFIG_PATH: /app/managed-config/egress.yml
+      REMEDIATION_DATABASE_PROMOTION_CONFIG_PATH: /app/managed-config/database-promotion.yml
+      REMEDIATION_DATABASE_ADMIN_CONFIG_PATH: /app/managed-config/database-admin.yml
+      REMEDIATION_OBSERVABILITY_CONFIG_PATH: /app/managed-config/observability.yml
+      REMEDIATION_OPERATIONS_CONFIG_PATH: /app/managed-config/operations.yml
+      REMEDIATION_REMOTE_MANAGED_ENABLED: ${REMEDIATION_REMOTE_MANAGED_ENABLED:-false}
+    volumes:
+      - ${REMEDIATION_MANAGED_CONFIG_DIR:?absolute reviewed config directory required}:/app/managed-config:ro
+      - ${REMEDIATION_MANAGED_PRIVATE_DIR:?absolute reviewed artifact directory required}:/app/private:ro

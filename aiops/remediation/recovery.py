@@ -211,6 +211,13 @@ class TtlScanner:
             except Exception as exc:   # 루프가 죽으면 복구가 영구히 멈춘다
                 logger.error("[Recovery] TTL 스캔 실패 (계속): %s", exc)
             try:
+                # Adapter-owned TTL leases survive Controller/Agent restarts.
+                # They restore only the exact state still owned by this action.
+                import os
+                if os.getenv("REMEDIATION_OBSERVABILITY_CONFIG_PATH"):
+                    from executor.observability import ObservabilityExecutor
+                    for event in await asyncio.to_thread(ObservabilityExecutor().run_due, self.store):
+                        logger.info("[Observation TTL] %s", event.get("status", event.get("state", "checked")))
                 import service_verification
                 for record in await asyncio.to_thread(service_verification.run_due, self.store):
                     if record.service_verification.get("state") == "RECOVERED" and self.on_event:

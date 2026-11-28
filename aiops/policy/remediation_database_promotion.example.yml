@@ -1,0 +1,36 @@
+# Separate maintenance cutover, after successful staged RESTORE_DB and operator validation.
+# Copy privately, inspect actual OIDs/owner/grants, then explicitly enable.
+version: 1
+enabled: false
+journal_path: /app/state/database_promotion.sqlite3
+targets:
+  service-db:
+    identity: {site: REPLACE_SITE, source: REPLACE_PG_SOURCE, service: db, runtime: host, target: service-db}
+    service_database: REPLACE_SERVICE_DATABASE
+    staging_database: restore_REPLACE_STAGE
+    service_oid: 0
+    staging_oid: 0
+    executor_role: promotion_operator
+    system_identifier: REPLACE_NUMERIC_SYSTEM_IDENTIFIER
+    server_addr: REPLACE_VERIFIED_NUMERIC_SERVER_ADDRESS
+    server_port: 5432
+    connection:
+      host_env: REMEDIATION_PROMOTION_PGHOST
+      port_env: REMEDIATION_PROMOTION_PGPORT
+      user_env: REMEDIATION_PROMOTION_PGUSER
+      pgpassfile_env: REMEDIATION_PROMOTION_PGPASSFILE
+      sslmode: verify-full
+    restore_ledger_path: /app/state/database_admin.sqlite3
+    restore_target: REPLACE_VERIFIED_RESTORE_TARGET
+    restore_plan_digest: REPLACE_VERIFIED_RESTORE_PLAN_DIGEST
+    backup_manifest_file: /absolute/private/verified-backup-manifest.json
+    application_roles: [REPLACE_APP_ROLE]
+    application_access:
+      - {role: REPLACE_APP_ROLE, kind: schema, schema: public, name: public, privilege: USAGE}
+      - {role: REPLACE_APP_ROLE, kind: table, schema: public, name: REPLACE_TABLE, privilege: SELECT}
+      - {role: REPLACE_APP_ROLE, kind: table, schema: public, name: REPLACE_TABLE, privilege: INSERT}
+      - {role: REPLACE_APP_ROLE, kind: table, schema: public, name: REPLACE_TABLE, privilege: UPDATE}
+      - {role: REPLACE_APP_ROLE, kind: table, schema: public, name: REPLACE_TABLE, privilege: DELETE}
+      - {role: REPLACE_APP_ROLE, kind: sequence, schema: public, name: REPLACE_SEQUENCE, privilege: USAGE}
+    maintenance_confirmed: false
+    timeout_seconds: 30

@@ -112,7 +112,7 @@ def log_rule(original, ident):
     return rule
 
 
-def render(config, scenario_config=None):
+def render(config, scenario_config=None, allowlist=None):
     validate(config)
     gc, endpoint = config["gc"], config["telemetry"]
     src = {"cadvisor": endpoint, "pipeline": endpoint}
@@ -172,7 +172,7 @@ def render(config, scenario_config=None):
     scenario_excluded = []
     if scenario_config is not None:
         import scenario_v2
-        policy = yaml.safe_load((ROOT / "aiops/policy/allowlist.yml").read_text())
+        policy = allowlist if allowlist is not None else yaml.safe_load((ROOT / "aiops/policy/allowlist.yml").read_text())
         scenario_logs, scenario_prom, scenario_excluded = scenario_v2.build(config, scenario_config, policy)
         if scenario_config["network"]:
             excluded = [e for e in excluded if not e.startswith(("UnauthorizedDataTransfer:", "UnauthorizedTransferEarly:"))]
@@ -252,6 +252,14 @@ def render(config, scenario_config=None):
                    "collector.json": json.dumps(producer, indent=2) + "\n",
                    "targets.json": json.dumps([{"targets": [endpoint["instance"]]}], indent=2) + "\n",
                    "fluent.conf": fluent})
+    if scenario_config is not None:
+        # The same run-specific policy can be mounted by Pipeline and the Agent.
+        # Never encode an attack/benign destination label into this document.
+        result["allowlist.yml"] = yaml.safe_dump(policy, allow_unicode=True, sort_keys=False)
+        override = yaml.safe_load(result["jh.compose.override.yml"])
+        override["services"]["pipeline"]["volumes"] = [bundle + "/allowlist.yml:/app/config/allowlist.yml:ro"]
+        result["jh.compose.override.yml"] = yaml.safe_dump(override, allow_unicode=True, sort_keys=False)
+        manifest["allowlist_sha256"] = hashlib.sha256(result["allowlist.yml"].encode()).hexdigest()
     manifest["outputs_sha256"] = {name: hashlib.sha256(text.encode()).hexdigest() for name, text in result.items()}
     result["manifest.json"] = json.dumps(manifest, indent=2) + "\n"
     result["empty-prometheus-rules/.keep"] = "No operating rules loaded from this mount.\n"
@@ -263,6 +271,7 @@ def main():
     parser.add_argument("--profile", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--scenario-profile", type=Path, help="optional verified scenario-v2 observer/exporter inventory")
+    parser.add_argument("--allowlist", type=Path, help="current run policy shared with Pipeline and egress; no fixed attack IP")
     args = parser.parse_args()
     try:
         # Never write into an operating mount or an existing review bundle.
@@ -271,7 +280,10 @@ def main():
                 ("monitoring", "leafy", "aiops", "deploy", "back", ".git")):
             raise ValueError("output must be a new review directory outside operating paths")
         scenario = json.loads(args.scenario_profile.read_text(encoding="utf-8-sig")) if args.scenario_profile else None
-        rendered = render(json.loads(args.profile.read_text(encoding="utf-8-sig")), scenario)
+        if args.allowlist and scenario is None:
+            raise ValueError("--allowlist requires --scenario-profile")
+        policy = yaml.safe_load(args.allowlist.read_text(encoding="utf-8-sig")) if args.allowlist else None
+        rendered = render(json.loads(args.profile.read_text(encoding="utf-8-sig")), scenario, policy)
         output.mkdir(parents=True)
         for name, text in rendered.items():
             path = output / name

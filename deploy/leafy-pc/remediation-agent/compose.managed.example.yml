@@ -1,0 +1,18 @@
+# PC2 only, after compose.yml + compose.live.yml. Keep AGENT_MODE explicit.
+# Run only one Agent worker. Both Controller and Agent target actions must opt in.
+services:
+  remediation-agent:
+    environment:
+      REMEDIATION_EGRESS_CONFIG_PATH: /app/managed-config/egress.yml
+      REMEDIATION_OBSERVABILITY_CONFIG_PATH: /app/managed-config/observability.yml
+      REMEDIATION_OPERATIONS_CONFIG_PATH: /app/managed-config/operations.yml
+    volumes:
+      - ${AGENT_MANAGED_CONFIG_DIR:?absolute reviewed config directory required}:/app/managed-config:ro
+      - ${AGENT_MANAGED_PRIVATE_DIR:?absolute reviewed private artifacts required}:/app/private:ro
+      # In observability config use state_dir=/app/state/observation and
+      # packet_capture.artifact_volume=leafy-private-captures. The helper sees
+      # ONLY this volume; never mount Agent secrets or its whole state in it.
+      - private_captures:/app/state/observation/captures
+volumes:
+  private_captures:
+    name: leafy-private-captures

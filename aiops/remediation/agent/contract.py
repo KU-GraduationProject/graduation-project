@@ -1,7 +1,7 @@
 """Versioned, narrow wire contract; no arbitrary Docker options or recovery evidence."""
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class StrictModel(BaseModel):
@@ -42,11 +42,14 @@ class Command(StrictModel):
     expires_at: int
     ttl_seconds: int | None = Field(default=None, ge=1, le=86400)
     recovery_mode: Literal["none", "auto", "require_approval"] = "none"
+    resource: Literal["cpu", "memory"] = "cpu"
+    expected_memory_limit_bytes: int | None = Field(default=None, ge=67108864, le=68719476736)
 
 
 class Target(ApprovedTarget):
     actions: list[Literal["RESTART", "PAUSE", "ISOLATE", "THROTTLE",
-                          "UNPAUSE", "RECONNECT", "UNTHROTTLE", "RECREATE", "ROLLBACK"]]
+                          "UNPAUSE", "RECONNECT", "UNTHROTTLE", "RECREATE", "ROLLBACK", "BLOCK_EGRESS", "UNBLOCK_EGRESS", "SET_LOG_LEVEL", "RESTORE_LOG_LEVEL", "PACKET_CAPTURE", "SILENCE_ALERT", "EXPIRE_SILENCE", "BLOCK_PATH", "RATE_LIMIT", "MAINTENANCE_MODE", "RESTORE_NGINX", "RESTRICT_BUCKET", "RESTORE_BUCKET", "DISABLE_KEY", "ENABLE_KEY"]]
+    memory_limit_bytes: int | None = Field(default=None, ge=67108864, le=68719476736)
     isolate_networks: list[str] = Field(default_factory=list)
     preserve_networks: list[str] = Field(default_factory=list)
 
@@ -79,6 +82,26 @@ class DeploymentApproval(StrictModel):
 
 
 class DeploymentCommand(DeploymentPlanRequest):
+    remediation_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,128}$")
+    authorization: Authorization
+    approval: DeploymentApproval
+    plan: dict
+    expires_at: int
+
+
+class ManagedPlanRequest(DeploymentPlanRequest):
+    action_type: str = Field(min_length=3, max_length=64)
+
+    @field_validator("action_type")
+    @classmethod
+    def supported(cls, value):
+        from executor.managed_registry import REMOTE_ACTIONS
+        if value not in REMOTE_ACTIONS:
+            raise ValueError("unsupported_remote_managed_action")
+        return value
+
+
+class ManagedCommand(ManagedPlanRequest):
     remediation_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,128}$")
     authorization: Authorization
     approval: DeploymentApproval

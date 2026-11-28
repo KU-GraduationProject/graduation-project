@@ -4,9 +4,10 @@ import hashlib
 import json
 import math
 import store
+from executor.managed_registry import ACTIONS as MANAGED_ACTIONS
 
 FORWARD_ACTIONS = frozenset({"RESTART", "PAUSE", "ISOLATE", "THROTTLE", "KILL_SESSIONS", "ROLLBACK",
-                            "RECREATE", "LOCK_ACCOUNT", "REVOKE_SESSION", "DISABLE_FEATURE"})
+                            "RECREATE", "LOCK_ACCOUNT", "REVOKE_SESSION", "DISABLE_FEATURE"}) | MANAGED_ACTIONS
 ANALYSIS_KEYS = frozenset({"action_type", "action_targets", "action_parameters", "action_description", "root_cause", "threat_level", "evidence", "confidence", "analysis_status"})
 
 

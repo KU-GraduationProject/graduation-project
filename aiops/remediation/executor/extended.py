@@ -8,6 +8,7 @@ import threading
 
 from executor.base import DisabledExecutor
 from policy.catalog import ACTION_FAMILIES
+from executor import managed_registry
 
 EXTENDED_ACTIONS = frozenset({"KILL_SESSIONS", "ROLLBACK", "RECREATE", "LOCK_ACCOUNT",
                               "REVOKE_SESSION", "DISABLE_FEATURE", "UNLOCK_ACCOUNT", "ENABLE_FEATURE"})
@@ -25,6 +26,16 @@ class ExtendedExecutorRouter:
 
     def for_action(self, action_type):
         action = str(action_type or "").upper()
+        if action in managed_registry.ACTIONS:
+            if action in managed_registry.REMOTE_ACTIONS and getattr(self._docker, "name", None) == "remote":
+                return self._docker
+            module = managed_registry.module_for(action)
+            # Per-action cache avoids selecting a different configured adapter
+            # while retaining a single durable TTL journal per adapter.
+            with self._lock:
+                if action not in self._executors:
+                    self._executors[action] = managed_registry.create_executor(action)
+                return self._executors[action]
         if action not in EXTENDED_ACTIONS:
             return self._docker
         if action in {"RECREATE", "ROLLBACK"} and getattr(self._docker, "name", None) == "remote":
@@ -61,4 +72,4 @@ def select_executor(action_type, configured):
 
 
 def is_extended_executor(executor):
-    return getattr(executor, "name", None) in set(FAMILY_NAMES.values())
+    return getattr(executor, "name", None) in set(FAMILY_NAMES.values()) | managed_registry.NAMES

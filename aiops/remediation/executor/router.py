@@ -1,5 +1,6 @@
 """Independent capability gate. A policy edit cannot invent an executor."""
 from policy.catalog import ACTION_FAMILIES, DOCKER_ACTIONS
+from executor import managed_registry
 from executor.extended import EXTENDED_ACTIONS, FAMILY_NAMES, select_executor
 
 
@@ -9,6 +10,16 @@ def route_action(action_type, runtime, executor):
     if family is None:
         return False, "undefined_action_type"
     executor = select_executor(action, executor)
+    if action in managed_registry.ACTIONS:
+        if runtime not in ({"container"} if action in managed_registry.EGRESS | {"PACKET_CAPTURE", "BLOCK_PATH", "RATE_LIMIT", "MAINTENANCE_MODE", "RESTORE_NGINX"} else {"container", "host"}):
+            return False, "unsupported_managed_runtime"
+        name = getattr(executor, "name", None)
+        if name == "disabled" and not getattr(executor, "changes_system", True):
+            return True, "execution_disabled"
+        if name == "remote":
+            return (True, "remote_managed_manual_approval_required") if action in managed_registry.REMOTE_ACTIONS and getattr(executor, "supports_managed", False) else (False, "remote_managed_disabled")
+        expected = {"egress" if action in managed_registry.EGRESS else "database_admin" if action in managed_registry.DATABASE else "database_promotion" if action in managed_registry.PROMOTION else "observability" if action in managed_registry.OBSERVATION else "operations"}
+        return (True, "ok") if name in expected else (False, "executor_family_mismatch")
     if action in EXTENDED_ACTIONS:
         if runtime not in ({"container"} if family == "deployment" else {"container", "host"}):
             return False, f"unsupported_runtime:{runtime or 'missing'}"

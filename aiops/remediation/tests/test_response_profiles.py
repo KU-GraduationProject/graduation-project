@@ -64,7 +64,7 @@ class ResponseProfileTests(unittest.TestCase):
         for p in responses.PROFILES.values():
             self.assertLessEqual(set(p.actions), plans.FORWARD_ACTIONS)
         serialized = json.dumps(responses.capabilities())
-        for field in ("scenario_id", "incident_class", "BLOCK_EGRESS"):
+        for field in ("scenario_id", "incident_class"):
             self.assertNotIn(field, serialized)
 
 

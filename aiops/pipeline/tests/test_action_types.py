@@ -29,8 +29,15 @@ class ActionTypesTest(unittest.TestCase):
         # LLM 이 고르는 1차 조치는 모두 정책에 있다. 정책에만 있는 것은 2차 조치(REVOKE_SESSION,
         # DISABLE_FEATURE)와 사람 요청 복구(UNLOCK_ACCOUNT, ENABLE_FEATURE)다.
         self.assertLessEqual(set(ACTION_TYPES), set(policy["actions"]))
+        # Extending human-approved executors must NOT silently expand the LLM
+        # vocabulary. The Controller registry and policy must agree independently.
+        import runpy
+        from pathlib import Path
+        registry = runpy.run_path(str(Path(__file__).resolve().parents[2] / "remediation/executor/managed_registry.py"))
+        managed = registry["ACTIONS"]
+        self.assertTrue(set(ACTION_TYPES).isdisjoint(managed))
         self.assertEqual(set(policy["actions"]) - set(ACTION_TYPES),
-                         {"REVOKE_SESSION", "DISABLE_FEATURE", "UNLOCK_ACCOUNT", "ENABLE_FEATURE"})
+                         {"REVOKE_SESSION", "DISABLE_FEATURE", "UNLOCK_ACCOUNT", "ENABLE_FEATURE"} | managed)
         self.assertIn("SCALE", policy["unsupported"])
         self.assertNotIn("SCALE", ACTION_TYPES)
 

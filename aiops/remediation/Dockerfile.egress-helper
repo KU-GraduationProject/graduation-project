@@ -1,0 +1,5 @@
+# Build locally, review and pin the resulting image ID in the private config.
+# The Agent never builds/pulls this image. Never run in host networking mode.
+FROM alpine:3.22
+RUN apk add --no-cache iptables
+ENTRYPOINT ["/sbin/iptables"]

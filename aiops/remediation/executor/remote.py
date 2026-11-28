@@ -18,7 +18,8 @@ try:
 except ImportError:
     HTTP_ERRORS = (httpx.HTTPError,)
 
-from agent.contract import Authorization, Command, DeploymentCommand
+from agent.contract import Authorization, Command, DeploymentCommand, ManagedCommand
+from executor import managed_registry
 from executor.base import Executor, ExecutorError, ExecutionResult, blocked
 from security.agent_auth import headers
 import store as store_mod
@@ -31,7 +32,7 @@ class RemoteExecutor(Executor):
     # Evidence is collected and persisted by Agent, atomically before its mutation.
     evidence_at_agent = True
 
-    def __init__(self, base_url, secret, controller_id="pc1", client=None, deployment_enabled=False):
+    def __init__(self, base_url, secret, controller_id="pc1", client=None, deployment_enabled=False, managed_enabled=False):
         url = urlsplit(base_url)
         if (url.scheme != "https" or not url.hostname or not url.hostname.endswith(".ts.net")
                 or url.username or url.password or url.query or url.fragment or url.path not in ("", "/")):
@@ -44,6 +45,9 @@ class RemoteExecutor(Executor):
         if type(deployment_enabled) is not bool:
             raise ValueError("deployment_enabled must be boolean")
         self.supports_deployment = deployment_enabled
+        if type(managed_enabled) is not bool:
+            raise ValueError("managed_enabled must be boolean")
+        self.supports_managed = managed_enabled
         self.client = client or httpx.Client(timeout=20, follow_redirects=False, trust_env=False)
 
     @classmethod
@@ -54,7 +58,8 @@ class RemoteExecutor(Executor):
         if enabled not in ("true", "false"):
             raise ValueError("REMEDIATION_REMOTE_DEPLOYMENT_ENABLED must be true or false")
         return cls(os.environ["REMEDIATION_AGENT_URL"], key, os.getenv("AGENT_CONTROLLER_ID", "pc1"),
-                   deployment_enabled=enabled == "true")
+                   deployment_enabled=enabled == "true",
+                   managed_enabled=os.getenv("REMEDIATION_REMOTE_MANAGED_ENABLED", "false").lower() == "true")
 
     def _deployment_mapping(self, identity, targets, action_type):
         from executor.identity import configured_target_binding
@@ -71,6 +76,8 @@ class RemoteExecutor(Executor):
                 "expected_target": {k: configured["container"][k] for k in ("container_id", "image_id", "labels")}}
 
     def plan_record(self, identity, targets, action_type, parameters):
+        if action_type in managed_registry.ACTIONS:
+            return self._plan_managed(identity, targets, action_type, parameters)
         from executor.deployment import valid_plan_digest
         configured = self._deployment_mapping(identity, targets, action_type)
         target = identity["target"]
@@ -96,6 +103,12 @@ class RemoteExecutor(Executor):
         return {target: {**plan, "transport": transport}}
 
     def validate_record(self, record):
+        if record.action_type in managed_registry.ACTIONS:
+            try:
+                fresh = self._plan_managed(record.identity, record.targets, record.action_type, record.action_parameters)
+                return None if fresh == record.target_bindings else "remote_managed_plan_changed_reapproval_required"
+            except Exception:
+                return "remote_managed_validation_failed"
         try:
             fresh = self.plan_record(record.identity, record.targets, record.action_type, record.action_parameters)
             from executor.deployment import valid_plan_digest
@@ -176,6 +189,89 @@ class RemoteExecutor(Executor):
                 pass
         return ExecutionResult(action, target, "UNKNOWN", detail="remote_deployment_ledger_query_required_no_retry")
 
+    def _managed_mapping(self, identity, targets, action):
+        from executor.identity import configured_target_binding
+        if not self.supports_managed or action not in managed_registry.REMOTE_ACTIONS:
+            raise ExecutorError("remote_managed_disabled")
+        binding = configured_target_binding(identity, targets, self)
+        if action not in binding["container"]["actions"]:
+            raise ExecutorError("remote_managed_action_not_allowlisted")
+        return binding
+
+    def _plan_managed(self, identity, targets, action, parameters):
+        from executor.managed import valid_plan_digest
+        configured = self._managed_mapping(identity, targets, action)
+        transport = self._transport(configured)
+        payload = {"action_type": action, "identity": identity, "target": identity["target"],
+                   "parameters": parameters, "agent_id": configured["agent_id"],
+                   "expected_target": transport["expected_target"]}
+        try:
+            response = self.request("POST", "/v1/managed/plans", payload)
+            response.raise_for_status()
+            doc = response.json(); plan = doc["plan"]
+            if (doc["agent_id"] != configured["agent_id"] or doc["identity"] != identity
+                    or doc["target"] != identity["target"] or doc["expected_target"] != transport["expected_target"]
+                    or not valid_plan_digest(plan) or plan["action_type"] != action
+                    or plan["identity"] != identity or plan["target"] != identity["target"] or plan["parameters"] != parameters):
+                raise ValueError()
+            return {identity["target"]: {**plan, "transport": transport}}
+        except (*HTTP_ERRORS, KeyError, ValueError, TypeError):
+            raise ExecutorError("remote_managed_plan_unavailable_or_mismatched") from None
+
+    def verify_managed_status(self, doc, record, target):
+        binding = record.target_bindings[target]
+        request = doc.get("request") or {}
+        if (request.get("agent_id") != binding["transport"]["agent_id"]
+                or request.get("identity") != record.identity or request.get("target") != target
+                or request.get("action_type") != record.action_type or request.get("parameters") != record.action_parameters
+                or request.get("expected_target") != binding["transport"]["expected_target"]
+                or (request.get("plan") or {}).get("plan_digest") != binding["plan_digest"]
+                or (request.get("approval") or {}).get("action_hash") != record.action_hash
+                or (request.get("authorization") or {}).get("approved_by") != record.approved_by):
+            raise ValueError("remote_managed_status_mismatch")
+
+    def _execute_managed(self, record, target, approved_by):
+        from executor.managed import valid_plan_digest
+        action = record.action_type
+        try:
+            configured = self._managed_mapping(record.identity, record.targets, action)
+            binding = record.target_bindings[target]
+            native = {k: v for k, v in binding.items() if k != "transport"}
+            if (record.state != "EXECUTING" or record.executor_name != self.name or record.requires_approval is not True
+                    or not record.approved_by or approved_by is not None and approved_by != record.approved_by
+                    or not store_mod.approval_valid(record) or record.ttl_seconds is not None
+                    or record.recovery_mode not in (None, "none") or not valid_plan_digest(native)
+                    or binding["transport"] != self._transport(configured)
+                    or ((record.evidence or {}).get("targets") or {}).get(target) != binding
+                    or record.action_hash != store_mod.action_hash(action, record.targets, None, "none", record.action_parameters)):
+                raise ValueError()
+            expires = min(int(time.time()) + 120, int(datetime.fromisoformat(record.approval_expires_at.replace("Z", "+00:00")).timestamp()))
+            command = ManagedCommand(remediation_id=record.remediation_id, action_type=action, target=target,
+                identity=record.identity, agent_id=configured["agent_id"], expected_target=binding["transport"]["expected_target"],
+                parameters=record.action_parameters, authorization=self.authorization(record, approved_by), plan=native,
+                expires_at=expires, approval={k: getattr(record, k) for k in ("incident_key", "action_hash", "approval_requested_at", "approval_expires_at", "approved_at", "action_started_at", "approved_by")})
+        except Exception:
+            return blocked(action, target, "durable_remote_managed_approval_required")
+        try:
+            response = self.request("POST", "/v1/managed/executions", command.model_dump())
+            if response.status_code == 409:
+                return blocked(action, target, "remote_managed_payload_conflict")
+            doc = response.json() if response.status_code == 200 else self.status(record.remediation_id, target)
+            if doc:
+                self.verify_managed_status(doc, record, target)
+                return self.result_from_status(doc, action, target, record.remediation_id)
+            if response.status_code in (400, 401, 403, 413, 422):
+                return blocked(action, target, "remote_managed_request_rejected")
+        except (*HTTP_ERRORS, ValueError, KeyError, TypeError):
+            try:
+                doc = self.status(record.remediation_id, target)
+                if doc:
+                    self.verify_managed_status(doc, record, target)
+                    return self.result_from_status(doc, action, target, record.remediation_id)
+            except (*HTTP_ERRORS, ValueError, KeyError, TypeError):
+                pass
+        return ExecutionResult(action, target, "UNKNOWN", detail="remote_managed_ledger_query_required_no_retry")
+
     def snapshot(self, target):
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", target):
             raise ExecutorError("invalid_remote_target")
@@ -227,6 +323,10 @@ class RemoteExecutor(Executor):
 
     def execute_record(self, record, target, approved_by=None, recovery_action=None):
         action = recovery_action or record.action_type
+        if action in managed_registry.ACTIONS:
+            if recovery_action:
+                return blocked(action, target, "managed_recovery_requires_new_plan_and_approval")
+            return self._execute_managed(record, target, approved_by)
         if record.action_type in DEPLOYMENT_ACTIONS:
             if recovery_action:
                 return blocked(action, target, "deployment_recovery_requires_new_plan_and_approval")
@@ -256,7 +356,10 @@ class RemoteExecutor(Executor):
                           approved_target=approved_target,
                           expires_at=expires_at,
                           ttl_seconds=None if recovery_action else record.ttl_seconds,
-                          recovery_mode="none" if recovery_action else (record.recovery_mode or "none"))
+                          recovery_mode="none" if recovery_action else (record.recovery_mode or "none"),
+                          resource=(record.action_parameters or {}).get("resource", "cpu"),
+                          expected_memory_limit_bytes=(binding["container"].get("memory_limit_bytes")
+                            if (record.action_parameters or {}).get("resource") == "memory" else None))
         return self.execute(action, target, {"command": command.model_dump(),
                                             "recovery": bool(recovery_action)})
 
@@ -286,8 +389,8 @@ class RemoteExecutor(Executor):
                                {**result.get("after", {}), "remote": document})
 
     def execute(self, action, target, evidence):
-        if action in DEPLOYMENT_ACTIONS:
-            return blocked(action, target, "approved_deployment_record_required")
+        if action in DEPLOYMENT_ACTIONS or action in managed_registry.ACTIONS:
+            return blocked(action, target, "approved_planned_record_required")
         payload = evidence.get("command")
         if not payload:
             return blocked(action, target, "approved_record_context_required")

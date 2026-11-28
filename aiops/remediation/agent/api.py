@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 import yaml
 
-from agent.contract import AgentConfig, Command, DeploymentCommand, DeploymentPlanRequest
+from agent.contract import AgentConfig, Command, DeploymentCommand, DeploymentPlanRequest, ManagedCommand, ManagedPlanRequest
 from agent.ledger import Conflict, Ledger
 from agent.service import AgentService, Denied
 from security.agent_auth import authenticate
@@ -154,6 +154,29 @@ def create_app(service=None, secret=None):
     @app.post("/v1/deployments")
     async def deployment_execute(request: Request):
         return await deployment_dispatch(request)
+
+    async def managed_dispatch(request, planning=False):
+        body = await authenticated_body(request)
+        try:
+            command = (ManagedPlanRequest if planning else ManagedCommand).model_validate_json(body)
+        except ValidationError:
+            raise HTTPException(422, "invalid_managed_request") from None
+        try:
+            return await run_in_threadpool(service.plan_managed if planning else service.execute_managed, command)
+        except Conflict:
+            raise HTTPException(409, "managed_payload_conflict") from None
+        except (Denied, ValueError):
+            raise HTTPException(403, "managed_request_denied") from None
+        except Exception:
+            raise HTTPException(503, "managed_state_unavailable") from None
+
+    @app.post("/v1/managed/plans")
+    async def managed_plan(request: Request):
+        return await managed_dispatch(request, planning=True)
+
+    @app.post("/v1/managed/executions")
+    async def managed_execute(request: Request):
+        return await managed_dispatch(request)
 
     @app.get("/v1/executions/{rid}/{target}")
     async def status(rid: str, target: str, request: Request):

@@ -16,6 +16,7 @@ Mock 으로 검증한다.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import datetime
 
@@ -76,6 +77,7 @@ def parse_resources(inspect: dict) -> dict:
         "cpu_period": host.get("CpuPeriod"),
         "cpu_shares": host.get("CpuShares"),
         "memory": host.get("Memory"),
+        "memory_swap": host.get("MemorySwap"),
         "nano_cpus": host.get("NanoCpus"),
     }
 
@@ -192,7 +194,8 @@ class LocalDockerExecutor(Executor):
     name = "local_docker"
 
     def __init__(self, client=None, isolate_networks=(), preserve_networks=(),
-                 cpu_quota: int = DEFAULT_CPU_QUOTA, cpu_period: int = DEFAULT_CPU_PERIOD):
+                 cpu_quota: int = DEFAULT_CPU_QUOTA, cpu_period: int = DEFAULT_CPU_PERIOD,
+                 memory_limit_bytes: int | None = None):
         # Docker 클라이언트는 생성 시점에 만든다 (지연 생성 금지).
         #
         # 지연 생성은 위험하다: 테스트가 docker.from_env 를 import 시점에만 patch 하면,
@@ -205,6 +208,11 @@ class LocalDockerExecutor(Executor):
         self.preserve_networks = tuple(preserve_networks)
         self.cpu_quota = cpu_quota
         self.cpu_period = cpu_period
+        # Memory throttling is an explicit operator opt-in. Invalid/missing
+        # values disable only this path; existing CPU behavior stays intact.
+        raw_memory = os.getenv("REMEDIATION_MEMORY_LIMIT_BYTES", "")
+        self.memory_limit_bytes = (memory_limit_bytes if memory_limit_bytes is not None else
+                                   int(raw_memory) if raw_memory.isdecimal() else None)
         self.approval_deadline = None
         self._mutation_started = False
 
@@ -430,6 +438,12 @@ class LocalDockerExecutor(Executor):
                          before={"networks": current}, after={"networks": after})
 
     def _throttle(self, target: str, evidence: dict) -> ExecutionResult:
+        parameters = evidence.get("action_parameters") or {}
+        if not isinstance(parameters, dict) or parameters.get("resource", "cpu") not in {"cpu", "memory"}:
+            return blocked(THROTTLE, target, "unsupported_throttle_resource")
+        if parameters.get("resource") == "memory":
+            from executor.memory_limit import apply_memory_limit
+            return apply_memory_limit(self, target, evidence, self.memory_limit_bytes)
         before = evidence.get("resources") or parse_resources(self._inspect(target))
         self._mutation_container(target).update(cpu_quota=self.cpu_quota, cpu_period=self.cpu_period)
         after = parse_resources(self._reload_inspect(target))
@@ -443,6 +457,10 @@ class LocalDockerExecutor(Executor):
 
     def _unthrottle(self, target: str, evidence: dict) -> ExecutionResult:
         """보존한 원래 쿼터로 되돌린다. 증거가 없으면 임의 값으로 덮지 않는다."""
+        parameters = evidence.get("action_parameters") or {}
+        if evidence.get("memory_throttle") or isinstance(parameters, dict) and parameters.get("resource") == "memory":
+            from executor.memory_limit import restore_memory_limit
+            return restore_memory_limit(self, target, evidence)
         want = (evidence.get("resources") or {})
         if "cpu_quota" not in want:
             return blocked(UNTHROTTLE, target, "evidence_missing_resources")
@@ -470,7 +488,12 @@ class BoundDockerExecutor(LocalDockerExecutor):
         self.binding = binding
         super().__init__(client=source.client, isolate_networks=source.isolate_networks,
                          preserve_networks=source.preserve_networks,
-                         cpu_quota=source.cpu_quota, cpu_period=source.cpu_period)
+                         cpu_quota=source.cpu_quota, cpu_period=source.cpu_period,
+                         memory_limit_bytes=source.memory_limit_bytes)
+        # The immutable operator binding is part of the approved plan. A live
+        # environment change may not silently change a pending memory limit.
+        # Missing binding opt-in leaves only this resource path disabled.
+        self.memory_limit_bytes = binding["container"].get("memory_limit_bytes")
         if approval_expires_at is not None:
             try:
                 self.approval_deadline = datetime.fromisoformat(

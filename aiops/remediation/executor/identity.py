@@ -149,7 +149,16 @@ def validate_bindings(record, executor):
         return None
     try:
         current = bind_targets(record.identity, record.targets, executor)
-        if current != record.target_bindings:
+        # The optional memory capability is additive. Legacy CPU/recovery
+        # bindings omit it; absence and null both mean memory disabled.
+        import copy
+        def comparable(bindings):
+            result = copy.deepcopy(bindings)
+            for row in result.values():
+                if row.get("container", {}).get("memory_limit_bytes") is None:
+                    row.get("container", {}).pop("memory_limit_bytes", None)
+            return result
+        if comparable(current) != comparable(record.target_bindings):
             return "approved_target_binding_changed_reapproval_required"
         if any(record.action_type not in row["container"]["actions"] for row in current.values()):
             return "action_not_allowed_by_target_binding"

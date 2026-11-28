@@ -1,0 +1,33 @@
+# Private operator file. Keep enabled=false until exact resources are verified.
+version: 1
+enabled: false
+state_dir: /app/state/observation
+targets:
+  verified-backend:
+    identity:
+      site: REPLACE_SITE
+      source: REPLACE_SOURCE
+      service: backend
+      runtime: container
+      target: verified-backend
+    labels:
+      io.leafy.remediation: workload
+      com.docker.compose.project: REPLACE_PROJECT
+      com.docker.compose.service: backend
+    actions: [SET_LOG_LEVEL, RESTORE_LOG_LEVEL, PACKET_CAPTURE, SILENCE_ALERT, EXPIRE_SILENCE]
+    # Reference only; the bearer token's value is never part of the plan.
+    token_env: OBSERVABILITY_ADMIN_TOKEN
+    logger_api:
+      origin: https://REPLACE_VERIFIED_ADMIN_ORIGIN
+      conditional_updates_verified: false
+      allowed_loggers: [com.leafy]
+    container_id: REPLACE_FULL_CONTAINER_ID
+    image_id: REPLACE_FULL_IMAGE_ID
+    packet_capture:
+      # Docker Agent: shared dedicated volume, also mounted at state_dir/captures.
+      artifact_volume: leafy-private-captures
+      helper_image_id: REPLACE_LOCALLY_INSTALLED_SHA256_IMAGE_ID
+      max_bytes: 4194304
+      max_total_bytes: 67108864
+    alertmanager:
+      origin: https://REPLACE_PRIVATE_ALERTMANAGER_ORIGIN

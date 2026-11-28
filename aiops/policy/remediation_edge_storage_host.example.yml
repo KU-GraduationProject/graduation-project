@@ -1,0 +1,58 @@
+# Copy outside the repository; fill verified inventory and private tool/config mounts.
+# No action is enabled by this example. state_dir must exist and be owner-only.
+version: 1
+enabled: false
+state_dir: /app/state/operations
+targets:
+  leafy-frontend:
+    identity: {site: REPLACE_SITE, source: REPLACE_SOURCE, service: frontend, runtime: container, target: leafy-frontend}
+    actions: [BLOCK_PATH, RATE_LIMIT, MAINTENANCE_MODE, RESTORE_NGINX]
+    nginx:
+      container_id: REPLACE_FULL_CONTAINER_ID
+      image_id: REPLACE_SHA256_IMAGE_ID
+      shared_include_verified: false
+      labels: {io.leafy.remediation: workload, com.docker.compose.project: REPLACE_PROJECT, com.docker.compose.service: frontend}
+      mount_source: /absolute/host/path/to/managed-edge
+      managed_root: /app/edge
+      managed_include: /app/edge/managed.conf
+      container_include: /etc/nginx/remediation/managed.conf
+      container_config: /etc/nginx/nginx.conf
+      container_binary: /usr/sbin/nginx
+      rate_limit_upstream: REPLACE_BACKEND_SERVICE:8080
+  leafy-minio:
+    identity: {site: REPLACE_SITE, source: REPLACE_SOURCE, service: minio, runtime: container, target: leafy-minio}
+    actions: [RESTRICT_BUCKET, RESTORE_BUCKET, DISABLE_KEY, ENABLE_KEY]
+    minio:
+      binary: /usr/local/bin/mc
+      binary_sha256: REPLACE_VERIFIED_BINARY_SHA256
+      # Existing private mc config.json; HTTPS alias only. Never put mc credentials here.
+      config_dir: /app/private/mc
+      alias: verified-minio
+      bucket_allowlist: [REPLACE_BUCKET_NAME]
+      root_key_env: MINIO_ROOT_ACCESS_KEY
+      service_accounts:
+        uploader:
+          key_id_env: MINIO_UPLOAD_ACCESS_KEY
+          owner_env: MINIO_UPLOAD_PARENT_USER
+  host-postgresql:
+    identity: {site: REPLACE_SITE, source: REPLACE_HOST_SOURCE, service: db, runtime: host, target: host-postgresql}
+    actions: [RESTART_HOST_SVC]
+    host_service:
+      # Windows-native execution worker only; Linux/container Agent refuses this action.
+      binary: 'C:\Windows\System32\sc.exe'
+      binary_sha256: REPLACE_VERIFIED_SC_BINARY_SHA256
+      service_name: postgresql-x64-17
+  closed-logs:
+    identity: {site: REPLACE_SITE, source: REPLACE_HOST_SOURCE, service: host-logs, runtime: host, target: closed-logs}
+    actions: [CLEAN_DISK]
+    clean_logs:
+      root: /var/lib/leafy/remediation-closed-logs
+      files: [explicit-old-rotation.log]
+      min_age_seconds: 86400
+      max_total_bytes: 100000000
+  incident-log:
+    identity: {site: REPLACE_SITE, source: REPLACE_SOURCE, service: incident-log, runtime: host, target: incident-log}
+    actions: [RECORD_INCIDENT]
+    github:
+      repository: REPLACE_OWNER/REPLACE_REPOSITORY
+      token_env: REMEDIATION_INCIDENT_GITHUB_TOKEN

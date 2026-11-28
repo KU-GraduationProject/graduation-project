@@ -18,6 +18,9 @@ def reconcile(store, executor, record):
                 return record  # Not found is not proof an in-flight request won't arrive.
             if record.action_type in ("RECREATE", "ROLLBACK"):
                 executor.verify_deployment_status(doc, record, target)
+            from executor.managed_registry import ACTIONS as MANAGED_ACTIONS
+            if record.action_type in MANAGED_ACTIONS:
+                executor.verify_managed_status(doc, record, target)
             documents.append(doc)
             results.append(executor.result_from_status(doc, record.action_type, target, record.remediation_id))
             if doc.get("recovery_state"):

@@ -28,6 +28,7 @@ import recovery as recovery_mod
 import store as store_mod
 import plans as plans_mod
 import response_profiles
+from executor import managed_registry
 import service_verification as service_verification_mod
 from actions.notify import Notifier
 from executor.base import RECOVERY_ACTION, DisabledExecutor, ExecutionResult
@@ -209,7 +210,7 @@ class ServiceVerifyRequest(BaseModel):
 
 def _planned_executor(selected, action):
     return is_extended_executor(selected) or (isinstance(selected, RemoteExecutor)
-                                             and action in {"ROLLBACK", "RECREATE"})
+                                             and action in {"ROLLBACK", "RECREATE"} | managed_registry.REMOTE_ACTIONS)
 
 
 
@@ -391,6 +392,13 @@ def _approval_plan_summary(record):
 
 def _extension_parameters(action, parameters):
     """Reject unknown/nested command or credential fields before durable storage."""
+    if action in managed_registry.ACTIONS:
+        managed_registry.validate_parameters(action, parameters)
+        return
+    if action == "THROTTLE" and parameters.get("resource") == "memory":
+        if set(parameters) != {"resource"}:
+            raise ValueError("operator_owned_memory_limit_required")
+        return
     allowed = {
         "KILL_SESSIONS": {"operation", "min_age_seconds", "max_sessions"},
         "RECREATE": set(), "ROLLBACK": {"version"},
@@ -461,16 +469,24 @@ async def request_app_recovery(request: RecoveryRequest):
     previous = record_store.get(request.remediation_id)
     if previous is None:
         raise HTTPException(404, "stored_remediation_required")
-    restore = {"LOCK_ACCOUNT": "UNLOCK_ACCOUNT", "DISABLE_FEATURE": "ENABLE_FEATURE"}.get(previous.action_type)
+    restore = {"LOCK_ACCOUNT": "UNLOCK_ACCOUNT", "DISABLE_FEATURE": "ENABLE_FEATURE", **managed_registry.RECOVERY_MAP}.get(previous.action_type)
     if not restore or not record_store.execution_confirmed(previous) or previous.superseded_by or previous.next_step_id:
         raise HTTPException(409, "verified_app_parent_required")
     if not previous.alert_context:
         raise HTTPException(409, "parent_incident_context_required")
-    resource_key = "account_id" if restore == "UNLOCK_ACCOUNT" else "feature_id"
-    parameters = {resource_key: previous.action_parameters.get(resource_key), "reason": request.reason}
+    if restore in managed_registry.RESTORE_ACTIONS:
+        if restore in {"RESTORE_LOG_LEVEL", "EXPIRE_SILENCE"}:
+            parameters = {"source_record_id": previous.remediation_id}
+        elif restore == "ENABLE_DB_ROLE":
+            parameters = {"role_id": previous.action_parameters["role_id"]}
+        else:
+            parameters = {"parent_id": previous.remediation_id}
+    else:
+        resource_key = "account_id" if restore == "UNLOCK_ACCOUNT" else "feature_id"
+        parameters = {resource_key: previous.action_parameters.get(resource_key), "reason": request.reason}
     analysis = {"action_type": restore, "action_targets": list(previous.targets),
                 "action_parameters": parameters, "confidence": 1.0, "threat_level": previous.threat_level,
-                "root_cause": "Operator requested restoration of a verified application action",
+                "root_cause": "Operator requested restoration of a verified prior action",
                 "action_description": request.reason, "evidence": ["verified_parent:" + previous.remediation_id]}
     return await _propose_action(ActionRequest(operation="internal_recovery", force_manual=True,
         alert=previous.alert_context, analysis=analysis), previous=previous,
@@ -489,18 +505,24 @@ async def _propose_action(request, previous=None, link_kind=None, steps=None,
                                  "propose_rca_action", "internal_recovery"):
         raise HTTPException(400, "action_operation_mismatch")
     analysis, alert = request.analysis, request.alert
+    requested_action = str(analysis.get("action_type", "NONE")).strip().upper()
     # propose_rca_action: 수동 제안과 같은 엄격 검증. 자동 실행 플래그가 꺼져 있으면 수동 제안과 같다.
     rca_auto = request.operation == "propose_rca_action" and _auto_execute_enabled()
     strict_proposal = request.operation in {"propose_manual_action", "propose_plan", "replan_action",
                                             "propose_rca_action"}
     response_profile = response_profiles.profile_for(alert)
-    manual_intent = (strict_proposal and not rca_auto) or response_profile is not None
+    manual_intent = (strict_proposal and not rca_auto) or response_profile is not None or requested_action in managed_registry.ACTIONS
     if request.operation == "internal_recovery" and not internal_recovery:
         raise HTTPException(400, "internal_operation_forbidden")
-    if analysis.get("action_type") in {"UNLOCK_ACCOUNT", "ENABLE_FEATURE"} and not internal_recovery:
+    if requested_action in {"UNLOCK_ACCOUNT", "ENABLE_FEATURE"} | managed_registry.RESTORE_ACTIONS and not internal_recovery:
         raise HTTPException(409, "restoration_requires_verified_parent_request")
     try:
-        if response_profile and request.operation != "propose_plan":
+        if requested_action in managed_registry.ACTIONS and not strict_proposal and not internal_recovery:
+            raise ValueError("managed_action_requires_incident_bound_plan")
+        if requested_action == "BLOCK_EGRESS":
+            from executor.egress import validate_observation
+            validate_observation(alert, analysis.get("action_parameters", {}))
+        if response_profile and request.operation != "propose_plan" and not internal_recovery:
             response_profiles.validate_response(alert, analysis)
             if str(analysis.get("action_type", "NONE")).upper() not in {"NONE", "NOTIFY"} and not strict_proposal:
                 raise ValueError("response_profile_requires_incident_bound_plan")
@@ -530,6 +552,11 @@ async def _propose_action(request, previous=None, link_kind=None, steps=None,
             for step in steps:
                 step_analysis = step["analysis"]
                 response_profiles.validate_response(alert, step_analysis)
+                if step_analysis["action_type"] == "BLOCK_EGRESS":
+                    from executor.egress import validate_observation
+                    validate_observation(alert, step_analysis.get("action_parameters", {}))
+                if step_analysis["action_type"] in managed_registry.RESTORE_ACTIONS:
+                    raise ValueError("managed_restoration_requires_verified_parent")
                 _extension_parameters(step_analysis["action_type"], step_analysis.get("action_parameters", {}))
                 step_decision = policy_engine.decide_from_analysis(step_analysis)
                 allowed, reason = policy_engine.execution_allowed(step_decision.action_type, step_decision.targets)
@@ -762,7 +789,7 @@ async def handle_slack_action(slack_payload, socket_mode=False):
     if (record.alertname != data.get("alertname") or record.action_type != data["action_type"].upper()
             or sorted(record.targets) != sorted(data["action_targets"])):
         return JSONResponse(status_code=409, content={"error": "stored_action_mismatch"})
-    app_recovery = bool(record.recovery_of and record.action_type in {"UNLOCK_ACCOUNT", "ENABLE_FEATURE"})
+    app_recovery = bool(record.recovery_of and record.action_type in {"UNLOCK_ACCOUNT", "ENABLE_FEATURE"} | managed_registry.RESTORE_ACTIONS)
     if app_recovery and action_id == "approve_action":
         return JSONResponse(status_code=409, content={"error": "app_recovery_approval_button_required"})
     recovering = action_id == "approve_recovery" and not app_recovery
@@ -1066,6 +1093,7 @@ async def _perform(record, decision_targets, action_type: str,
             else:
                 ev = dict(evidence_mod.for_target(target_evidence, target))
                 ev["target_binding"] = current.target_bindings.get(target)
+                ev["action_parameters"] = current.action_parameters
                 if current.requires_approval:
                     ev["approval_expires_at"] = current.approval_expires_at
                 result = await _run_executor(action_type, target, ev, selected)
@@ -1073,6 +1101,11 @@ async def _perform(record, decision_targets, action_type: str,
             # An exception after dispatch does not prove that Docker did not run.
             result = ExecutionResult(action_type, target, store_mod.UNKNOWN,
                                      detail="execution_result_unconfirmed:" + type(exc).__name__)
+        if (action_type == "THROTTLE" and result.ok and result.after.get("resource") == "memory"
+                and not isinstance(selected, RemoteExecutor)):
+            target_evidence["targets"][target]["memory_throttle"] = result.after
+            if record_store.update(rid, evidence=target_evidence) is None:
+                return results, store_mod.UNKNOWN
         results.append(result)
         if record_store.update(rid, results=[r.as_dict() for r in results]) is None:
             return results, store_mod.UNKNOWN

@@ -35,7 +35,7 @@ def event(**changes):
     return {"fixture_id": "base", "observer": "fixture-observer", "observer_instance": "fixture-capture",
             "src_container": "fixture-backend", "src_service": "backend", "event_type": "connection",
             "dst_service": "unknown", "dst_ip": "192.0.2.9", "dst_port": 8080,
-            "connection_id": "fixture-connection", "bytes_sent": 240, **changes}
+            "connection_id": "fixture-connection", "protocol": "tcp", "bytes_sent": 240, **changes}
 
 
 def native_matches(pipeline, rows):
@@ -76,6 +76,20 @@ class ScenarioV2Tests(unittest.TestCase):
         self.assertNotIn("V2DBReadSurge", alerts)
         self.assertIn("V2LoginBruteForce", alerts)
         self.assertTrue(any("observer mapping" in x for x in json.loads(b["manifest.json"])["excluded"]))
+
+    def test_rotated_current_policy_is_shared_without_a_fixed_attack_address(self):
+        current = policy()
+        endpoint = next(e for e in current["allow"] if e["match"] == "endpoint")
+        endpoint.update(ip="203.0.113.88", port=8443)
+        before = deepcopy(current)
+        b = release.render(profile(), config(), current)
+        self.assertEqual(current, before)
+        self.assertEqual(yaml.safe_load(b["allowlist.yml"]), current)
+        external = next(r for r in rules(b, "loki/fake/release.rules.yml") if r["alert"] == "V2RepeatedExternalConnections")
+        self.assertIn('v2_dst_ip!="203.0.113.88"', external["expr"])
+        self.assertNotIn("10.210.0.30", external["expr"])
+        mounts = yaml.safe_load(b["jh.compose.override.yml"])["services"]["pipeline"]["volumes"]
+        self.assertTrue(any("/allowlist.yml:/app/config/allowlist.yml:ro" in m for m in mounts))
 
     def test_reject_placeholder_unattested_injection_and_missing_pg(self):
         changes = [lambda c: c.update(version=True), lambda c: c["network"].update(mapping_verified=False),

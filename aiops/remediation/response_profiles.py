@@ -18,7 +18,7 @@ class ResponseProfile:
 
 PROFILES = {
     "V2ReconScan": ResponseProfile("frontend", "container", (), "Scan attempt: notify; no path/rate-limit executor."),
-    "V2RepeatedExternalConnections": ResponseProfile("backend", "container", ("ISOLATE",), "Repeated unauthorized connections; not proof of C2."),
+    "V2RepeatedExternalConnections": ResponseProfile("backend", "container", ("ISOLATE", "BLOCK_EGRESS"), "Repeated unauthorized connections; not proof of C2."),
     "V2UnauthorizedDataTransfer": ResponseProfile("backend", "container", ("ISOLATE",), "Unauthorized byte transfer; verify context before isolation."),
     "V2UnauthorizedTransferEarly": ResponseProfile("backend", "container", ("ISOLATE",), "Observer transfer threshold reached; final bytes are not yet known."),
     "V2InternalPortScan": ResponseProfile("backend", "container", ("ISOLATE",), "Many internal endpoints; verify authorized administration."),

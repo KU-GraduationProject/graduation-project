@@ -1,0 +1,14 @@
+# Private deployment inventory. No scenario IP or built-in malicious destination.
+# Populate after inspecting the approved target and locally built helper image.
+version: 1
+enabled: false
+helper_image_id: REPLACE_SHA256_LOCAL_HELPER_IMAGE_ID
+policy_file: /app/private/current-allowlist.yml
+journal_path: /app/state/egress.sqlite3
+preserve_networks: [mgmt-net, aiops-net]
+targets:
+  leafy-backend:
+    identity: {site: REPLACE_SITE, source: REPLACE_SOURCE, service: backend, runtime: container, target: leafy-backend}
+    container_id: REPLACE_FULL_CONTAINER_ID
+    image_id: REPLACE_SHA256_WORKLOAD_IMAGE_ID
+    labels: {io.leafy.remediation: workload, com.docker.compose.project: REPLACE_PROJECT, com.docker.compose.service: backend}

@@ -66,6 +66,10 @@ class PolicyFileTest(unittest.TestCase):
                     "RESTART": "high", "PAUSE": "high", "ISOLATE": "high",
                     "KILL_SESSIONS": "medium", "ROLLBACK": "high", "RECREATE": "high",
                     "LOCK_ACCOUNT": "medium", "REVOKE_SESSION": "high", "DISABLE_FEATURE": "medium", "UNLOCK_ACCOUNT": "high", "ENABLE_FEATURE": "high"}
+        from executor.managed_registry import ACTIONS
+        expected.update({a: "high" for a in ACTIONS})
+        expected.update({"BLOCK_PATH": "medium", "RATE_LIMIT": "medium", "RESTRICT_BUCKET": "medium",
+                         "PACKET_CAPTURE": "medium", "SET_LOG_LEVEL": "low", "RECORD_INCIDENT": "low"})
         self.assertEqual({k: v.action_risk for k, v in e.config.actions.items()}, expected)
 
     def test_throttle_confirmed_parameters(self):

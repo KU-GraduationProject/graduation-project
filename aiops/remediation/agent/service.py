@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from agent.contract import Authorization, Command
+from executor import managed_registry
 from agent.ledger import Conflict
 import evidence as evidence_mod
 from executor.base import RECOVERY_ACTION, ExecutorError, blocked, skipped, ExecutionResult
@@ -30,6 +31,7 @@ class PinnedDockerExecutor(LocalDockerExecutor):
         self.target_name, self.rule = target, rule
         super().__init__(client=client, isolate_networks=rule.isolate_networks,
                          preserve_networks=rule.preserve_networks)
+        self.memory_limit_bytes = rule.memory_limit_bytes or 0
 
     def _container(self, target):
         if target not in (self.target_name, self.rule.container_id):
@@ -53,12 +55,97 @@ class PinnedDockerExecutor(LocalDockerExecutor):
 
 
 class AgentService:
-    def __init__(self, config, ledger, mode="disabled", client_factory=None, deployment_executor=None):
+    def __init__(self, config, ledger, mode="disabled", client_factory=None, deployment_executor=None, managed_executors=None):
         if mode not in ("disabled", "live"):
             raise ValueError("AGENT_MODE must be disabled or live")
         self.config, self.ledger, self.mode = config, ledger, mode
         self.client_factory = client_factory or self._docker
         self._deployment_executor = deployment_executor
+        self._managed_executors = dict(managed_executors or {})
+
+    def managed(self, action):
+        if action not in managed_registry.REMOTE_ACTIONS:
+            raise Denied("managed_action_not_supported_by_docker_agent")
+        if action not in self._managed_executors:
+            self._managed_executors[action] = managed_registry.create_executor(action)
+        return self._managed_executors[action]
+
+    def authorize_managed(self, request):
+        from executor.identity import normalized_identity
+        identity = normalized_identity(request.identity.model_dump())
+        rule = self._readable_rule(request.target)
+        if (request.agent_id != self.config.agent_id or self.config.agent_id == "unconfigured"
+                or identity["site"] != self.config.site or identity["source"] != self.config.source
+                or identity["target"] != request.target or identity["service"] != rule.labels.get("com.docker.compose.service")
+                or request.action_type not in rule.actions
+                or request.expected_target.model_dump() != {k: getattr(rule, k) for k in ("container_id", "image_id", "labels")}):
+            raise Denied("managed_identity_or_allowlist_mismatch")
+        # This Agent controls Linux containers only; host-service actions require
+        # the separately configured native host execution boundary.
+        if request.action_type not in managed_registry.REMOTE_ACTIONS or request.identity.runtime != "container":
+            raise Denied("managed_container_runtime_required")
+        if self.mode != "live":
+            raise Denied("agent_managed_disabled")
+        executor = self.executor(request.target, rule)
+        try:
+            executor.snapshot(rule.container_id)
+        except ExecutorError:
+            raise Denied("managed_target_identity_changed") from None
+        finally:
+            close = getattr(executor.client, "close", None)
+            if close: close()
+        return rule
+
+    def plan_managed(self, request):
+        from executor.managed import valid_plan_digest
+        self.authorize_managed(request)
+        plan = self.managed(request.action_type).plan_record(request.identity.model_dump(), [request.target], request.action_type, request.parameters)[request.target]
+        if not valid_plan_digest(plan):
+            raise Denied("invalid_native_managed_plan")
+        return {"agent_id": self.config.agent_id, "identity": request.identity.model_dump(), "target": request.target,
+                "expected_target": request.expected_target.model_dump(), "plan": plan}
+
+    def execute_managed(self, command):
+        from executor.managed import valid_plan_digest, check_record
+        from executor.deployment import deadline
+        self.authorize_managed(command)
+        now = time.time()
+        if (command.authorization.kind != "manual" or command.authorization.decision_id != command.remediation_id
+                or command.authorization.approval_id != hashlib.sha256(("execute:" + command.remediation_id).encode()).hexdigest()
+                or command.authorization.approved_by != command.approval.approved_by
+                or command.expires_at <= now or command.expires_at > now + 300
+                or not valid_plan_digest(command.plan) or command.plan["identity"] != command.identity.model_dump()
+                or command.plan["target"] != command.target or command.plan["action_type"] != command.action_type
+                or command.plan["parameters"] != command.parameters):
+            raise Denied("invalid_managed_approval_or_plan")
+        approval = command.approval.model_dump()
+        approval["approval_expires_at"] = datetime.fromtimestamp(min(command.expires_at, deadline(approval["approval_expires_at"])), timezone.utc).isoformat()
+        native = self.managed(command.action_type)
+        local_record = SimpleNamespace(remediation_id=command.remediation_id, action_type=command.action_type,
+            identity=command.identity.model_dump(), targets=[command.target], action_parameters=command.parameters,
+            target_bindings={command.target: command.plan}, evidence={"targets": {command.target: command.plan}},
+            state="EXECUTING", requires_approval=True, executor_name=native.name, ttl_seconds=None, recovery_mode="none", **approval)
+        check_record(local_record, native.name)
+        record, claimed = self.ledger.claim(command)
+        if not claimed: return record
+        dispatched = False
+        try:
+            if native.validate_record(local_record):
+                raise Denied("managed_native_plan_changed")
+            record["evidence"] = command.plan
+            self.ledger.save(record)
+            # Revalidate the pinned Agent allowlist after planning/journaling.
+            self.authorize_managed(command)
+            dispatched = True
+            result = native.execute_record(local_record, command.target, command.approval.approved_by)
+        except (ValueError, Denied):
+            result = (ExecutionResult(command.action_type, command.target, "UNKNOWN", detail="managed_agent_effect_unconfirmed_no_retry")
+                      if dispatched else blocked(command.action_type, command.target, "managed_agent_preflight_rejected"))
+        except Exception:
+            result = ExecutionResult(command.action_type, command.target, "UNKNOWN", detail="managed_agent_effect_unconfirmed_no_retry")
+        record.update(execution=result.as_dict(), state=result.status, verified_at=time.time() if result.ok else None)
+        self.ledger.save(record, release=result.ok or result.status in {"BLOCKED", "SKIPPED"})
+        return record
 
     def deployment(self):
         if self._deployment_executor is None:
@@ -190,6 +277,8 @@ class AgentService:
             raise Denied("manual_approval_required_remote_auto_disabled")
         if not command.authorization.approved_by.strip():
             raise Denied("missing_approval_identity")
+        if command.resource == "memory" and (command.action_type not in {"THROTTLE", "UNTHROTTLE"} or not rule.memory_limit_bytes or command.expected_memory_limit_bytes != rule.memory_limit_bytes):
+            raise Denied("memory_resource_not_allowlisted")
         now = time.time()
         if command.expires_at <= now or command.expires_at > now + 300:
             raise Denied("request_expired_or_lifetime_too_long")
@@ -277,14 +366,15 @@ class AgentService:
                         raise Denied(reason or "management_network_not_preserved")
                 # NanoCPUs / shares cannot be safely converted by the quota executor.
                 # Fail closed rather than clobbering a different CPU control mode.
-                if command.action_type == "THROTTLE" and snapshot["resources"].get("nano_cpus"):
+                if command.action_type == "THROTTLE" and command.resource == "cpu" and snapshot["resources"].get("nano_cpus"):
                     raise Denied("nanocpu_throttle_unsupported")
-                if command.action_type == "THROTTLE":
+                if command.action_type == "THROTTLE" and command.resource == "cpu":
                     quota, period = (snapshot["resources"].get(k) for k in ("cpu_quota", "cpu_period"))
                     if not isinstance(quota, int) or not isinstance(period, int):
                         raise Denied("original_cpu_limits_unknown")
                     if quota > 0 and quota / (period or 100000) <= executor.cpu_quota / executor.cpu_period:
                         raise Denied("throttle_would_not_reduce_cpu_limit")
+                snapshot["action_parameters"] = {"resource": "memory"} if command.resource == "memory" else {}
                 record["evidence"] = snapshot
                 if command.ttl_seconds:
                     record["deadline"] = time.time() + command.ttl_seconds
@@ -306,6 +396,8 @@ class AgentService:
                 close = getattr(executor.client, "close", None)
                 if close:
                     close()
+        if command.action_type == "THROTTLE" and result.ok and result.after.get("resource") == "memory":
+            record["evidence"]["memory_throttle"] = result.after
         record["execution"] = result.as_dict()
         record["state"] = result.status
         record["verified_at"] = time.time() if result.ok else None
@@ -322,6 +414,9 @@ class AgentService:
         if any(original["request"].get(k) != command.model_dump().get(k)
                for k in ("identity", "agent_id", "approved_target")):
             raise Denied("recovery_approval_does_not_match_original_target")
+        if (original["request"].get("resource", "cpu") != command.resource
+                or original["request"].get("expected_memory_limit_bytes") != command.expected_memory_limit_bytes):
+            raise Denied("recovery_resource_does_not_match_original")
         if automatic and original["request"]["action_type"] != "THROTTLE":
             raise Denied("automatic_reconnect_or_unpause_forbidden")
         if self.mode != "live":
@@ -375,6 +470,8 @@ class AgentService:
     def tick(self):
         if self.mode != "live":
             return
+        if os.getenv("REMEDIATION_OBSERVABILITY_CONFIG_PATH"):
+            self.managed("SET_LOG_LEVEL").run_due()
         for record in self.ledger.all():
             if (record["request"]["action_type"] != "THROTTLE" or record["state"] != "SUCCESS"
                     or record["recovery_state"] or not record["deadline"]
@@ -385,6 +482,8 @@ class AgentService:
                               identity=record["request"]["identity"],
                               agent_id=record["request"]["agent_id"],
                               approved_target=record["request"]["approved_target"],
+                              resource=record["request"].get("resource", "cpu"),
+                              expected_memory_limit_bytes=record["request"].get("expected_memory_limit_bytes"),
                               authorization=Authorization(kind="policy", approved_by="agent-ttl",
                                   decision_id=record["remediation_id"],
                                   approval_id=hashlib.sha256(("ttl:" + record["remediation_id"]).encode()).hexdigest()))

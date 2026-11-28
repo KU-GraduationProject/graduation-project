@@ -11,3 +11,6 @@ slack-sdk>=3.39,<4
 aiohttp>=3.10,<4
 # PostgreSQL executor uses TCP/libpq, including Windows Host PostgreSQL 17.
 psycopg[binary]>=3.2,<4
+
+# Native host closed-log cleanup must inspect all open files, never guess.
+psutil>=6,<8

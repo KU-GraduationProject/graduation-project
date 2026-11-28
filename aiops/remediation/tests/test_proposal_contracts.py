@@ -26,7 +26,7 @@ class ProposalContractTests(unittest.TestCase):
         self.assertTrue(pipeline_names.isdisjoint({"UNLOCK_ACCOUNT", "ENABLE_FEATURE", "SCALE"}))
 
     def test_all_proposals_have_policy_risk_and_cannot_execute_at_any_severity(self):
-        self.assertEqual(len(self.engine.config.proposed_actions), 16)
+        self.assertEqual(set(self.engine.config.proposed_actions), {"CAPTURE", "BACKUP_DB"})
         for name, proposal in self.engine.config.proposed_actions.items():
             for severity in ("low", "medium", "high", "critical"):
                 with self.subTest(action=name, severity=severity):

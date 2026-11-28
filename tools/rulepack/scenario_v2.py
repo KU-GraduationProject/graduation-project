@@ -90,13 +90,13 @@ def json_fields(stream, strings, numbers=()):
 def network_pipeline(release, config, event_type="connection"):
     name = release["gc"]["targets"]["backend"]["name"]
     p = json_fields(selector({"log_type": "network", "src_service": "backend", "event_type": event_type}),
-                    ("observer", "observer_instance", "src_container", "src_service", "event_type", "dst_service", "dst_ip", "connection_id"),
+                    ("observer", "observer_instance", "src_container", "src_service", "event_type", "dst_service", "dst_ip", "connection_id", "protocol"),
                     ("dst_port",))
     return (p + ' | v2_observer_instance=' + json.dumps(config["network"]["observer_instance"])
             + ' | v2_observer=' + json.dumps(config["network"]["observer"])
             + ' | v2_src_container=' + json.dumps(name)
             + ' | v2_src_service="backend" | v2_event_type=' + json.dumps(event_type)
-            + ' | v2_connection_id!="" | v2_dst_ip!="" | v2_dst_port >= 1 | v2_dst_port <= 65535 | __error__=""')
+            + ' | v2_protocol=~"tcp|udp" | v2_connection_id!="" | v2_dst_ip!="" | v2_dst_port >= 1 | v2_dst_port <= 65535 | __error__=""')
 
 
 def unauthorized(p, policy):
@@ -137,16 +137,16 @@ def build(release, config, allowlist):
         ext += ' | json v2_bytes_sent="bytes_sent" | v2_bytes_sent!="" | v2_bytes_sent >= 0 | v2_bytes_sent <= 4096 | __error__=""'
         # Distinct connection IDs prevent duplicate delivery of one Zeek event
         # from looking like many probes. Counts are evidence, not ground truth.
-        conns = f'sum by (v2_dst_ip, v2_dst_port, v2_connection_id) (count_over_time({ext} [5m]))'
-        expr = f'count by (v2_dst_ip, v2_dst_port) ({conns}) >= {t["external_connections"]}'
+        conns = f'sum by (v2_dst_ip, v2_dst_port, v2_protocol, v2_connection_id) (count_over_time({ext} [5m]))'
+        expr = f'count by (v2_dst_ip, v2_dst_port, v2_protocol) ({conns}) >= {t["external_connections"]}'
         logs.append(rule("V2RepeatedExternalConnections", expr, ident("backend"),
                          "Repeated small connections outside allowlist; periodicity/C2 intent require RCA."))
         window = allowlist["thresholds"]["window"]
         minimum = allowlist["thresholds"]["min_transfer_bytes"]
         transfer = unauthorized(p, allowlist)
         transfer += ' | json v2_bytes_sent="bytes_sent" | v2_bytes_sent!="" | v2_bytes_sent >= 0 | __error__="" | unwrap v2_bytes_sent | __error__=""'
-        per_connection = f'max by (v2_dst_ip, v2_dst_port, v2_connection_id) (max_over_time({transfer} [{window}]))'
-        logs.append(rule("V2UnauthorizedDataTransfer", f'sum by (v2_dst_ip, v2_dst_port) ({per_connection}) > {minimum}', ident("backend"),
+        per_connection = f'max by (v2_dst_ip, v2_dst_port, v2_protocol, v2_connection_id) (max_over_time({transfer} [{window}]))'
+        logs.append(rule("V2UnauthorizedDataTransfer", f'sum by (v2_dst_ip, v2_dst_port, v2_protocol) ({per_connection}) > {minimum}', ident("backend"),
                          "Final connection bytes outside shared allowlist; one maximum per connection prevents duplicate delivery inflation."))
         early = unauthorized(network_pipeline(release, config, "connection_threshold"), allowlist)
         early += ' | json v2_threshold="observer_meta.bytes_threshold" | v2_threshold!="" | v2_threshold >= ' + str(minimum) + ' | __error__=""'
@@ -156,7 +156,7 @@ def build(release, config, allowlist):
         # one DB port. Scan monitoring deliberately does NOT exclude allowed peers.
         private = r"^(10\..*|192\.168\..*|172\.(1[6-9]|2[0-9]|3[01])\..*)$"
         scan = p + ' | v2_dst_ip=~' + json.dumps(private)
-        endpoints = f'sum by (v2_dst_ip, v2_dst_port) (count_over_time({scan} [2m]))'
+        endpoints = f'sum by (v2_dst_ip, v2_dst_port, v2_protocol) (count_over_time({scan} [2m]))'
         logs.append(rule("V2InternalPortScan", f'count({endpoints}) >= {t["internal_endpoints"]}', ident("backend"),
                          "Distinct internal IP/port fan-out; verify authorized maintenance before isolation."))
     else:

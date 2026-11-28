@@ -1,0 +1,31 @@
+# Copy outside the repository; enable only after operator verification.
+version: 1
+enabled: false
+targets:
+  restore-db:
+    identity:
+      site: REPLACE_SITE
+      source: REPLACE_POSTGRES_SOURCE
+      service: db
+      runtime: host
+      target: restore-db
+    database: restore_review
+    system_identifier: REPLACE_NUMERIC_CLUSTER_SYSTEM_IDENTIFIER
+    server_addr: REPLACE_VERIFIED_NUMERIC_SERVER_ADDRESS
+    server_port: 5432
+    executor_role: restore_operator
+    connection:
+      host_env: REMEDIATION_ADMIN_PGHOST
+      port_env: REMEDIATION_ADMIN_PGPORT
+      user_env: REMEDIATION_ADMIN_PGUSER
+      pgpassfile_env: REMEDIATION_ADMIN_PGPASSFILE
+      sslmode: verify-full
+    actions: [RESTORE_DB, DISABLE_DB_ROLE, ENABLE_DB_ROLE]
+    roles: [REPLACE_LOGIN_ONLY_NONOWNER_ROLE]
+    backups:
+      reviewed_backup:
+        manifest_file: /absolute/private/backup-manifest.json
+        database_id: REPLACE_BACKUP_SOURCE_DATABASE_ID
+    # This is an operator attestation, not proof of network isolation.
+    isolated_restore: false
+    timeout_seconds: 120
