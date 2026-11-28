@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from datetime import timedelta
+from pathlib import Path
 
 import httpx
 
@@ -83,7 +85,8 @@ def find_reusable(store: LocalFsStore, acquisition_key: str) -> dict | None:
 
 
 def acquire(item: dict, store: LocalFsStore, run: RunContext, transport: httpx.BaseTransport | None = None,
-            endpoints: dict | None = None, sleep=time.sleep, page_delay_s: float | None = None) -> dict:
+            endpoints: dict | None = None, sleep=time.sleep, page_delay_s: float | None = None,
+            run_log_path: str | None = None) -> dict:
     if any(token in (item.get("query_text") or "") for token in enums.FORBIDDEN_SELECTOR_TOKENS):
         raise ValueError(f"forbidden stream in selector (DQ-B06): {item['query_text']}")
     if not item["force_reacquire"] and item["unavailable_reason"] is None:
@@ -102,6 +105,9 @@ def acquire(item: dict, store: LocalFsStore, run: RunContext, transport: httpx.B
     if item["unavailable_reason"] is not None:
         result.update(status="scope_unavailable", status_reason=item["unavailable_reason"])
         completed_at = requested_at
+    elif item["source_system"] == "scenario_run_log":
+        _acquire_run_log(run_log_path or os.environ.get("DP_SCENARIO_RUN_LOG"), acquisition_id, store, result)
+        completed_at = run.now()
     else:
         with httpx.Client(transport=transport, timeout=TIMEOUT_S) as client:
             if item["source_system"] == "loki":
@@ -132,6 +138,9 @@ def acquire(item: dict, store: LocalFsStore, run: RunContext, transport: httpx.B
     if result["rows"]:
         if item["source_system"] == "loki":
             outputs.append(("bronze.loki_entry", paths.loki_entry_file(acquisition_id, item["stream_class"]),
+                            result["rows"]))
+        elif item["source_system"] == "scenario_run_log":
+            outputs.append(("bronze.scenario_run_entry", paths.scenario_run_entry_file(acquisition_id),
                             result["rows"]))
         else:
             outputs.append(("bronze.prometheus_sample", paths.prometheus_sample_file(acquisition_id),
@@ -287,6 +296,36 @@ def _acquire_prometheus(item, client, base, acquisition_id, store, result) -> No
         result.update(status="ok")
     else:
         result.update(status="empty_verified" if result["series_preflight"] == "present" else "empty_unverified")
+
+
+def _acquire_run_log(path: str | None, acquisition_id, store, result) -> None:
+    """scenarios/v2 run log: the whole file is one raw page and every non-empty line one Bronze row, read the
+    way `scenarios/v2/fixtures.py` reads it (universal newlines, blank lines skipped). Nothing is parsed here."""
+    if not path:
+        result.update(status="not_attempted", status_reason="run_log_unconfigured")
+        return
+    try:
+        body = Path(path).read_bytes()
+    except FileNotFoundError:
+        result.update(status="failed", status_reason="file_not_found")
+        return
+    except OSError:
+        result.update(status="failed", status_reason="read_error")
+        return
+    page = _store_page(store, "scenario_run_log", acquisition_id, result, body)
+    try:
+        lines = re.split(r"\r\n|\r|\n", body.decode("utf-8"))
+    except UnicodeDecodeError:
+        result.update(status="failed", status_reason="read_error")
+        return
+    for line_no, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        result["rows"].append({
+            "bronze_id": canonical.bronze_id(acquisition_id, page, len(result["rows"])),
+            "acquisition_id": acquisition_id, "line_no": line_no, "line": line, "line_sha256": sha256_text(line),
+            "record_key": canonical.scenario_run_record_key(line), "_schema_version": "1.0"})
+    result.update(status="ok" if result["rows"] else "empty_verified")
 
 
 def record_run(store: LocalFsStore, run: RunContext, refs: list[dict]) -> dict:

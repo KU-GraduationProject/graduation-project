@@ -3,6 +3,7 @@
 실행 (aiops/dataplatform 디렉터리에서):
     python -m unittest discover -s tests -v
 """
+import json
 import os
 import sys
 import tempfile
@@ -36,6 +37,10 @@ class PhaseTest(unittest.TestCase):
         self.sources = FixtureSources()
         self.hex = fx.Hex()
         self.clock = fx.Clock("2026-11-18T01:00:00.000000Z")
+        env = mock.patch.dict(os.environ)  # the run log path is set per test (#71)
+        env.start()
+        self.addCleanup(env.stop)
+        os.environ.pop("DP_SCENARIO_RUN_LOG", None)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -50,8 +55,8 @@ class PhaseTest(unittest.TestCase):
     # ⑤ (in-process) fixture HTTP -> A -> B -> C -> validate PASS
     def test_chain_commits_and_validate_passes(self):
         result = self.run_all()
-        self.assertEqual(len(result["bronze"]), 15)
-        self.assertEqual(len(result["silver"]), 7)
+        self.assertEqual(len(result["bronze"]), 16)
+        self.assertEqual(len(result["silver"]), 8)
         self.assertEqual([g["build_status"] for g in result["gold"]], ["partial"])
         report = checks.summarize(checks.run_checks(self.lake), checks.find_orphans(self.lake))
         self.assertEqual((report["status"], report["orphans"]), ("passed", []))
@@ -60,6 +65,55 @@ class PhaseTest(unittest.TestCase):
         self.assertEqual(channels, {("primary", "log"): "complete", ("primary", "metric"): "unavailable",
                                     ("primary", "network"): "unavailable", ("related", "log"): "complete",
                                     ("related", "metric"): "complete", ("related", "network"): "complete"})
+
+    # #71: run log unset / missing -> run_log_unavailable, never a silent "no run"
+    def link(self, result):
+        gold = self.lake.read_manifest("gold", result["gold"][0]["build_id"])
+        edges = [e for e in output_rows(self.lake, gold, "lineage.edge") if e["child_dataset"] == "gold.scenario_link"]
+        return output_rows(self.lake, gold, "gold.scenario_link")[0], edges
+
+    def test_scenario_link_without_run_log(self):
+        link, edges = self.link(self.run_all())
+        self.assertEqual((link["link_status"], link["run_log_status"], link["candidate_run_ids"]),
+                         ("run_log_unavailable", "not_attempted", []))
+        self.assertEqual([e["relation"] for e in edges], ["anchored_on"])
+        os.environ["DP_SCENARIO_RUN_LOG"] = os.path.join(self.tmp.name, "absent.jsonl")
+        link, _ = self.link(self.run_all({**fx.request(), "stream_classes": ["scenario_run"]}))
+        self.assertEqual((link["link_status"], link["run_log_status"]), ("run_log_unavailable", "failed"))
+
+    # #71: evaluation procedure "re-acquire scenario_run -> Gold rebuild" moves no_run -> paired -> ambiguous
+    def test_scenario_run_reacquisition_rebuilds_the_link(self):
+        path = os.path.join(self.tmp.name, "runs.jsonl")
+        os.environ["DP_SCENARIO_RUN_LOG"] = path
+
+        def append(start, end, status="ok", scenario="f2_c_db_pool_exhaustion"):
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"scenario_id": scenario, "variant_id": None, "seed": None, "started_at": start,
+                                     "ended_at": end, "status": status}) + "\n")
+
+        reacquire = {**fx.request(), "force_reacquire": True, "stream_classes": ["scenario_run"]}
+        append("2026-11-10T02:30:00+00:00", "2026-11-10T02:40:00+00:00", scenario="s1_a_input_attack")
+        link, _ = self.link(self.run_all())
+        self.assertEqual((link["link_status"], link["run_log_status"]), ("no_run", "ok"))
+
+        append("2026-11-10T02:58:00+00:00", "2026-11-10T03:02:30+00:00")  # the run ended after the first acquisition
+        result = self.run_all(reacquire)
+        self.assertEqual([b["dataset"] for b in result["silver"]], ["silver.scenario_run"])
+        link, edges = self.link(result)
+        self.assertEqual((link["link_status"], link["scenario_id"], len(link["candidate_run_ids"])),
+                         ("paired", "f2_c_db_pool_exhaustion", 1))
+
+        append("2026-11-10T02:59:00+00:00", "2026-11-10T03:01:00+00:00", scenario="c_d_normal_restart")
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write('{"scenario_id": "broken", "started_at": "2026-11-10T02:59:00"}\n')  # no offset -> quarantine
+        link, edges = self.link(self.run_all(reacquire))
+        self.assertEqual((link["link_status"], link["scenario_id"], len(link["candidate_run_ids"])),
+                         ("ambiguous_run", None, 2))
+        self.assertEqual(sorted(e["parent_key"] for e in edges if e["relation"] == "run_candidate"),
+                         sorted(link["candidate_run_ids"]))
+        self.assertEqual(link["_quality_flags"], ["run_log_quarantined"])
+        self.assertEqual(checks.summarize(checks.run_checks(self.lake), checks.find_orphans(self.lake))["status"],
+                         "passed")
 
     # ② a re-run reuses closed ok acquisitions; rebuilt coverages get new builds and keep the previous ones
     def test_rerun_keeps_previous_builds(self):
@@ -195,7 +249,8 @@ class DagStructureTest(unittest.TestCase):
     def test_phase_tasks(self):
         tasks = {d: sorted(self.bag.get_dag(d).task_ids) for d in self.bag.dag_ids}
         self.assertEqual(tasks["dp_bronze_acquire"],
-                         ["acquire_loki", "acquire_prometheus", "commit_bronze", "plan_loki", "plan_prometheus"])
+                         ["acquire_loki", "acquire_prometheus", "acquire_scenario_runs", "commit_bronze", "plan_loki",
+                          "plan_prometheus", "plan_scenario_runs"])
         self.assertEqual(tasks["dp_validate"], ["check_lineage", "check_manifests", "check_pointers",
                                                 "check_raw_pages", "check_silver", "find_orphans", "report"])
         self.assertEqual(tasks["dp_silver_transform"], ["build_silver", "plan_builds", "update_current"])

@@ -168,7 +168,7 @@ class DiscoverTest(unittest.TestCase):
         result = phases.run_all(due[0]["conf"], self.lake,
                                 lambda task: fx.run_context(clock=clock, hex8=hex8, task_id=task),
                                 transport=mock_transport(self.sources))
-        self.assertEqual((result["incident_id"], len(result["bronze"])), (FIXTURE_INCIDENT, 15))
+        self.assertEqual((result["incident_id"], len(result["bronze"])), (FIXTURE_INCIDENT, 16))
         dsc.mark_triggered(self.lake, due, READY, "run-1")
         report = checks.summarize(checks.run_checks(self.lake), checks.find_orphans(self.lake))
         self.assertEqual((report["status"], report["orphans"]), ("passed", []))  # discover state is not an orphan

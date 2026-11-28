@@ -210,5 +210,42 @@ class RcaEnvelopeTest(unittest.TestCase):
         self.assertEqual(ctx.exception.reason, "invalid_value")
 
 
+
+class ScenarioRunTest(unittest.TestCase):
+    """`silver.scenario_run` (#71): one row per run record of scenarios/v2/run.py; bad lines are quarantined."""
+
+    LINE = {"scenario_id": "f2_c_db_pool_exhaustion", "variant_id": None, "seed": None,
+            "started_at": "2026-11-10T02:58:00.000000+00:00", "ended_at": "2026-11-10T03:02:30.000000+00:00",
+            "status": "ok"}
+
+    def normalize(self, rec):
+        from silver.normalize import scenario_run
+        line = rec if isinstance(rec, str) else json.dumps(rec)
+        return scenario_run({"line": line, "record_key": canonical.scenario_run_record_key(line), "line_no": 1}, {})
+
+    def test_run_record(self):
+        line = json.dumps({**self.LINE, "variant_id": "v2", "seed": 7})
+        out = self.normalize(line)
+        self.assertEqual(out.pk, canonical.scenario_run_record_key(line))
+        self.assertEqual(out.values, {
+            "scenario_run_id": out.pk, "scenario_id": "f2_c_db_pool_exhaustion", "variant_id": "v2", "seed": 7,
+            "started_at": "2026-11-10T02:58:00.000000Z", "ended_at": "2026-11-10T03:02:30.000000Z",
+            "started_at_raw": "2026-11-10T02:58:00.000000+00:00", "ended_at_raw": "2026-11-10T03:02:30.000000+00:00",
+            "status": "ok"})
+        self.assertEqual(out.flags, set())
+
+    def test_bad_lines_are_quarantined(self):
+        from silver.normalize import Quarantine
+        cases = [("not json", "invalid_json"), ("[1]", "not_object"),
+                 ({k: v for k, v in self.LINE.items() if k != "scenario_id"}, "missing_required_field"),
+                 ({**self.LINE, "status": None}, "missing_required_field"),
+                 ({**self.LINE, "started_at": "2026-11-10T02:58:00"}, "invalid_timestamp"),  # no offset (C-4)
+                 ({**self.LINE, "seed": "7"}, "invalid_value"), ({**self.LINE, "scenario_id": 3}, "invalid_value")]
+        for rec, reason in cases:
+            with self.subTest(rec=rec), self.assertRaises(Quarantine) as ctx:
+                self.normalize(rec)
+            self.assertEqual(ctx.exception.reason, reason)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -8,6 +8,7 @@ manifest를 commit한다. 실패한 질의도 acquisition 행을 남긴다(DQ-B0
 완료하면 `dp_bronze` asset을 내보내 Silver phase를 시작한다.
 
 원천 주소: `DP_LOKI_URL`, `DP_PROMETHEUS_URL` (Compose 기본값은 fixture mock `dp-mock-sources`).
+시나리오 실행 기록(`scenarios/v2` runs.jsonl)은 `DP_SCENARIO_RUN_LOG` 파일을 통째로 읽는 별도 lane이다(#71).
 """
 from airflow.sdk import TriggerRule, dag, get_current_context, task
 
@@ -44,15 +45,23 @@ def dp_bronze_acquire():
         _label(item)
         return phases.acquire(item, phases.store(), _run({"acquisition_key": item["acquisition_key"]}))
 
+    @task(retries=2, map_index_template="{{ label }}")
+    def acquire_scenario_runs(item: dict) -> dict:
+        _label(item)
+        return phases.acquire(item, phases.store(), _run({"acquisition_key": item["acquisition_key"]}))
+
     # NONE_FAILED: a lane with no plan items (e.g. a db_log-only reprocess) is skipped, not failed.
     @task(trigger_rule=TriggerRule.NONE_FAILED, outlets=[BRONZE])
-    def commit_bronze(loki: list[dict] | None, prometheus: list[dict] | None) -> dict:
-        return phases.summarize(list(loki or []) + list(prometheus or []))
+    def commit_bronze(loki: list[dict] | None, prometheus: list[dict] | None,
+                      scenario_runs: list[dict] | None) -> dict:
+        return phases.summarize(list(loki or []) + list(prometheus or []) + list(scenario_runs or []))
 
     # One lane per source system so each lane keeps its own read pool.
     loki = acquire_loki.expand(item=plan_incident.override(task_id="plan_loki")("loki"))
     prometheus = acquire_prometheus.expand(item=plan_incident.override(task_id="plan_prometheus")("prometheus"))
-    commit_bronze(loki, prometheus)
+    scenario_runs = acquire_scenario_runs.expand(
+        item=plan_incident.override(task_id="plan_scenario_runs")("scenario_run_log"))
+    commit_bronze(loki, prometheus, scenario_runs)
 
 
 dp_bronze_acquire()

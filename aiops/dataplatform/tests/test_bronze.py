@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import httpx
 
@@ -41,13 +42,14 @@ class BronzeTest(unittest.TestCase):
         start = fixture_row["requested_at"] if fixture_row else clock
         context = fx.run_context(fx.runs()[run or fx.FIRST_RUN], clock=fx.Clock(start), hex8=hex8)
         result = acquire(item, self.store, context, transport=transport or mock_transport(self.sources),
-                         page_delay_s=0)
+                         page_delay_s=0, run_log_path=str(fx.FIXTURE_DIR / "02_scenario_runs.jsonl"))
         manifest = self.store.read_manifest("bronze", result["build_id"])
         return result, manifest, output_rows(self.store, manifest, "bronze.acquisition")[0]
 
     def rows(self, manifest):
         return (output_rows(self.store, manifest, "bronze.loki_entry")
-                + output_rows(self.store, manifest, "bronze.prometheus_sample"))
+                + output_rows(self.store, manifest, "bronze.prometheus_sample")
+                + output_rows(self.store, manifest, "bronze.scenario_run_entry"))
 
     # ① fixture request -> the same rows as 10/11/12 (ids and times aside: ids are injected here)
     def test_fixture_request_reproduces_bronze(self):
@@ -62,6 +64,7 @@ class BronzeTest(unittest.TestCase):
                              {k: v for k, v in expected.items() if k not in TIMES + ("run_id",)}, expected["query_name"])
             self.assertEqual(self.rows(manifest), [r for r in fx.jsonl("11_bronze_loki_entry.jsonl")
                                                    + fx.jsonl("12_bronze_prometheus_sample.jsonl")
+                                                   + fx.jsonl("14_bronze_scenario_run_entry.jsonl")
                                                    if r["acquisition_id"] == expected["acquisition_id"]])
             fixture_manifest = manifests[expected["acquisition_id"]]
             data_outputs = [o for o in manifest["outputs"] if o["dataset"] != "bronze.acquisition"]
@@ -244,6 +247,43 @@ class BronzeTest(unittest.TestCase):
         item = next(i for i in plan_incident(fx.request(), fx.bindings_raw()) if i["stream_class"] == "db_log")
         _, _, acq = self.run_item(item, clock="2026-11-10T03:10:00.000000Z")  # before window_end + 600s
         self.assertFalse(acq["window_closed"])
+
+    # scenario run log (#71): the file is kept uninterpreted, one Bronze row per non-empty line
+    def run_file(self, path):
+        item = next(i for i in plan_incident(fx.request(), fx.bindings_raw()) if i["stream_class"] == "scenario_run")
+        context = fx.run_context(fx.runs()[fx.FIRST_RUN], clock=fx.Clock("2026-11-10T03:20:09.000000Z"), hex8=self.hex)
+        result = acquire(item, self.store, context, run_log_path=path, page_delay_s=0)
+        manifest = self.store.read_manifest("bronze", result["build_id"])
+        return (output_rows(self.store, manifest, "bronze.acquisition")[0],
+                output_rows(self.store, manifest, "bronze.scenario_run_entry"))
+
+    def test_scenario_run_log_is_kept_line_by_line(self):
+        path = os.path.join(self.tmp.name, "runs.jsonl")
+        body = b'{"scenario_id":"a"}\r\n\r\n{"scenario_id":"b"}\r\n'  # run.py on Windows writes CRLF
+        with open(path, "wb") as fh:
+            fh.write(body)
+        acq, rows = self.run_file(path)
+        self.assertEqual((acq["status"], acq["source_system"], acq["api"], acq["scope_role"], acq["query_text"],
+                          acq["row_count"], acq["page_count"], acq["response_bytes"], acq["window_closed"]),
+                         ("ok", "scenario_run_log", "file.read", "global", None, 2, 1, len(body), True))
+        self.assertEqual(acq["raw_sha256"], [canonical.sha256_bytes(body)])
+        self.assertEqual(self.store.get_raw(acq["raw_pages"][0]), body)
+        self.assertEqual([(r["bronze_id"], r["line_no"], r["line"]) for r in rows],
+                         [(canonical.bronze_id(acq["acquisition_id"], 0, 0), 1, '{"scenario_id":"a"}'),
+                          (canonical.bronze_id(acq["acquisition_id"], 0, 1), 3, '{"scenario_id":"b"}')])
+        self.assertEqual(rows[0]["record_key"], canonical.scenario_run_record_key('{"scenario_id":"a"}'))
+
+    def test_scenario_run_log_states(self):
+        empty = os.path.join(self.tmp.name, "empty.jsonl")
+        open(empty, "wb").close()
+        self.assertEqual(self.run_file(empty)[0]["status"], "empty_verified")
+        missing = self.run_file(os.path.join(self.tmp.name, "absent.jsonl"))[0]
+        self.assertEqual((missing["status"], missing["status_reason"], missing["raw_pages"], missing["page_count"]),
+                         ("failed", "file_not_found", [], 0))
+        with mock.patch.dict(os.environ):
+            os.environ.pop("DP_SCENARIO_RUN_LOG", None)
+            unset = self.run_file(None)[0]
+        self.assertEqual((unset["status"], unset["status_reason"]), ("not_attempted", "run_log_unconfigured"))
 
 
 if __name__ == "__main__":

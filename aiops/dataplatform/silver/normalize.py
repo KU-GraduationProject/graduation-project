@@ -332,8 +332,31 @@ def transport_issue(row: dict, acq: dict) -> Normalized:
     return Normalized(row["record_key"], values, set(), (row["entry_ts_ns"], row["record_key"]))
 
 
+def scenario_run(row: dict, acq: dict) -> Normalized:
+    """One record of scenarios/v2/run.py (`fixtures.append_run_record`). Other keys are not read (#71)."""
+    rec = _json_object(row["line"])
+    for key in ("scenario_id", "started_at", "ended_at", "status"):
+        if rec.get(key) is None:
+            raise Quarantine("missing_required_field", f"missing: {key}")
+    seed = rec.get("seed")
+    if not all(isinstance(rec[k], str) for k in ("scenario_id", "started_at", "ended_at", "status")) \
+            or not isinstance(rec.get("variant_id"), (str, type(None))) \
+            or not (seed is None or (isinstance(seed, int) and not isinstance(seed, bool))):
+        raise Quarantine("invalid_value", "scenario_id/started_at/ended_at/status str, variant_id str|null, "
+                                          "seed int|null")
+    try:
+        started = pipeline_compat.correlation().to_instant(rec["started_at"])
+        ended = pipeline_compat.correlation().to_instant(rec["ended_at"])
+    except (ValueError, TypeError) as exc:
+        raise Quarantine("invalid_timestamp", str(exc)) from exc
+    values = {"scenario_run_id": row["record_key"], "scenario_id": rec["scenario_id"], "variant_id": rec.get("variant_id"),
+              "seed": seed, "started_at": fmt_ts(started), "ended_at": fmt_ts(ended),
+              "started_at_raw": rec["started_at"], "ended_at_raw": rec["ended_at"], "status": rec["status"]}
+    return Normalized(row["record_key"], values, set(), (fmt_ts(started), row["record_key"]))
+
+
 NORMALIZERS = {
     "silver.db_log": db_log, "silver.app_log": app_log, "silver.network_event": network_event,
     "silver.metric_point": metric_point, "silver.alert_event": alert_event, "silver.rca_result": rca_result,
-    "silver.transport_issue": transport_issue,
+    "silver.transport_issue": transport_issue, "silver.scenario_run": scenario_run,
 }

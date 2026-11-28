@@ -67,7 +67,7 @@ def plan(request: dict, lake: LocalFsStore, run: RunContext) -> dict[str, list[d
                      "window_end": first["window_end"], "request": request, "updated_at": fmt_ts(run.now()),
                      "run_id": run.run_id})
     lineage_writer.write_run(lake, run, "success")
-    grouped = {"loki": [], "prometheus": []}
+    grouped = {"loki": [], "prometheus": [], "scenario_run_log": []}
     for item in items:
         grouped[item["source_system"]].append(item)
     return grouped

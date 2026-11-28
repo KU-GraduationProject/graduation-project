@@ -100,7 +100,8 @@ DATASET_FILE = {
     "gold.incident_channel": "31_gold_incident_channel.jsonl", "gold.evidence_log": "32_gold_evidence_log.jsonl",
     "gold.evidence_metric": "33_gold_evidence_metric.jsonl",
     "gold.evidence_network_flow": "34_gold_evidence_network_flow.jsonl", "gold.rca_link": "35_gold_rca_link.jsonl",
-    "lineage.edge": "41_lineage_edge.jsonl",
+    "bronze.scenario_run_entry": "14_bronze_scenario_run_entry.jsonl", "silver.scenario_run": "28_silver_scenario_run.jsonl",
+    "gold.scenario_link": "36_gold_scenario_link.jsonl", "lineage.edge": "41_lineage_edge.jsonl",
 }
 
 

@@ -30,6 +30,7 @@
 | `bronze_id` | `{acquisition_id}:{page:04d}:{row:06d}` | 획득 내 위치 |
 | `record_key` (Loki) | `h([stream_labels(객체), str(entry_ts_ns), line])` | 내용 동일하면 같음 |
 | `record_key` (Prometheus) | `h([query_text_sha256, series_labels(객체), sample_ts_ms, value_raw])` | 내용 동일하면 같음 |
+| `record_key` (시나리오 실행 기록) | `h(["scenario_run", line])` — 줄 번호 제외(파일을 매번 통째로 다시 읽어도 같은 실행이면 같음) | 내용 동일하면 같음 |
 | `alert_event_id` | `h({"labels": alert_labels, "starts_at": starts_at(C-3 형식)})` | 같은 경보 episode면 같음 |
 | `incident_id` | `"inc_" + alert_event_id[:24]` | v1: **사건 1건 = 경보 episode 1건** (다중 경보 묶음은 DEC-09) |
 | `silver_build_id` / `gold_build_id` | `sb_…` / `gb_…` + `{YYYYMMDDTHHMMSSZ}_{8hex}` | build마다 고유 |
@@ -62,8 +63,8 @@ Bronze는 **원천 API가 반환한 것**을 해석 없이 보존한다. 같은 
 | `plan_id` | string | N | `incident:{incident_id}` 또는 `continuous:{binding_sha256[:12]}:{stream_class}` |
 | `incident_id` | string | Y | 사건 단위 획득일 때 |
 | `scope_role` | string | N | `primary`(경보 identity) · `related`(명시 지정한 관련 identity, DEC-06) · `global`(identity와 무관한 job 스트림) |
-| `source_system` | string | N | `loki` · `prometheus` |
-| `api` | string | Y | `loki.query_range` · `prometheus.query_range`. `scope_unavailable`이면 null |
+| `source_system` | string | N | `loki` · `prometheus` · `scenario_run_log`(§2.5) |
+| `api` | string | Y | `loki.query_range` · `prometheus.query_range` · `file.read`. `scope_unavailable`이면 null |
 | `stream_class` | string | N | §2.4 |
 | `query_name` | string | N | plan 내 이름 (`logs`, `network_dst`, `cpu_usage` …) |
 | `query_text` | string | Y | 실행한 LogQL/PromQL 원문. 미실행이면 null |
@@ -133,8 +134,25 @@ v1 메트릭 plan은 **실시간 Pipeline과 같은 PromQL·step**(`query_range`
 | `rca_error` | `{job="aiops-llm-error"}` | global |
 | `fluentd_internal` | `{log_type="fluentd_internal"} \|= "failed to write post"` | global |
 | `fluentd_error` | `{log_type="fluentd_error"}` | global |
+| `scenario_run` | 질의 없음. `DP_SCENARIO_RUN_LOG` 파일(`scenarios/v2` `runs.jsonl`)을 통째로 읽음 (§2.5) | global |
 
 **금지:** `{job="network-experiment"}`, Heldout 경로, binding이 없는 identity에 대한 넓은 selector([00](00_EXISTING_SYSTEM_ANALYSIS.md) §9). binding이 없으면 `status=scope_unavailable` 행만 남기고 질의하지 않는다.
+
+### 2.5 `bronze.scenario_run_entry` — 시나리오 실행 기록 한 줄당 1행
+
+`scenarios/v2/run.py`가 실행마다 남기는 `runs.jsonl`(scenario_id, variant_id, seed, started_at, ended_at, status)을 사건 획득 때 **통째로** 읽는다. 파일 전체가 raw page 1개(`raw_sha256` = 파일 바이트 sha256), 빈 줄이 아닌 줄마다 Bronze 1행이다. 줄 분리는 `scenarios/v2/fixtures.py`와 같다(universal newline, 빈 줄 건너뜀). 해석은 Silver가 한다.
+
+| 컬럼 | 타입 | Null | 설명 |
+|---|---|---|---|
+| `bronze_id` | string | N | PK |
+| `acquisition_id` | string | N | FK |
+| `line_no` | int64 | N | 획득 시점 파일의 줄 번호(1부터). 파일이 다시 쓰이면 바뀔 수 있어 키에 넣지 않음 |
+| `line` | string | N | **원문 그대로**(줄 끝 문자 제외) |
+| `line_sha256` | string | N | |
+| `record_key` | string | N | §1.1 |
+| `_schema_version` | string | N | `1.0` |
+
+획득 상태: 경로 미설정 `not_attempted`(`run_log_unconfigured`), 파일 없음 `failed`(`file_not_found`), 읽기·UTF-8 해석 실패 `failed`(`read_error`), 0줄 `empty_verified`, 그 외 `ok`. 정답 레이블(`threat_level`·`expected_action`·`expected_action_ideal`·`incident_class`)은 이 파일에 없고([fixtures.py](../../scenarios/v2/fixtures.py) `ANSWER_LABEL_KEYS`), 데이터 플랫폼은 `scenarios/v2/registry.py`를 읽지 않는다.
 
 ## 3. Silver — 정제·정규화 (build 단위 불변, coverage 단위 최신본)
 
@@ -293,6 +311,20 @@ MAJOR가 `1`이 아니거나 필수 필드가 없으면 quarantine(`unsupported_
 - **dedup**: Silver PK가 같은 Bronze 행들은 1행으로 합치고 `_dup_count`·`_first/_last_acquired_at`을 기록, 모든 부모를 lineage edge로 남긴다.
 - **창**: Silver는 획득 창(패딩 포함) 전체를 담는다. 사건 창 필터는 Gold가 적용한다.
 
+### 3.10 `silver.scenario_run`
+
+| 컬럼 | 타입 | Null | 설명 |
+|---|---|---|---|
+| `scenario_run_id` | string | N | PK = Bronze `record_key` |
+| `scenario_id` | string | N | `scenarios/v2/registry.py`의 id |
+| `variant_id` | string | Y | |
+| `seed` | int64 | Y | |
+| `started_at`,`ended_at` | timestamp | N | C-4로 해석(offset 없는 시각은 quarantine `invalid_timestamp`) |
+| `started_at_raw`,`ended_at_raw` | string | N | 원문 |
+| `status` | string | N | 원문(`run.py`: `ok` · `error`). 짝짓기는 `ok`만 쓴다 |
+
+필수 키(`scenario_id`·`started_at`·`ended_at`·`status`)가 없으면 `missing_required_field`, 타입이 다르면 `invalid_value`로 quarantine한다. 그 밖의 키는 읽지 않는다(Bronze 원문에는 남음).
+
 ## 4. Gold — 사건별 RCA Evidence Mart (사건 단위 build, 버전 보존)
 
 모든 Gold 행: `incident_id`, `gold_build_id` + C-8 Envelope(`_dataset_version = gold_build_id`).
@@ -411,6 +443,28 @@ MAJOR가 `1`이 아니거나 필수 필드가 없으면 quarantine(`unsupported_
 | `rca_time` | timestamp | N | |
 | `fallback_reason` | string | Y | |
 
+### 4.7 `gold.scenario_link` — 사건 × build 당 정확히 1행
+
+사건이 어느 시나리오 실행에서 나왔는지 평가용으로 연결한다. 짝짓기 규칙은 [scenarios/v2/fixtures.py](../../scenarios/v2/fixtures.py) `pair_context`와 같다: `status=ok`이고 `started_at ≤ pair_time ≤ ended_at + 300s`(양끝 포함)인 실행이 **정확히 1건**이면 `paired`. 없거나 여럿이어도 행을 남긴다(조용히 버리지 않음). 기준 시각만 다르다: `pair_context`는 Pipeline 수신 시각, Gold는 수신 시각이 없어 경보 `startsAt`(`anchor_time`)을 쓴다(차이 ≈ Alertmanager `group_wait` 10s).
+
+| 컬럼 | 타입 | Null | 설명 |
+|---|---|---|---|
+| `incident_id`,`gold_build_id` | string | N | |
+| `link_status` | string | N | `paired` · `no_run` · `ambiguous_run` · `run_log_unavailable`(실행 기록 획득이 `ok`/`empty_verified`가 아님 — "실행 없음"과 구분) |
+| `pair_time` | timestamp | N | 짝짓기 기준 시각 = `gold.incident.anchor_time` |
+| `pair_time_source` | string | N | `alert_starts_at` |
+| `grace_s` | int32 | N | `300` |
+| `candidate_run_ids` | list<string> | N | 규칙에 걸린 `silver.scenario_run` PK 전부(`started_at` 순). paired 1, ambiguous ≥2, 그 외 0 |
+| `scenario_run_id`,`scenario_id`,`variant_id` | string | Y | `paired`일 때만 |
+| `seed` | int64 | Y | `paired`일 때만 |
+| `run_started_at`,`run_ended_at` | timestamp | Y | `paired`일 때만 |
+| `run_log_status` | string | N | `scenario_run` 획득의 최선 상태([04](04_DATA_QUALITY.md) §1). 획득이 없으면 `not_attempted` |
+
+- 실행 기록 줄이 quarantine되면 `run_log_quarantined` 플래그를 붙인다(그 줄이 짝이었을 수 있으므로 `no_run`을 그대로 믿지 않는다).
+- **정답 레이블은 넣지 않는다**(DQ-G08). 평가는 `scenario_id`로 `scenarios/v2/registry.py`에서 `threat_level`·`expected_action`·`expected_action_ideal`·`incident_class`를 조회한다.
+- **LLM 입력 금지(제안)**: `scenario_id`는 사실상 정답 힌트다. RCA가 Gold를 입력으로 쓰게 되더라도(DEC-07) 이 테이블은 프롬프트에 넣지 않기를 LLM 담당에게 제안한다. 데이터 플랫폼은 프롬프트 코드를 바꾸지 않는다.
+- 실행 기록은 실행이 **끝날 때** 쓰인다. 사건 획득 시점에 아직 끝나지 않은 실행은 `no_run`으로 남으므로, 평가 전에 실행 기록을 다시 획득해 Gold를 재빌드한다([aiops/dataplatform/README.md](../../aiops/dataplatform/README.md)).
+
 ## 5. 기존 계약 보존 확인
 
 | 기존 계약 | 이 문서의 처리 |
@@ -419,6 +473,7 @@ MAJOR가 `1`이 아니거나 필수 필드가 없으면 quarantine(`unsupported_
 | Observation Identity | 다섯 필드·`UNKNOWN`·`identity_status`를 재정의하지 않고 `identity.py`를 그대로 사용. binding 없는 질의 금지 |
 | RCA envelope v2.0 | Loki `aiops-llm` 원문을 Bronze에 그대로, Silver는 읽기만. Pipeline 쓰기 경로 변경 없음 |
 | LLMAnalysisResult | Silver 검증에 그대로 사용. action_type 어휘 변경 없음 |
+| scenarios/v2 실행 기록·레지스트리 | `runs.jsonl`은 읽기만(Bronze 원문 보존). `run.py`·`fixtures.py`·`registry.py` 변경 없음, 정답 레이블은 Gold에 없음 |
 
 ## 6. Data Dictionary로 넘길 항목 (이번 범위 제외)
 
