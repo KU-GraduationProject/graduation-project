@@ -1,6 +1,6 @@
 # Leafy AIOps Data Platform — STEP 0 공통 계약
 
-> 상태 (2026-11-28, `origin/main` @ `0b00ca9` 기준). 구현 세부와 구현 중 결정은 [aiops/dataplatform/README.md](../../aiops/dataplatform/README.md)를 따른다.
+> 상태 (2026-11-28, `origin/main` @ `6382aef` 기준). 구현 세부와 구현 중 결정은 [aiops/dataplatform/README.md](../../aiops/dataplatform/README.md)를 따른다.
 >
 > **구현됨** — [aiops/dataplatform/](../../aiops/dataplatform/)
 > - STEP 0 계약 문서·합성 fixture: 이 디렉터리, [examples/](examples/) (#36, PR #37)
@@ -9,13 +9,13 @@
 > - DAG를 실제 진입점(`orchestration/phases.py`)에 연결, mock 원천으로 E2E 확인 (#41, PR #43)
 > - 사건 자동 발견·배치 스케줄: `orchestration/discover.py`, `airflow/dags/dp_incident_discover.py` (#68, PR #69)
 > - fixture RCA envelope를 현재 LLM 출력 형식에 맞춤: `silver/normalize.py`, [examples/](examples/) (#70, PR #76)
->
-> **진행 중**
-> - fixture LLM 출력 기대값에 `target_evidence` 반영: #79 (PR #80)
-> - Gold 사건과 시나리오 실행 기록 연결(`gold.scenario_link`): #71
+> - fixture LLM 출력 기대값에 `target_evidence` 반영 (#79, PR #80)
+> - Gold 사건과 시나리오 실행 기록 연결(`gold.scenario_link`): `gold/build.py`, [01](01_DATA_CONTRACT.md) §4.7 (#71, PR #83)
+> - Gold 사건과 Remediation 조치 기록 연결(`gold.remediation_link`, DEC-19): Bronze `remediation_event` chunk 획득 → `silver.remediation_event` → Gold, [09](09_REMEDIATION_LINK.md) (#77)
 >
 > **미구현**
-> - 정책 결정·조치 연결(`remediation_link`): Issue #77, 코드 없음
+> - 정책 결정(`policy_decision`)과 조치의 1:1 연결: 연결 키는 #81(PR #84)로 생겼으나 Gold 연결은 DEC-19 개정(별도 Issue). 그때까지 `policy_decision_link=unlinked_no_key`
+> - remediation 창이 열린 채 만든 Gold(`partial_reasons ∋ window_open`)의 자동 재획득: 평가 전 수동 절차([09](09_REMEDIATION_LINK.md) §9.1)로 처리, 일반 규칙은 별도 Issue(미생성)
 > - 실데이터 원천 연결: `DP_LOKI_URL`/`DP_PROMETHEUS_URL`을 주지 않으면 mock 원천을 읽는다. 실제 Loki/Prometheus 적재는 OI-09 binding이 풀린 뒤 사용자 승인 단계다 ([05](05_PARALLEL_TRACKS.md) §7)
 > - Parquet codec·DuckDB(DEC-02, pyarrow 미설치), MinIO 저장소 어댑터(DEC-03, 현재 로컬 `LocalFsStore`)
 >
@@ -45,6 +45,7 @@ GC PC ──Tailscale──▶ JH Fluentd ─▶ Loki ─┐                 ┌
 | [06_ISSUE_DRAFTS.md](06_ISSUE_DRAFTS.md) | Issue 초안 6건 (생성 안 함) |
 | [07_MOCK_DB_INCIDENT.md](07_MOCK_DB_INCIDENT.md) | DB 연결 슬롯 고갈 Mock 입력·출력 계약 |
 | [08_CONSISTENCY_REVIEW.md](08_CONSISTENCY_REVIEW.md) | 기존 문서·코드 불일치, 이 문서 세트의 자체 검증 결과 |
+| [09_REMEDIATION_LINK.md](09_REMEDIATION_LINK.md) | Gold 사건 ↔ Remediation 조치·승인·복구 연결(DEC-19): 원천 사실, chunk 획득, 판정 규칙, 평가 전 재획득 절차 |
 | [examples/db-connection-limit/](examples/db-connection-limit/) | 합성 fixture (Bronze → Silver → Gold → Lineage) |
 
 표기: **[기존]** 저장소에 구현됨 · **[후보]** 저장소에 있으나 운영 mount 안 됨 · **[신규]** 이번에 새로 만들 것.
@@ -75,6 +76,7 @@ GC PC ──Tailscale──▶ JH Fluentd ─▶ Loki ─┐                 ┌
 | DEC-06 | 사건 scope | `alert_identity_only`(실시간 파리티) 기본 + 사건 요청에 **명시 선언한** related scope만 허용(fixture는 후자를 시험). 토폴로지 자동 추론은 하지 않음 |
 | DEC-14 | Airflow 배치 | JH, LocalExecutor, 전용 메타DB(Leafy PostgreSQL과 무관), 자원 상한. 버전은 DEC-02와 함께 고정 |
 | DEC-17 | 기본값 | 사건 창 ±5m, 획득 패딩 60s, 지연 허용 600s, Loki pool 1 |
+| DEC-19 | Remediation 연결 | **결정됨(#77):** `silver.rca_result.remediation_id`로 정확히 잇는 것만 Gold에 연결(`link_basis=rca_remediation_id`, `alertname`·`alert_active_at==anchor_time` 교차 검증). 추정 연결 금지. `policy_decision` 등은 Silver에만 두고 Gold `policy_decision_link=unlinked_no_key`(#81 키를 쓰는 연결은 개정으로). remediation 창 `anchor−5m−pad ~ anchor+80m+pad`(승인 900s + 최대 ttl 3600s + 여유 300s, 상수)를 15분 이하 chunk로 획득, 창 밖 결과는 `partial(beyond_window)`. 열린 창은 자동 재trigger 없이 평가 전 재획득 → Gold 재빌드 절차로 처리([09](09_REMEDIATION_LINK.md) §9.1) |
 
 ### 이후 (v1 범위 밖)
 

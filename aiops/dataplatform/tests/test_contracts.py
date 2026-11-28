@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(HERE, ".."))
 sys.path.insert(0, HERE)
 
 import fixture_data as fx  # noqa: E402
+from bronze.plan import remediation_window  # noqa: E402
 from contracts import canonical, enums, pipeline_compat, schemas  # noqa: E402
 from contracts.canonical import h  # noqa: E402
 from storage.store import LocalFsStore  # noqa: E402
@@ -74,7 +75,7 @@ class S01Schemas(unittest.TestCase):
         for dataset, row in all_rows():
             self.assertEqual(schemas.check_row(dataset, row), [], dataset)
             checked[dataset] += 1
-        self.assertEqual(len(checked), 21)  # 22 datasets; silver.transport_issue has 0 rows (empty build)
+        self.assertEqual(len(checked), 23)  # 24 datasets; silver.transport_issue has 0 rows (empty build)
 
 
 class S02Vocabulary(unittest.TestCase):
@@ -86,14 +87,20 @@ class S02Vocabulary(unittest.TestCase):
                                   ("label_profile", enums.LABEL_PROFILES), ("reason_code", enums.QUARANTINE_REASONS),
                                   ("link_type", enums.LINK_TYPES), ("allowlist_decision", enums.ALLOWLIST_DECISIONS),
                                   ("overall_status", enums.OVERALL_STATUSES), ("series_preflight", enums.SERIES_PREFLIGHT),
-                                  ("orchestrator", enums.ORCHESTRATORS), ("link_status", enums.LINK_STATUSES),
-                                  ("run_log_status", enums.ACQ_STATUSES)):
+                                  ("orchestrator", enums.ORCHESTRATORS), ("link_status", None),
+                                  ("run_log_status", enums.ACQ_STATUSES), ("link_basis", enums.REMEDIATION_LINK_BASES),
+                                  ("remediation_status", enums.REMEDIATION_STATUSES),
+                                  ("policy_decision_link", enums.POLICY_DECISION_LINKS),
+                                  ("stream_job", enums.REMEDIATION_JOBS)):
                 if column not in row:
                     continue
                 if column == "status":
                     vocab = {"bronze.acquisition": enums.ACQ_STATUSES, "gold.incident_channel": enums.CHANNEL_STATUSES,
-                             "lineage.run": enums.RUN_STATUSES,
-                             "silver.scenario_run": None}[dataset]  # run.py status kept as written
+                             "lineage.run": enums.RUN_STATUSES,  # run.py / Remediation status kept as written
+                             "silver.scenario_run": None, "silver.remediation_event": None}[dataset]
+                if column == "link_status":  # same column name, one vocabulary per dataset
+                    vocab = {"gold.scenario_link": enums.LINK_STATUSES,
+                             "gold.remediation_link": enums.REMEDIATION_LINK_STATUSES}[dataset]
                 if column == "severity":
                     vocab = enums.SEVERITIES if dataset.startswith(("silver.app", "silver.db", "gold.evidence")) \
                         else None
@@ -101,6 +108,8 @@ class S02Vocabulary(unittest.TestCase):
                     self.assertIn(row[column], vocab, f"{dataset}.{column}")
             for flag in row.get("_quality_flags", []):
                 self.assertIn(flag, enums.QUALITY_FLAGS)
+            for reason in row.get("partial_reasons", []):
+                self.assertIn(reason, enums.REMEDIATION_PARTIAL_REASONS)
             for reason in json.loads(row.get("skipped_reasons", "{}")):
                 self.assertIn(reason, enums.SKIPPED_REASONS)
 
@@ -175,8 +184,11 @@ class S03Ids(unittest.TestCase):
             if m["layer"] == "bronze":
                 continue
             dataset = next(o["dataset"] for o in m["outputs"] if o["dataset"] not in ("lineage.edge", "silver.quarantine"))
-            self.assertEqual(canonical.coverage_id(dataset, plan["plan_id"], plan["plan_binding_sha256"],
-                                                   plan["window_start"], plan["window_end"]), m["coverage_id"])
+            window = (plan["window_start"], plan["window_end"])
+            if dataset == "silver.remediation_event":  # the whole remediation window (09 §3.3)
+                window = tuple(canonical.fmt_ts(t) for t in remediation_window(plan["request"]))
+            self.assertEqual(canonical.coverage_id(dataset, plan["plan_id"], plan["plan_binding_sha256"], *window),
+                             m["coverage_id"])
 
     def test_binding_change_gives_another_coverage(self):
         plan = fx.plan_record()
@@ -189,9 +201,8 @@ class S03Ids(unittest.TestCase):
 
 class S04Manifests(unittest.TestCase):
     def test_current_build_files_hash_to_the_manifest(self):
-        replaced = {"sb_20261110T032010Z_62bad93f", "gb_20261110T032015Z_edd1b412"}  # rows not in fixture
         for m in fx.manifests():
-            if m["build_id"] in replaced:
+            if m["build_id"] in fx.REPLACED:  # rows not in fixture
                 continue
             for output in m["outputs"]:
                 rows = fx.build_rows(output["dataset"], m["build_id"])
@@ -210,8 +221,7 @@ class S04Manifests(unittest.TestCase):
 
     def test_flag_counts_are_output_row_flags(self):
         for m in fx.manifests():
-            if m["layer"] == "bronze" or m["build_id"] in ("sb_20261110T032010Z_62bad93f",
-                                                            "gb_20261110T032015Z_edd1b412"):
+            if m["layer"] == "bronze" or m["build_id"] in fx.REPLACED:
                 continue
             rows = [r for o in m["outputs"] if o["dataset"] not in ("lineage.edge", "silver.quarantine")
                     for r in fx.build_rows(o["dataset"], m["build_id"])]
@@ -225,7 +235,7 @@ class S05QualityRules(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.store = LocalFsStore(self.tmp.name)
         for m in fx.manifests():
-            if m["build_id"] not in ("sb_20261110T032010Z_62bad93f", "gb_20261110T032015Z_edd1b412"):
+            if m["build_id"] not in fx.REPLACED:
                 fx.commit_fixture_build(self.store, m["build_id"])
         for pointer in fx.load_json("51_current_pointers.json"):
             self.store.write_pointer(pointer)

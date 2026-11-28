@@ -89,19 +89,20 @@
 
 - `overall_status = partial` (primary 중 log만 complete).
 - evidence 12행: db 로그 6, app 로그 4(1행 `masked` — `password=***`), cpu series 1(`samples=41` = 실시간 ±5m·15s 파리티), flow 1(`allowlist=ok`, bytes는 최종 이벤트만).
-- `rca_link` 1행 `post_hoc_same_alert`: 실시간 RCA는 이 Gold를 보지 않았다.
+- `rca_link` 4행 `post_hoc_same_alert`(같은 경보 episode의 RCA envelope 4건): 실시간 RCA는 이 Gold를 보지 않았다.
+- `remediation_link` 4행(#77, [09](09_REMEDIATION_LINK.md) §8): `no_remediation_id` 1 · `linked`+`complete` 1 · `cross_check_failed` 1 · `linked`+`partial[beyond_window]` 1.
 - `gold.incident`의 `transport_check_status = empty_unverified`, `transport_loss_suspected = false`.
 
 ## 7. 버전·리니지
 
 | 항목 | 값 |
 |---|---|
-| Gold build | `gb_20261110T032015Z_edd1b412`(1차) → `gb_20261110T034045Z_124c3f4f`(현재, `supersedes` 1차) |
-| Silver db_log | `sb_20261110T032010Z_62bad93f`(1차) → `sb_20261110T034042Z_c4d90e9a`(현재). 나머지 Silver는 1차 build가 현재 |
+| Gold build | `gb_20261110T032015Z_edd1b412`(1차) → `gb_20261110T034045Z_124c3f4f`(db_log 재처리) → `gb_20261110T043215Z_2aad7b2f`(현재, 04:32 remediation chunk 재획득 — 09 §9.1) |
+| Silver db_log | `sb_20261110T032010Z_62bad93f`(1차) → `sb_20261110T034042Z_c4d90e9a`(현재). `silver.remediation_event`는 `sb_20261110T032010Z_5980560a`(1차) → `sb_20261110T043210Z_60184282`(현재). 나머지 Silver는 1차 build가 현재 |
 | evidence_id | 두 Gold build에서 **동일**(재빌드 비교 가능) |
-| edge | 124 = Silver 69(`normalized_from` 68 + `quarantined_from` 1) + Gold 55(`anchored_on` 1, `selected_from` 10, `aggregated_from` 43, `linked_from` 1) |
+| edge | 163 = Silver 91(`normalized_from` 90 + `quarantined_from` 1) + Gold 72(`anchored_on` 2, `selected_from` 10, `aggregated_from` 43, `linked_from` 16, `run_candidate` 1) |
 | 다대다 | Network 이벤트 1건 ← Bronze 2행(두 획득), flow 1건 ← Silver 2행, cpu evidence ← Silver 41행 |
-| run | 6 (`dp_incident_build` 3 task + `dp_reprocess` 3 task), `git_sha`는 fixture용 `0`×40 |
+| run | 9 (`dp_incident_build` 3 task + `dp_reprocess` 03:40 3 task + 04:32 3 task), `git_sha`는 fixture용 `0`×40 |
 
 1차 build(대체됨)는 manifest만 있고 행 파일은 생략했다. 대체된 build의 행 sha256은 manifest에 있으나 fixture에서 재계산할 수 없다.
 

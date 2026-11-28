@@ -61,6 +61,16 @@
   },
   {
     "layer": "silver",
+    "dataset": "silver.remediation_event",
+    "coverage_id": "cov_8311c38bc7b0f127f2fd3d28",
+    "build_id": "sb_20261110T043210Z_60184282",
+    "manifest_id": "mf_sb_20261110T043210Z_60184282",
+    "previous_build_id": "sb_20261110T032010Z_5980560a",
+    "updated_at": "2026-11-10T04:32:10.800000Z",
+    "run_id": "run_22a97363d7fbd5f2b990"
+  },
+  {
+    "layer": "silver",
     "dataset": "silver.scenario_run",
     "coverage_id": "cov_5b41b7fe5b97551425b25901",
     "build_id": "sb_20261110T032010Z_e3b7c215",
@@ -83,10 +93,10 @@
     "layer": "gold",
     "dataset": "gold.incident",
     "incident_id": "inc_3f9a00917bce9babb36e68f4",
-    "build_id": "gb_20261110T034045Z_124c3f4f",
-    "manifest_id": "mf_gb_20261110T034045Z_124c3f4f",
-    "previous_build_id": "gb_20261110T032015Z_edd1b412",
-    "updated_at": "2026-11-10T03:40:46.900000Z",
-    "run_id": "run_f4e7ebdb07e3b9a98b12"
+    "build_id": "gb_20261110T043215Z_2aad7b2f",
+    "manifest_id": "mf_gb_20261110T043215Z_2aad7b2f",
+    "previous_build_id": "gb_20261110T034045Z_124c3f4f",
+    "updated_at": "2026-11-10T04:32:16.250000Z",
+    "run_id": "run_39f0a28cd0d3318e17c0"
   }
 ]

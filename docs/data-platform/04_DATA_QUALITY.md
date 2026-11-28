@@ -59,7 +59,7 @@
 | `nonfinite_value` | 신규 | Silver | NaN/Inf |
 | `legacy_unversioned` | 신규 | Silver | 버전 없는 과거 RCA envelope |
 | `llm_output_legacy` | 신규 | Silver | `incident_class`가 없는 #29 이전 LLM 출력. 나머지 필드는 검증 통과, `incident_class=null` |
-| `window_open` | 신규 | Silver/Gold | 닫히지 않은 창에서만 획득됨 |
+| `window_open` | 신규 | Silver/Gold | 닫히지 않은 창에서만 획득됨(`gold.remediation_link`는 remediation chunk 중 닫힌 획득이 없는 것이 있음) |
 | `partial_acquisition` | 신규 | Silver | `partial`/`truncated` 획득에서만 나온 행 |
 | `reacquisition_incomplete` | 신규 | Gold(채널) | 같은 쿼리의 앞선 획득은 `ok`라 채널 상태는 최선 상태를 따르지만, 나중 재획득이 `partial`/`truncated`/`failed`로 끝남 ([02](02_STORAGE_DESIGN.md) §7) |
 | `masked` | 신규 | Gold | `mask_secrets` 적용 전후의 렌더 결과가 다름(비밀값 패턴이 실제로 치환됨) |
@@ -106,13 +106,14 @@ related 채널은 overall에 반영하지 않고 채널 행으로만 보고한�
 | DQ-B04 | Bronze | `entry_ts_ns`/`sample_ts_ms`가 요청 창 안 | WARN |
 | DQ-B05 | Bronze | `window_closed=false`면 `window_open` 전파 | WARN |
 | DQ-B06 | Bronze | 금지 스트림(`network-experiment`, Heldout) 미포함 | BLOCK |
+| DQ-B07 | Bronze | `remediation_event` chunk 창 ≤ 15분, chunk 합집합 = remediation 창(빈틈·겹침 없음, [09](09_REMEDIATION_LINK.md) §3.2). plan 생성 시 검사 | BLOCK |
 | DQ-S01 | Silver | 모든 Bronze 입력 행 → Silver 행 또는 quarantine 행의 부모 (조용한 삭제 0) | BLOCK |
 | DQ-S02 | Silver | PK 유일 | BLOCK |
 | DQ-S03 | Silver | `event_time` not null, fallback이면 플래그 | BLOCK |
 | DQ-S04 | Silver | Network MAJOR=1, 필수 필드 존재 (아니면 quarantine) | BLOCK |
 | DQ-S05 | Silver | `source` label이 stdout/stderr인 행을 observation source로 쓰지 않음 | BLOCK |
 | DQ-S06 | Silver | 기존 Fluentd 플래그가 `_quality_flags`로 빠짐없이 옮겨짐 | BLOCK |
-| DQ-G01 | Gold | 모든 evidence·incident·rca_link 행에 Silver 부모 edge ≥1 | BLOCK |
+| DQ-G01 | Gold | 모든 evidence·incident·rca_link·scenario_link·remediation_link 행에 Silver 부모 edge ≥1 | BLOCK |
 | DQ-G02 | Gold | 모든 primary 채널(log/metric/network) 행 존재, `status` 기본값 없음 | BLOCK |
 | DQ-G03 | Gold | §4 규칙과 상태 일치 | BLOCK |
 | DQ-G04 | Gold | `rendered_line`이 `mask_secrets` 적용본 (`mask_secrets(x) == x`) | BLOCK |
@@ -121,6 +122,9 @@ related 채널은 overall에 반영하지 않고 채널 행으로만 보고한�
 | DQ-G07 | Gold | Network flow bytes는 `connection`만 합산(`connection_threshold` 제외) | BLOCK |
 | DQ-G08 | Gold | 어떤 Gold 행에도 평가 정답 레이블 키(`threat_level`·`expected_action`·`expected_action_ideal`·`incident_class`)가 없음. 스키마 수준은 테스트로도 고정 | BLOCK |
 | DQ-G09 | Gold | `gold.scenario_link`는 build당 정확히 1행(`no_run`·`ambiguous_run`·`run_log_unavailable`도 행으로 남김) | BLOCK |
+| DQ-G10 | Gold | `gold.remediation_link` 행 수 = 같은 build의 `gold.rca_link` 행 수, `rca_id` 집합 동일 | BLOCK |
+| DQ-G11 | Gold | `gold.remediation_link`: `link_status=linked` ⇔ `link_basis=rca_remediation_id`(다른 값 금지 — 추정 연결 금지), `linked`가 아니면 상세 컬럼 null·`[]`, `policy_decision_link=unlinked_no_key` | BLOCK |
+| DQ-G12 | Gold | `gold.remediation_link` `linked` 행: 사용한 모든 레코드 이벤트의 `alertname`이 사건과 같고 `alert_active_at`이 `anchor_time`과 같은 instant(C-4) | BLOCK |
 | DQ-L01 | Lineage | [03](03_LINEAGE.md) §7 전체 | BLOCK |
 
 manifest `quality` 섹션 키: `flag_counts {flag: n}`, `quarantined`, `skipped`(Silver), `status_counts {status: n}`(Bronze), `rules {DQ-ID: "pass|warn|fail"}`. 해당 계층에 없는 키는 생략한다(fixture는 `rules` 생략 — 규칙 실행기는 Track D 범위).

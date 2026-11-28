@@ -12,6 +12,10 @@ one recorded `absent` does not exist at all — the same three cases 04 §2 dist
 Discovery (`dp_incident_discover`) queries the bare selector `{job="aiops-llm"}`, which no fixture
 acquisition used. A query that is not a recorded acquisition query but selects `job="aiops-llm"` is
 answered by label match over every fixture entry plus entries added with `add_loki_entry` (tests).
+
+Remediation streams (`job="aiops-remediation"`/`"aiops-timeline"`, #77) are served from the hand-written input
+`03_remediation_events.jsonl` by label match (`=` and `=~` matchers). Loki only holds what was pushed before the
+query: with `now_ns` set, entries after it are not returned (fixture history replays an acquisition at its time).
 """
 from __future__ import annotations
 
@@ -29,6 +33,9 @@ LABEL_ORDER = {
     "cpu_usage": ["job", "instance", "id", "site", "source", "service", "runtime", "target", "cpu"],
 }
 _LABEL = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*("(?:[^"\\]|\\.)*")')
+_MATCHER = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*(=~|=)\s*("(?:[^"\\]|\\.)*")')
+REMEDIATION_FILE = "03_remediation_events.jsonl"
+REMEDIATION_JOBS = ("aiops-remediation", "aiops-timeline")
 
 
 def dumps(value) -> bytes:
@@ -39,6 +46,16 @@ def parse_selector(selector: str) -> dict:
     """`{a="x", b="y"} | json …` -> {"a": "x", "b": "y"} (exact matchers of the stream selector only)."""
     head = selector.split("}", 1)[0].lstrip("{")
     return {k: json.loads(v) for k, v in _LABEL.findall(head)}
+
+
+def _matches_selector(labels: dict, selector: str) -> bool:
+    """Exact (`=`) and regex (`=~`, fully anchored as in Loki) matchers of the stream selector."""
+    head = selector.split("}", 1)[0].lstrip("{")
+    for key, op, raw in _MATCHER.findall(head):
+        value, actual = json.loads(raw), labels.get(key)
+        if actual is None or (actual != value if op == "=" else re.fullmatch(value, actual) is None):
+            return False
+    return True
 
 
 def _jsonl(path: Path) -> list[dict]:
@@ -89,12 +106,25 @@ class FixtureSources:
                                for a in acquisitions if a["source_system"] == "loki" and a["query_text"]}
         self.calls: list[tuple[str, dict]] = []
         self.extra_loki: list[tuple[int, dict, str, str]] = []
+        self.remediation: list[tuple[int, dict, str, str]] = []
+        if (root / REMEDIATION_FILE).exists():
+            for i, row in enumerate(_jsonl(root / REMEDIATION_FILE)):
+                # the line exactly as remediation/main.py `_push_soc_event` writes it (json.dumps defaults)
+                line = json.dumps(row["body"], ensure_ascii=False)
+                self.remediation.append((row["ts_ns"], row["labels"], line, f"remediation:{i}"))
+        self.now_ns: int | None = None
 
     def add_loki_entry(self, ts_ns: int, labels: dict, line: str) -> None:
         """Extra Loki entry answered only to label-matched `job="aiops-llm"` queries (discovery tests)."""
         self.extra_loki.append((ts_ns, labels, line, f"extra:{len(self.extra_loki)}"))
 
+    def _remediation_rows(self, selector: str) -> list[tuple[int, dict, str, str]]:
+        return [r for r in self.remediation if (self.now_ns is None or r[0] <= self.now_ns)
+                and _matches_selector(r[1], selector)]
+
     def _loki_rows(self, query: str) -> list[tuple[int, dict, str, str]]:
+        if parse_selector(query).get("job") in REMEDIATION_JOBS:
+            return self._remediation_rows(query)
         if query in self.loki:
             return self.loki[query]
         wanted = parse_selector(query)
@@ -138,6 +168,11 @@ class FixtureSources:
         wanted = parse_selector(p["match[]"])
         start, end = int(p["start"]), int(p["end"])
         found = {}
+        if wanted.get("job") in REMEDIATION_JOBS:
+            for ts, labels, _, _ in self._remediation_rows(p["match[]"]):
+                if start <= ts <= end:
+                    found[json.dumps(labels, sort_keys=True)] = labels
+            return dumps({"status": "success", "data": list(found.values())})
         for rows in self.loki.values():
             for ts, labels, _, _ in rows:
                 if start <= ts <= end and all(labels.get(k) == v for k, v in wanted.items()):

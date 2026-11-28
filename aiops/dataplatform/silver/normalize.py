@@ -318,7 +318,8 @@ def rca_result(row: dict, acq: dict) -> Normalized:
               "confidence": float(result["confidence"]),
               "fallback_reason": enums.FALLBACK_ROOT_CAUSES.get(result["root_cause"]),
               "handoff_status": rec.get("handoff_status"), "remediation_dispatched": rec.get("remediation_dispatched"),
-              "notification_dispatched": rec.get("notification_dispatched")}
+              "notification_dispatched": rec.get("notification_dispatched"),
+              "remediation_id": rec["remediation_id"] if isinstance(rec.get("remediation_id"), str) else None}
     return Normalized(row["record_key"], values, flags, (fmt_ts(rca_time), row["record_key"]))
 
 
@@ -355,8 +356,53 @@ def scenario_run(row: dict, acq: dict) -> Normalized:
     return Normalized(row["record_key"], values, set(), (fmt_ts(started), row["record_key"]))
 
 
+# policy_decision body = these envelope keys + `decision.as_dict()` (remediation/main.py `_push_policy_decision`)
+_POLICY_ENVELOPE = ("timestamp", "event", "alert", "source", "status")
+
+
+def instant_or_none(value):
+    try:
+        return pipeline_compat.correlation().to_instant(value) if isinstance(value, str) else None
+    except (ValueError, TypeError):
+        return None
+
+
+def remediation_event(row: dict, acq: dict) -> Normalized:
+    """One `aiops-remediation`/`aiops-timeline` event (#77, 09 §4.1). Kept whole; Gold links only exact keys."""
+    labels = json.loads(row["stream_labels"])
+    rec = _json_object(row["line"])
+    if not isinstance(rec.get("event"), str):
+        raise Quarantine("missing_required_field", "missing: event")
+    flags = set()
+    event_time, source = instant_or_none(rec.get("timestamp")), "body_timestamp"
+    if event_time is None:
+        event_time, source = _loki_time(row), "receiver_fallback"
+        flags.add("event_time_fallback")
+    record = labels.get("job") == "aiops-remediation" and "state" in rec  # `_push_record` (record timings)
+    targets = rec.get("targets")
+    targets = list(targets) if isinstance(targets, list) else [rec["target"]] if "target" in rec else []
+    active = instant_or_none(rec.get("alert_active_at"))
+    values = {
+        "remediation_event_id": row["record_key"], "event_time": fmt_ts(event_time), "event_time_source": source,
+        "loki_ts_ns": row["entry_ts_ns"], "stream_job": labels.get("job"), "event": rec["event"],
+        "status": rec.get("status"), "alertname": rec.get("alert"), "remediation_id": rec.get("remediation_id"),
+        "action_type": rec.get("action_type"), "targets": targets,
+        "record_state": rec.get("state") if record else None,
+        "alert_active_at": fmt_ts(active) if active else None,
+        "alert_active_at_raw": rec.get("alert_active_at") if isinstance(rec.get("alert_active_at"), str) else None,
+        "approved_by": rec.get("approved_by"), "result": rec.get("result"), "verified": rec.get("verified"),
+        "reason": rec.get("reason"),
+        "policy": canonical_str({k: v for k, v in rec.items() if k not in _POLICY_ENVELOPE})
+        if rec["event"] == "policy_decision" else None,
+        "timings": canonical_str({k: rec[k] for k in enums.REMEDIATION_TIMING_KEYS if k in rec}) if record else None,
+        "event_body": canonical_str(rec),
+    }
+    return Normalized(row["record_key"], values, flags, (fmt_ts(event_time), row["entry_ts_ns"], row["record_key"]))
+
+
 NORMALIZERS = {
     "silver.db_log": db_log, "silver.app_log": app_log, "silver.network_event": network_event,
     "silver.metric_point": metric_point, "silver.alert_event": alert_event, "silver.rca_result": rca_result,
     "silver.transport_issue": transport_issue, "silver.scenario_run": scenario_run,
+    "silver.remediation_event": remediation_event,
 }

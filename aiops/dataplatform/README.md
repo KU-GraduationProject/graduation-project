@@ -12,11 +12,11 @@ dp_incident_discover ─(trigger)─▶ dp_bronze_acquire ─▶ (dp_bronze) ─
 |---|---|---|
 | STEP 0.5 계약 코드 | `contracts/` (canonical JSON·해시·ID 식·어휘·스키마), `storage/` (LocalFsStore·manifest commit·current 포인터·lineage writer) | 01 §1, 02 §3·§4, 03 §2·§3 |
 | Track A Bronze | `bronze/plan.py` (`plan_incident`), `bronze/acquire.py` (`acquire`: series·lookback preflight, Loki 페이지네이션, 반환 label·본문 검증, 부분 실패 보존, 금지 스트림 차단) | 01 §2, 02 §5~§7, 04 §1 |
-| Track B Silver | `silver/normalize.py` (데이터셋 8종 + quarantine), `silver/build.py` (coverage, dedup, edge) | 01 §3, DQ-S01~S06 |
-| Track C Gold·Lineage | `gold/build.py` (사건 창·scope 매칭·채널 상태·evidence·rca_link·scenario_link), `gold/render.py` (Pipeline 렌더 포팅), `gold/checks.py` (DQ-G), `lineage/trace.py` (`trace`, DQ-L01) | 01 §4, 03, 04 §4·§5 |
+| Track B Silver | `silver/normalize.py` (데이터셋 9종 + quarantine), `silver/build.py` (coverage, dedup, edge) | 01 §3, DQ-S01~S06 |
+| Track C Gold·Lineage | `gold/build.py` (사건 창·scope 매칭·채널 상태·evidence·rca_link·scenario_link·remediation_link), `gold/render.py` (Pipeline 렌더 포팅), `gold/checks.py` (DQ-G), `lineage/trace.py` (`trace`, DQ-L01) | 01 §4, 03, 04 §4·§5 |
 | Track D Airflow | DAG 4개가 `orchestration/phases.py`의 실제 진입점을 호출(#38의 `fixture_stubs` 대체), `dp_validate` 검사 5종 | 05 §5 Track D |
 | 배치화 (#68) | `orchestration/discover.py` + `dp_incident_discover`: 10분마다 Loki `{job="aiops-llm"}` envelope에서 IncidentRequest를 만들고, 획득 창 종료 + 10분 뒤 `dp_bronze_acquire`를 run id `discover__{incident_id}`로 1회 trigger(`lake-meta/discover/`에 cursor·pending·triggered 기록, plan이 이미 있으면 건너뜀). `dp_validate`는 `dp_gold` 갱신 또는 매일 19:00 UTC | 05 §5·§6 |
-| E2E용 원천 | `mock_sources/` — fixture Bronze 행으로 답하는 mock Loki/Prometheus (Compose `dp-mock-sources`, 테스트의 `httpx.MockTransport`) | 07 |
+| E2E용 원천 | `mock_sources/` — fixture Bronze 행(+ Remediation 이벤트 입력 `03`)으로 답하는 mock Loki/Prometheus (Compose `dp-mock-sources`, 테스트의 `httpx.MockTransport`) | 07 |
 
 **fixture 파리티:** Bronze 11건, Silver 9 build(대체된 1차 db_log 포함), Gold 2 build(대체된 1차 포함)를 fixture의
 요청·binding·실행 시각으로 다시 만들면 행·edge·manifest(bytes·sha256 포함)가 `docs/data-platform/examples`와
@@ -80,6 +80,23 @@ OI-09 binding 인수 이후 사용자 승인 단계다(05 §7).
 docker exec dp-airflow airflow dags trigger dp_bronze_acquire --conf '{…요청…, "force_reacquire": true, "stream_classes": ["scenario_run"]}'
 ```
 
+### Remediation 조치 기록 연결 (#77, DEC-19)
+
+`gold.remediation_link`는 `gold.rca_link`의 RCA마다 1행으로, RCA envelope의 `remediation_id`로 **정확히** 이어지는
+조치 레코드·승인·실행·복구만 붙인다(01 §4.8, [09](../../docs/data-platform/09_REMEDIATION_LINK.md)). 경보 이름·시각으로
+추정 연결하지 않고, `policy_decision`은 #81로 `remediation_id`가 실려도 v1에서는 Silver에만 남는다(`policy_decision_link=unlinked_no_key`, 연결은 DEC-19 개정).
+
+- **획득:** Loki `aiops-remediation`·`aiops-timeline`(Remediation 이벤트 4종)을 `anchor−5m−pad ~ anchor+80m+pad` 창에서
+  15분 이하 chunk로 읽는다(기본 6 chunk × 2 = 12질의, `loki_read` pool 그대로). 80분은 승인 대기 900s + 최대 ttl 3600s +
+  여유 300s 상수다(`bronze/plan.py` `REMEDIATION_HORIZON`, 정책 파일은 읽지 않음).
+- **평가 전 절차(09 §9.1):** 사건 자동 발견은 anchor+16분쯤 한 번만 trigger하므로 대부분의 chunk가 열린 채
+  `partial[window_open]`이 된다. 창이 닫힌 뒤(기본 anchor+91분 이후) 같은 사건 요청으로 remediation만 다시 획득하면
+  열린 chunk만 다시 질의되고 Silver·Gold가 재빌드된다. 이전 build는 보존된다.
+
+```sh
+docker exec dp-airflow airflow dags trigger dp_bronze_acquire --conf '{…요청…, "stream_classes": ["remediation_event"]}'
+```
+
 ### E2E 화면 (2026-11-18, Airflow 3.3.2, mock 원천)
 
 | 화면 | |
@@ -96,6 +113,7 @@ docker exec dp-airflow airflow dags trigger dp_bronze_acquire --conf '{…요청
 | `tests/test_bronze.py` | Track A ①~⑧ + 실패·불일치·재사용·열린 창 |
 | `tests/test_silver.py` | Track B ①~⑥ + value_revised |
 | `tests/test_gold.py` | Track C ①~⑥ + 채널 규칙 1~8, DQ-G05, lineage 무결성, `pair_context` 동등성·정답 레이블 금지(DQ-G08) |
+| `tests/test_remediation.py` | #77: chunk 분할·DQ-B07, selector, 열린 chunk만 재획득, `remediation_event`·`rca_result` 1.1 정규화, `link_status` 4종·교차 검증·`remediation_status`, DQ-G10~G12, fixture 이력, E2E |
 | `tests/test_orchestration.py` | Track D ①~⑤: E2E(MockTransport·loopback HTTP 서버), 재실행 보존, 실패 시 manifest 없음, git_dirty 거부, 필터 재처리, 검증기 오류 탐지, DAG 구조(Airflow 있을 때) |
 
 테스트 디렉터리를 `tests/<track>/` 패키지로 나누지 않은 이유: `discover -s tests`에서 `tests/contracts`가 실제

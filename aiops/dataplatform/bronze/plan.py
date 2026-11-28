@@ -17,10 +17,21 @@ DEFAULT_MAX_PAGES = 100
 WINDOW = timedelta(minutes=5)  # symmetric_5m: real-time parity (main.py:288)
 UNKNOWN_SCOPE = {k: "UNKNOWN" for k in ("instance", "job", "observer", "runtime", "service", "site", "source",
                                         "target")}
+# DEC-19 remediation window (docs/data-platform/09 §3.2): anchor - 5m - pad ~ anchor + horizon + pad. A constant —
+# the data platform never reads Remediation settings: approval wait SLACK_APPROVAL_TTL_SEC default 900 s
+# (remediation/slack_socket.py) + longest policy ttl_seconds 3600 s (PAUSE, policy/remediation_policy.yml) + 300 s.
+# Change it together with DEC-19 when those values change.
+REMEDIATION_HORIZON = timedelta(seconds=900 + 3600 + 300)
+REMEDIATION_CHUNK = timedelta(minutes=15)  # 05 §6: no Loki request window longer than 15 minutes
+REMEDIATION_SELECTORS = (("remediation_audit", "aiops-remediation"), ("remediation_timeline", "aiops-timeline"))
 
 
 class ForbiddenSelector(ValueError):
     """DQ-B06: the plan would read a stream the data platform must never touch."""
+
+
+class ChunkPlanError(ValueError):
+    """DQ-B07: remediation chunks must tile the remediation window, each at most 15 minutes."""
 
 
 def _ident():
@@ -80,6 +91,43 @@ def incident_window(request: dict):
     return anchor, (anchor - WINDOW, anchor + WINDOW), (anchor - WINDOW - pad, anchor + WINDOW + pad)
 
 
+def remediation_window(request: dict):
+    """(start, end) of the DEC-19 remediation window."""
+    anchor, _, _ = incident_window(request)
+    pad = timedelta(seconds=int(request.get("acquisition_padding_s", 60)))
+    return anchor - WINDOW - pad, anchor + REMEDIATION_HORIZON + pad
+
+
+def remediation_chunks(start, end, size=REMEDIATION_CHUNK) -> list[tuple]:
+    """Consecutive chunks from `start`: each `size` long, the last one shorter. chunk i ends where i+1 starts."""
+    chunks, cursor = [], start
+    while cursor < end:
+        chunks.append((cursor, min(cursor + size, end)))
+        cursor = chunks[-1][1]
+    return chunks
+
+
+def check_remediation_chunks(chunks, start, end) -> None:
+    """DQ-B07 (BLOCK at plan time): no gap, no overlap, nothing past the window, every chunk <= 15 minutes."""
+    if not chunks or chunks[0][0] != start or chunks[-1][1] != end:
+        raise ChunkPlanError(f"chunks do not cover the remediation window {start}..{end} (DQ-B07)")
+    for chunk_start, chunk_end in chunks:
+        if not chunk_start < chunk_end <= chunk_start + REMEDIATION_CHUNK:
+            raise ChunkPlanError(f"chunk {chunk_start}..{chunk_end} is empty or longer than 15 minutes (DQ-B07)")
+    for (_, previous_end), (next_start, _) in zip(chunks, chunks[1:]):
+        if previous_end != next_start:
+            raise ChunkPlanError(f"gap or overlap between chunks at {previous_end} / {next_start} (DQ-B07)")
+
+
+def remediation_queries(alertname: str) -> dict[str, str]:
+    """09 §3.1. Stream label matching only; the timeline selector keeps Remediation's own event names."""
+    selector = _ident().selector
+    events = "|".join(enums.REMEDIATION_TIMELINE_EVENTS)
+    return {"remediation_audit": selector({"job": "aiops-remediation", "alert": alertname}),
+            "remediation_timeline": selector({"job": "aiops-timeline", "alert": alertname})[:-1]
+            + f',event=~"{events}"}}'}
+
+
 def plan_incident(request: dict, bindings_raw: str) -> list[dict]:
     """Full acquisition plan of one incident. Filters (`stream_classes`) never change the binding set."""
     ident = _ident()
@@ -120,6 +168,7 @@ def plan_incident(request: dict, bindings_raw: str) -> list[dict]:
         items.extend(_scope_items(ctx, role, scope_identity, scope_binding, missing,
                                   shas.get(id(scope_binding)) if scope_binding else None))
     items.extend(_global_items(ctx, alert, identity))
+    items.extend(_remediation_items(ctx, alert, request))
 
     # Fixed at plan time over the FULL plan: a stream filter never shrinks the binding set (02 §7).
     binding_set = sorted({i["binding_sha256"] for i in items if i["binding_sha256"]})
@@ -229,3 +278,22 @@ def _global_items(ctx, alert, identity) -> list[dict]:
     runs = _base(ctx, "global", dict(UNKNOWN_SCOPE), None, "scenario_run_log", "scenario_run", "runs")
     runs.update(api="file.read", query_params={})
     return [rca, fluentd, runs]
+
+
+def _remediation_items(ctx, alert, request) -> list[dict]:
+    """DEC-19: Remediation audit + timeline streams over the remediation window, in chunks of <= 15 minutes."""
+    start, end = remediation_window(request)
+    chunks = remediation_chunks(start, end)
+    check_remediation_chunks(chunks, start, end)
+    alertname = alert["labels"]["alertname"]
+    queries = remediation_queries(alertname)
+    items = []
+    for chunk_start, chunk_end in chunks:
+        chunk = {**ctx, "window_start": fmt_ts(chunk_start), "window_end": fmt_ts(chunk_end),
+                 "start_ns": ns_of(chunk_start), "end_ns": ns_of(chunk_end)}
+        for name, job in REMEDIATION_SELECTORS:
+            item = _base(chunk, "global", dict(UNKNOWN_SCOPE), None, "loki", "remediation_event", name)
+            item.update(query_text=queries[name], query_params=_loki_params(chunk),
+                        expected_labels={"job": job, "alert": alertname}, preflight_selector=queries[name])
+            items.append(item)
+    return items

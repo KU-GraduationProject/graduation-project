@@ -52,7 +52,7 @@
 | `anchored_on` | gold.incident / gold.scenario_link ← silver.alert_event | 1 ← 1 |
 | `selected_from` | gold.evidence_log ← silver 로그 행 | 1 ← 1 |
 | `aggregated_from` | gold.evidence_metric / evidence_network_flow ← silver 행 | 1 ← N |
-| `linked_from` | gold.rca_link ← silver.rca_result | 1 ← 1 |
+| `linked_from` | gold.rca_link ← silver.rca_result · gold.remediation_link ← silver.rca_result(모든 행) · gold.remediation_link ← silver.remediation_event(`linked` 행이 사용한 이벤트마다, [09](09_REMEDIATION_LINK.md) §5.3) | 1 ← 1 / 1 ← 0..N |
 | `run_candidate` | gold.scenario_link ← silver.scenario_run (짝짓기 규칙에 걸린 실행마다) | 1 ← 0..N |
 
 - **다대다**: Silver 한 행은 겹치는 여러 사건의 Gold에 동시에 쓰일 수 있고(사건 창 겹침, primary/related 동시 사용), Gold 한 행은 여러 Silver 행을 집계한다. edge 테이블이 두 방향을 모두 표현한다.
@@ -119,6 +119,6 @@ WHERE e.parent_dataset = 'silver.network_event' AND e.parent_key = :network_even
 
 - 모든 Silver 행과 quarantine 행은 ≥1개의 Bronze 부모 edge를 가진다.
 - 모든 Bronze 행은 정확히 하나의 Silver 행 또는 quarantine 행의 부모다(같은 coverage의 현재 build 기준). 사건 창 밖 패딩 영역의 행도 Silver에 들어가므로 예외가 없다.
-- 모든 Gold evidence·rca_link·incident·scenario_link 행은 ≥1개의 Silver 부모 edge를 가진다(scenario_link는 실행이 없어도 `anchored_on`).
+- 모든 Gold evidence·rca_link·incident·scenario_link·remediation_link 행은 ≥1개의 Silver 부모 edge를 가진다(scenario_link는 실행이 없어도 `anchored_on`, remediation_link는 연결이 없어도 `silver.rca_result`).
 - edge의 `parent_version`은 해당 build manifest의 `inputs` 체인 안에 있어야 한다.
 - `lineage.run.git_sha`는 40자 hex, `git_dirty=false`(운영 DAG).

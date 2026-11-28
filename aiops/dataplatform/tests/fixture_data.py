@@ -102,6 +102,8 @@ DATASET_FILE = {
     "gold.evidence_network_flow": "34_gold_evidence_network_flow.jsonl", "gold.rca_link": "35_gold_rca_link.jsonl",
     "bronze.scenario_run_entry": "14_bronze_scenario_run_entry.jsonl", "silver.scenario_run": "28_silver_scenario_run.jsonl",
     "gold.scenario_link": "36_gold_scenario_link.jsonl", "lineage.edge": "41_lineage_edge.jsonl",
+    "silver.remediation_event": "29_silver_remediation_event.jsonl",
+    "gold.remediation_link": "37_gold_remediation_link.jsonl",
 }
 
 
@@ -140,6 +142,12 @@ def plan_record() -> dict:
 
 FIRST_RUN = "run_22372c8e8c3b3db431ba"
 REPROCESS_RUN = "run_f3d9e6a440dc7050c738"
+# 04:32 pre-evaluation re-acquisition (docs/data-platform/09 §9.1, #77): open remediation chunks -> Silver -> Gold
+EVAL_RUN, EVAL_SILVER_RUN, EVAL_GOLD_RUN = ("run_42145e43f587dce69854", "run_22a97363d7fbd5f2b990",
+                                            "run_39f0a28cd0d3318e17c0")
+FIRST_REMEDIATION_SILVER = "sb_20261110T032010Z_5980560a"
+EVAL_REMEDIATION_SILVER = "sb_20261110T043210Z_60184282"
+CURRENT_GOLD = "gb_20261110T043215Z_2aad7b2f"
 
 
 def build_time(build_id: str) -> datetime:
@@ -147,7 +155,8 @@ def build_time(build_id: str) -> datetime:
     return datetime.strptime(build_id.split("_")[1], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
 
 
-REPLACED = ("sb_20261110T032010Z_62bad93f", "gb_20261110T032015Z_edd1b412")
+REPLACED = ("sb_20261110T032010Z_62bad93f", "gb_20261110T032015Z_edd1b412", "gb_20261110T034045Z_124c3f4f",
+            FIRST_REMEDIATION_SILVER)
 
 
 def main_dataset(manifest: dict) -> str:
@@ -187,7 +196,8 @@ def replay_gold(store, build_id: str):
 
 
 def replay_fixture(store):
-    """The whole fixture history: 03:20 build (Bronze 10 -> Silver 7 -> Gold), 03:40 db_log reprocess."""
+    """The whole fixture history: 03:20 build (Bronze -> Silver -> Gold), 03:40 db_log reprocess, 04:32 re-acquisition
+    of the remediation chunks that were still open (09 §9.1). Returns (03:20 Gold, current Gold)."""
     for m in manifests():
         if m["layer"] == "bronze" and m["run_id"] == FIRST_RUN:
             commit_fixture_build(store, m["build_id"])
@@ -197,5 +207,10 @@ def replay_fixture(store):
     first_gold = replay_gold(store, "gb_20261110T032015Z_edd1b412")
     commit_fixture_build(store, "acq_20261110T034000Z_e240baaa")
     replay_silver(store, "sb_20261110T034042Z_c4d90e9a")
-    current_gold = replay_gold(store, "gb_20261110T034045Z_124c3f4f")
+    replay_gold(store, "gb_20261110T034045Z_124c3f4f")
+    for m in manifests():
+        if m["layer"] == "bronze" and m["run_id"] == EVAL_RUN:
+            commit_fixture_build(store, m["build_id"])
+    replay_silver(store, EVAL_REMEDIATION_SILVER)
+    current_gold = replay_gold(store, CURRENT_GOLD)
     return first_gold, current_gold

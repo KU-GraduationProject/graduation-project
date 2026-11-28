@@ -1,12 +1,16 @@
-"""Recompute the STEP 0 fixture's derived values with the data platform code itself (#70, #71).
+"""Recompute the STEP 0 fixture's derived values with the data platform code itself (#70, #71, #77).
 
 The fixture (docs/data-platform/examples/db-connection-limit) has no hand-editable derived
 values: a Bronze line change moves its raw page sha, record key, Silver/Gold rows, lineage
-edges and manifest sha. Hand-written inputs are `00`~`02` (request, bindings, scenario run log).
+edges and manifest sha. Hand-written inputs are `00`~`03` (request, bindings, scenario run log,
+Remediation events) and the history spec below (extra RCA envelopes, the 04:32 runs).
 This script
-  - sets the RCA envelope to the current Pipeline output shape (`LLMAnalysisResult.model_dump()`)
-    and re-acquires that query from the mock sources (#70),
+  - sets the RCA envelope to the current Pipeline output shape (`LLMAnalysisResult.model_dump()`),
+    adds the RCA envelopes that carry a `remediation_id` (`RCA_EXTRA`, #77) and re-acquires that
+    query from the mock sources (#70),
   - acquires `02_scenario_runs.jsonl` as the plan's `scenario_run` item (#71),
+  - acquires the remediation chunks of `03_remediation_events.jsonl` in the first run, then the chunks
+    still open in the 04:32 pre-evaluation re-acquisition (docs/data-platform/09 §9.1, #77),
   - replays the fixture history (tests/fixture_data.replay_fixture) and writes every Silver/Gold
     build's rows, edges, manifest and current pointer back in manifest order.
 Rows keep the fixture serialization (schema column order, manifest and pointer key order).
@@ -32,11 +36,34 @@ RCA_ACQ = "acq_20261110T032007Z_ba6da055"
 SCENARIO_ACQ, SCENARIO_REQUESTED = "acq_20261110T032009Z_5a3e91c4", "2026-11-10T03:20:09.000000Z"
 SCENARIO_SILVER, SCENARIO_SILVER_CREATED = "sb_20261110T032010Z_e3b7c215", "2026-11-10T03:20:13.600000Z"
 LAYERS = ("bronze", "silver", "gold")
+# #77: RCA envelopes after the existing one, same alert episode. handoff = pipeline/main.py `forward_to_remediation`
+# with an accepted manual proposal. B is the record Remediation answered as `existing` (an earlier firing).
+RCA_EXTRA = (  # (envelope timestamp, entry lag µs, action_type, action_targets, remediation_id)
+    ("2026-11-10T03:01:28.604117+00:00", 8121, "KILL_SESSIONS", ["fixture-pg17"], "3c1e9a7b5d2f4e60a8b1c9d7e5f3a201"),
+    ("2026-11-10T03:03:58.118530+00:00", 7954, "THROTTLE", ["fixture-backend"], "7a2d4c6e8f0b1d3e5a7c9e1b3d5f7a90"),
+    ("2026-11-10T03:05:28.977402+00:00", 8306, "PAUSE", ["fixture-backend"], "e4b6d8f0a2c4e6b8d0f2a4c6e8b0d2f4"),
+)
+REMEDIATION_FIRST_AT = "2026-11-10T03:20:09.100000Z"  # after the scenario run log, inside the first Bronze run
+REMEDIATION_EVAL_AT = "2026-11-10T04:32:00.100000Z"  # >= remediation window end + lateness margin (04:31:20.512)
+# 04:32 runs: dp_reprocess conf {"stream_classes": ["remediation_event"]} (09 §9.1). (task, params, start, end)
+EVAL_AIRFLOW_RUN = "manual__2026-11-10T04:32:00+00:00"
+EVAL_RUNS = (("acquire_bronze", {"incident_id": "inc_3f9a00917bce9babb36e68f4", "stream_classes": ["remediation_event"]},
+              "2026-11-10T04:32:00.000000Z", "2026-11-10T04:32:00.400000Z", "success"),
+             ("build_silver", {"datasets": ["silver.remediation_event"], "incident_id": "inc_3f9a00917bce9babb36e68f4"},
+              "2026-11-10T04:32:10.000000Z", "2026-11-10T04:32:10.900000Z", "success"),
+             ("build_gold", {"incident_id": "inc_3f9a00917bce9babb36e68f4"},
+              "2026-11-10T04:32:15.000000Z", "2026-11-10T04:32:16.300000Z", "success"))
+# Silver/Gold builds new in #77: (build id, run id, manifest created_at, main dataset). The replay rewrites the rest.
+NEW_BUILDS = (("FIRST_REMEDIATION_SILVER", "run_4069680f5feed7639ed0", "2026-11-10T03:20:14.050000Z",
+               "silver.remediation_event"),
+              ("EVAL_REMEDIATION_SILVER", "EVAL_SILVER_RUN", "2026-11-10T04:32:10.600000Z", "silver.remediation_event"),
+              ("CURRENT_GOLD", "EVAL_GOLD_RUN", "2026-11-10T04:32:16.200000Z", "gold.incident"))
+POINTER_AT = {"EVAL_SILVER_RUN": "2026-11-10T04:32:10.800000Z", "EVAL_GOLD_RUN": "2026-11-10T04:32:16.250000Z"}
 os.environ["DP_FIXTURE_DIR"] = str(FIXTURE)
 sys.path[:0] = [str(DATAPLATFORM), str(DATAPLATFORM / "tests")]
 
 import fixture_data as fx  # noqa: E402
-from bronze.acquire import acquire  # noqa: E402
+from bronze.acquire import acquire, find_reusable  # noqa: E402
 from bronze.plan import plan_incident  # noqa: E402
 from contracts import canonical, pipeline_compat, schemas  # noqa: E402
 from mock_sources.fixture_backend import FixtureSources, mock_transport  # noqa: E402
@@ -87,8 +114,10 @@ def check_roundtrip() -> None:
 
 
 def rca_line() -> dict:
-    """A. The RCA envelope `result` = what the current Pipeline writes. Returns the model dump."""
-    entries = fx.jsonl("11_bronze_loki_entry.jsonl")
+    """A. The RCA envelope `result` = what the current Pipeline writes, plus the `RCA_EXTRA` envelopes (written as
+    candidate Bronze rows for the mock; `rca_acquisition` replaces them by the acquired rows). Returns the model dump."""
+    entries = [r for r in fx.jsonl("11_bronze_loki_entry.jsonl")
+               if r["acquisition_id"] != RCA_ACQ or r["bronze_id"].endswith(":0000:000000")]
     row = next(r for r in entries if r["acquisition_id"] == RCA_ACQ)
     envelope = json.loads(row["line"])
     assert json.dumps(envelope, ensure_ascii=False, separators=(",", ":")) == row["line"], "line encoding"
@@ -104,6 +133,20 @@ def rca_line() -> dict:
     row["line"] = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
     row["line_sha256"] = canonical.sha256_text(row["line"])
     row["record_key"] = canonical.loki_record_key(json.loads(row["stream_labels"]), row["entry_ts_ns"], row["line"])
+    at = entries.index(row) + 1
+    for stamp, lag_us, action, targets, remediation_id in RCA_EXTRA:
+        result = pipeline_compat.llm_output().LLMAnalysisResult(
+            **{**dump, "action_type": action, "action_targets": targets}).model_dump()
+        extra = {**envelope, "timestamp": stamp, "result": result, "handoff_status": "approval_pending",
+                 "remediation_dispatched": True, "remediation_id": remediation_id, "execution_attempted": False,
+                 "approval_notification_dispatched": True}
+        line = json.dumps(extra, ensure_ascii=False, separators=(",", ":"))
+        ts_ns = canonical.ns_of(canonical.parse_ts(stamp)) + lag_us * 1000
+        labels = json.loads(row["stream_labels"])
+        entries.insert(at, {**row, "bronze_id": f"{RCA_ACQ}:candidate", "entry_ts_ns": ts_ns, "line": line,
+                            "line_sha256": canonical.sha256_text(line),
+                            "record_key": canonical.loki_record_key(labels, ts_ns, line)})
+        at += 1
     write_rows("11_bronze_loki_entry.jsonl", entries)
     return dump
 
@@ -114,7 +157,8 @@ def rca_acquisition() -> None:
     want = next(a for a in acqs if a["acquisition_id"] == RCA_ACQ)
     item = next(i for i in plan_incident(fx.request(), fx.bindings_raw())
                 if i["acquisition_key"] == want["acquisition_key"])
-    line = next(r for r in fx.jsonl("11_bronze_loki_entry.jsonl") if r["acquisition_id"] == RCA_ACQ)
+    entries = fx.jsonl("11_bronze_loki_entry.jsonl")
+    candidates = [r for r in entries if r["acquisition_id"] == RCA_ACQ]
     with tempfile.TemporaryDirectory() as tmp:
         store = LocalFsStore(tmp)
         run = fx.run_context(fx.runs()[want["run_id"]], clock=fx.Clock(want["requested_at"]),
@@ -122,21 +166,27 @@ def rca_acquisition() -> None:
         res = acquire(item, store, run, transport=mock_transport(FixtureSources(FIXTURE)), page_delay_s=0)
         built = store.read_manifest("bronze", res["build_id"])
         acq = output_rows(store, built, "bronze.acquisition")[0]
-        assert output_rows(store, built, "bronze.loki_entry") == [line]
+        rows = output_rows(store, built, "bronze.loki_entry")
+    assert [(r["entry_ts_ns"], r["line"]) for r in rows] == [(r["entry_ts_ns"], r["line"]) for r in candidates]
+    at = entries.index(candidates[0])
+    entries = [r for r in entries if r["acquisition_id"] != RCA_ACQ]
+    write_rows("11_bronze_loki_entry.jsonl", entries[:at] + rows + entries[at:])
     changed = {k for k in want if want[k] != acq[k]}
-    assert changed <= {"response_bytes", "raw_sha256", "requested_at", "completed_at"}, changed
-    want.update({k: acq[k] for k in ("response_bytes", "raw_sha256")})  # the times stay the fixture's
+    assert changed <= {"response_bytes", "raw_sha256", "row_count", "requested_at", "completed_at"}, changed
+    want.update({k: acq[k] for k in ("response_bytes", "raw_sha256", "row_count")})  # the times stay the fixture's
     write_rows("10_bronze_acquisition.jsonl", acqs)
 
     manifests = fx.manifests()
     manifest = next(m for m in manifests if m["build_id"] == RCA_ACQ)
-    assert [(o["dataset"], o["rows"]) for o in manifest["outputs"]] == [(o["dataset"], o["rows"])
-                                                                        for o in built["outputs"]]
+    assert [o["dataset"] for o in manifest["outputs"]] == [o["dataset"] for o in built["outputs"]]
     with tempfile.TemporaryDirectory() as tmp:
         scratch = LocalFsStore(tmp)
         for o in manifest["outputs"]:
             for f in o["files"]:
-                f["bytes"], f["sha256"] = scratch.write_rows(f["path"], fx.build_rows(o["dataset"], RCA_ACQ))
+                rows = fx.build_rows(o["dataset"], RCA_ACQ)
+                f["rows"] = len(rows)
+                f["bytes"], f["sha256"] = scratch.write_rows(f["path"], rows)
+            o["rows"] = sum(f["rows"] for f in o["files"])
     write_rows("50_manifests.jsonl", manifests)
 
 
@@ -168,6 +218,73 @@ def scenario_acquisition() -> None:
     write_rows("50_manifests.jsonl", manifests)
 
 
+def eval_runs() -> None:
+    """E. (#77) The 04:32 re-acquisition runs in `40_lineage_run.jsonl` (same row shape as the 03:40 runs)."""
+    runs = fx.jsonl("40_lineage_run.jsonl")
+    template = next(r for r in runs if r["run_id"] == fx.REPROCESS_RUN)
+    for task, params, started, ended, status in EVAL_RUNS:
+        run_id = canonical.run_id("airflow", "dp_reprocess", EVAL_AIRFLOW_RUN, task, 1, None)
+        row = {**template, "run_id": run_id, "airflow_run_id": EVAL_AIRFLOW_RUN, "task_id": task,
+               "params": canonical.canonical_str(params), "started_at": started, "ended_at": ended, "status": status}
+        runs = [r for r in runs if r["run_id"] != run_id] + [row]
+    assert [r["run_id"] for r in runs[-3:]] == [fx.EVAL_RUN, fx.EVAL_SILVER_RUN, fx.EVAL_GOLD_RUN]
+    write_rows("40_lineage_run.jsonl", runs)
+
+
+def remediation_acquisitions() -> None:
+    """F. (#77) Remediation chunks: all of them in the first run (03:20:09), then in the 04:32 run the ones that were
+    still open (closed chunks are reused, 02 §5). The mock answers only what Loki held at each request time."""
+    items = [i for i in plan_incident(fx.request(), fx.bindings_raw()) if i["stream_class"] == "remediation_event"]
+    sources = FixtureSources(FIXTURE)
+    step = canonical.parse_ts("2026-11-10T00:00:00.020000Z") - canonical.parse_ts("2026-11-10T00:00:00.000000Z")
+    new = []  # (acquisition row, loki rows, manifest)
+    with tempfile.TemporaryDirectory() as tmp:
+        store = LocalFsStore(tmp)
+        for run_id, base in ((fx.FIRST_RUN, REMEDIATION_FIRST_AT), (fx.EVAL_RUN, REMEDIATION_EVAL_AT)):
+            at = canonical.parse_ts(base)
+            for item in items:
+                if run_id == fx.EVAL_RUN and find_reusable(store, item["acquisition_key"]):
+                    continue
+                sources.now_ns = canonical.ns_of(at)
+                run = fx.run_context(fx.runs()[run_id], clock=fx.Clock(at - step / 2),  # started_at, then `at`
+                                     hex8=fx.Hex([canonical.h(["fixture", "#77", item["acquisition_key"], run_id])[:8]]))
+                res = acquire(item, store, run, transport=mock_transport(sources), page_delay_s=0)
+                built = store.read_manifest("bronze", res["build_id"])
+                acq = output_rows(store, built, "bronze.acquisition")[0]
+                assert acq["requested_at"] == canonical.fmt_ts(at), (acq["requested_at"], at)
+                new.append((acq, output_rows(store, built, "bronze.loki_entry"), built))
+                at += step
+    ids = {a["acquisition_id"] for a, _, _ in new}
+    acqs = [a for a in fx.jsonl("10_bronze_acquisition.jsonl") if a["acquisition_id"] not in ids]
+    acqs = sorted(acqs + [ordered("bronze.acquisition", a) for a, _, _ in new], key=lambda a: a["requested_at"])
+    write_rows("10_bronze_acquisition.jsonl", acqs)
+    requested = {a["acquisition_id"]: a["requested_at"] for a in acqs}
+    entries = [r for r in fx.jsonl("11_bronze_loki_entry.jsonl") if r["acquisition_id"] not in ids]
+    entries += [ordered("bronze.loki_entry", r) for _, rows, _ in new for r in rows]
+    write_rows("11_bronze_loki_entry.jsonl", sorted(entries, key=lambda r: requested[r["acquisition_id"]]))
+    manifests = fx.manifests()
+    template = next(m for m in manifests if m["build_id"] == RCA_ACQ)
+    for _, _, built in new:
+        manifests = upsert_manifest(manifests, shaped(built, template))
+    write_rows("50_manifests.jsonl", manifests)
+
+
+def new_build_placeholders() -> None:
+    """G. (#77) Manifests of new Silver/Gold builds: `replay_silver`/`replay_gold` need their run, id suffix and
+    creation time; the replay rewrites the rest."""
+    manifests = fx.manifests()
+    for build_name, run_name, created, dataset in NEW_BUILDS:
+        build_id = getattr(fx, build_name)
+        if any(m["build_id"] == build_id for m in manifests):
+            continue
+        layer = "gold" if build_id.startswith("gb_") else "silver"
+        template = next(m for m in manifests if m["layer"] == layer)
+        manifests = upsert_manifest(manifests, {**template, "manifest_id": f"mf_{build_id}", "build_id": build_id,
+                                                "run_id": getattr(fx, run_name, run_name), "created_at": created,
+                                                "outputs": [{"dataset": dataset}]})
+    write_rows("50_manifests.jsonl", manifests)
+
+
 def replay() -> None:
     """D. Replay the fixture history and write back every Silver/Gold build's rows, edges, manifest and pointer.
     Each row file is its builds' rows in manifest order; replaced builds keep only their manifest."""
@@ -190,24 +307,27 @@ def replay() -> None:
                 build = m["build_id"]
                 if build in built and build not in fx.REPLACED:
                     out.extend(ordered(dataset, r) for r in output_rows(store, built[build], dataset))
-                else:
+                elif build not in fx.REPLACED:  # a replaced build keeps only its manifest
                     out.extend(old.get(build, []))
             write_rows(name, out)
         write_rows("50_manifests.jsonl", [shaped(built[m["build_id"]], m) if m["build_id"] in built else m
                                           for m in manifests])
         old = fx.load_json("51_current_pointers.json")
         scope = lambda p: (p["layer"], p.get("dataset"), p.get("coverage_id"), p.get("incident_id"))  # noqa: E731
+        pointer_at = {getattr(fx, name): at for name, at in POINTER_AT.items()}
         pointers = []
         for p in store.pointers():
             match = next((o for o in old if scope(o) == scope(p)), None)
-            if match:
-                # `updated_at` is the replay clock's value, not derived from the data: keep the fixture's
-                assert {k: v for k, v in p.items() if k != "updated_at"} == \
-                       {k: v for k, v in match.items() if k != "updated_at"}, (match, p)
+            # `updated_at` is the replay clock's value, not derived from the data: keep the fixture's
+            if match and {k: v for k, v in p.items() if k != "updated_at"} == \
+                    {k: v for k, v in match.items() if k != "updated_at"}:
                 pointers.append(match)
-            else:  # a new coverage of an existing run: same pointer commit time as its siblings
-                sibling = next(o for o in old if o["run_id"] == p["run_id"])
-                pointers.append(shaped({**p, "updated_at": sibling["updated_at"]}, sibling))
+                continue
+            # a pointer moved by a new run, or a new coverage: that run's commit time (or its siblings')
+            assert match is None or match["run_id"] != p["run_id"], (match, p)
+            sibling = next((o for o in old if o["run_id"] == p["run_id"]), match or old[0])
+            updated = pointer_at.get(p["run_id"]) or sibling["updated_at"]
+            pointers.append(shaped({**p, "updated_at": updated}, sibling))
         assert all(any(scope(o) == scope(p) for p in pointers) for o in old)
         write_json("51_current_pointers.json", sorted(pointers, key=lambda p: (LAYERS.index(p["layer"]),
                                                                                   p["dataset"])))
@@ -227,6 +347,9 @@ def main() -> int:
     dump = rca_line()
     rca_acquisition()
     scenario_acquisition()
+    eval_runs()
+    remediation_acquisitions()
+    new_build_placeholders()
     replay()
     parity(dump)
     print(f"fixture regenerated: {FIXTURE}")
