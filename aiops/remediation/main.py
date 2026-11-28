@@ -235,18 +235,26 @@ async def _push_auth_denied(endpoint: str, reason: str, signature: str | None) -
     })
 
 
-async def _push_policy_decision(alert: dict, decision, source: str) -> None:
+async def _push_policy_decision(alert: dict, decision, source: str,
+                                remediation_id: str | None = None) -> None:
     """
     정책 판단과 근거를 감사 로그에 남긴다. 조치 실행 기록(auto_remediation /
     manual_approval_executed)과는 별개 이벤트다 — 판단과 실행을 구분해 기록한다.
+    사건 연결 키(fingerprint·startsAt·identity)를 싣고, 레코드가 있을 때만 remediation_id 를 싣는다.
     """
+    labels = alert.get("labels", {})
     body = {
         "event":  "policy_decision",
-        "alert":  alert.get("labels", {}).get("alertname", "unknown"),
+        "alert":  labels.get("alertname", "unknown"),
         "source": source,
         "status": decision.outcome,
         **decision.as_dict(),
+        "alert_fingerprint": alert.get("fingerprint"),
+        "alert_starts_at": alert.get("startsAt"),
+        "identity": {k: labels.get(k) for k in store_mod.IDENTITY_FIELDS},
     }
+    if remediation_id:
+        body["remediation_id"] = remediation_id
     logger.info(
         "[Policy] %s: action=%s risk=%s threat=%s(%s) outcome=%s approval=%s exec_now=%s",
         source, decision.action_type, decision.action_risk, decision.threat_level,
@@ -576,8 +584,9 @@ async def _propose_action(request, previous=None, link_kind=None, steps=None,
             decision = replace(decision, outcome=AWAITING_APPROVAL, requires_approval=True,
                                executable_now=False, notify="approval_request",
                                reasons=decision.reasons + ("explicit_manual_plan",))
-    await _push_policy_decision(alert, decision, source="action")
+    # 판단 기록은 레코드가 생긴 뒤 remediation_id 와 함께 남긴다. 레코드 전에 끝나는 경로는 id 없이 남긴다.
     if decision.outcome in (BLOCKED, NO_ACTION, NOTIFY):
+        await _push_policy_decision(alert, decision, source="action")
         dispatch = await notifier.send_alert_only(alert, analysis)
         await _push_slack_status(alert, analysis, dispatch, "alert_only")
         return {"status": "blocked" if decision.outcome == BLOCKED else "notified",
@@ -598,6 +607,7 @@ async def _propose_action(request, previous=None, link_kind=None, steps=None,
                                        decision.ttl_seconds, decision.recovery_mode,
                                        parameters)
     except ValueError as exc:
+        await _push_policy_decision(alert, decision, source="action")
         raise HTTPException(422, str(exc)) from None
 
     selected = select_executor(decision.action_type, executor)
@@ -630,9 +640,12 @@ async def _propose_action(request, previous=None, link_kind=None, steps=None,
         else:
             record, created = record_store.get_or_create_incident(record)
     except store_mod.IncidentConflict as exc:
+        await _push_policy_decision(alert, decision, source="action")
         raise HTTPException(409, str(exc)) from None
     if record is None or not record_store.writable:
+        await _push_policy_decision(alert, decision, source="action")
         raise HTTPException(503, "record_store_unavailable")
+    await _push_policy_decision(alert, decision, source="action", remediation_id=record.remediation_id)
     if not created:
         return _existing_response(record, decision)
 

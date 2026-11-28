@@ -236,6 +236,10 @@ def timings_event(record) -> dict:
         "targets": list(record.targets),
         "state": record.state,
         **record.timings(),
+        # 사건·계획 연결 키 (SQLite 레코드 값 그대로; 루트 레코드의 plan_id 는 None)
+        "incident_key": record.incident_key,
+        "plan_id": record.plan_id,
+        "rejected_by": record.rejected_by,
     }
 
 
