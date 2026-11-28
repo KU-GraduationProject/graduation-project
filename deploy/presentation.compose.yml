@@ -1,0 +1,17 @@
+# Merge AFTER docker-compose.aiops.yml and the environment's existing remote/
+# extended overrides. This file does not select an executor or observation site.
+services:
+  pipeline:
+    environment:
+      CONTEXT_CAPTURE_DIR: /app/results/context
+      REMEDIATION_NOTIFICATION_ENABLED: "true"
+      REMEDIATION_APPROVAL_ENABLED: "true"
+      REMEDIATION_AUTO_EXECUTE_ENABLED: "false"
+  remediation:
+    environment:
+      PRESENTATION_CONTEXT_DIR: /app/presentation-context
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      REMEDIATION_AUTO_EXECUTE_ENABLED: "false"
+      REMEDIATION_TTL_SCAN_SEC: "3"
+    volumes:
+      - ./aiops/pipeline/results/context:/app/presentation-context:ro

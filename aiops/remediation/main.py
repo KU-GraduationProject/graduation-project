@@ -295,6 +295,38 @@ async def verify_service(request: ServiceVerifyRequest):
             "service_verification": record.service_verification, "timings": record.timings()}
 
 
+class PresentationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation: str
+    nonce: str
+    identity: dict[str, str]
+    since: str
+    remediation_id: str | None = None
+
+
+@app.post("/presentation/status", dependencies=[Depends(require_service_auth)])
+async def presentation_status(request: PresentationRequest):
+    import presentation
+    try:
+        if datetime.fromisoformat(request.since.replace("Z", "+00:00")).tzinfo is None:
+            raise ValueError()
+    except ValueError:
+        raise HTTPException(422, "presentation_instant_required") from None
+    if (request.operation != "presentation_status" or not 1 <= len(request.nonce) <= 128
+            or set(request.identity) != set(store_mod.IDENTITY_FIELDS)
+            or any(not v.strip() for v in request.identity.values())
+            or store_mod._parse_ts(request.since) is None):
+        raise HTTPException(422, "presentation_scope_required")
+    rows, capture_status = await asyncio.to_thread(presentation.contexts, request.identity, request.since)
+    record = record_store.get(request.remediation_id) if request.remediation_id else None
+    if record and record.identity != request.identity:
+        raise HTTPException(404, "stored_remediation_required")
+    return {"contexts": rows, "capture_status": capture_status,
+            "record": presentation.record_view(record) if record else None,
+            "mode": REMEDIATION_MODE,
+            "slack_link_configured": bool(os.getenv("SLACK_BOT_TOKEN"))}
+
+
 @app.post("/remote/reconcile", dependencies=[Depends(require_service_auth)])
 async def reconcile_remote(request: RemoteReconcileRequest):
     # This endpoint can only revisit an already approved durable record.
@@ -621,6 +653,10 @@ async def _propose_action(request, previous=None, link_kind=None, steps=None,
             approval_analysis["app_recovery"] = True
         dispatch = await notifier.send_approval_request(alert, approval_analysis,
                                                        remediation_id=record.remediation_id)
+        if record_store.update(record.remediation_id,
+                slack_message_url=dispatch.get("message_url"),
+                slack_dispatch_status=dispatch.get("status")) is None:
+            raise HTTPException(503, "record_store_unavailable")
         await _push_slack_status(alert, analysis, dispatch, "approval_request")
         await _push_record(record_store.get(record.remediation_id), "approval_requested")
         return {"status": "pending_approval", "remediation_id": record.remediation_id,

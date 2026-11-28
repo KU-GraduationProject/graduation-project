@@ -1,0 +1,40 @@
+{
+  "default": "mac-dev",
+  "profiles": {
+    "mac-dev": {
+      "pipeline_url": "http://127.0.0.1:8000",
+      "remediation_url": "http://127.0.0.1:8001",
+      "prometheus_url": "http://127.0.0.1:9090",
+      "loki_url": "http://127.0.0.1:3100",
+      "airflow_url": "http://127.0.0.1:18090",
+      "identity": {"site": "local", "service": "backend", "source": "mac-backend", "runtime": "container", "target": "leafy-backend"},
+      "metric_selector": {"job": "cadvisor", "instance": "cadvisor:8080", "name": "leafy-backend"},
+      "log_selector": {"site": "local", "service": "backend", "source": "mac-backend", "runtime": "container"},
+      "runner": {"mode": "local", "python": ".venv-tui/bin/python"},
+      "timeout": 900,
+      "poll_seconds": 3
+    },
+    "mac-jh": {
+      "pipeline_url": "http://127.0.0.1:18000",
+      "remediation_url": "http://127.0.0.1:18001",
+      "prometheus_url": "http://127.0.0.1:19090",
+      "loki_url": "http://127.0.0.1:13100",
+      "airflow_url": "http://127.0.0.1:18090",
+      "identity": {"site": "test", "service": "backend", "source": "jh-backend", "runtime": "container", "target": "leafy-backend"},
+      "metric_selector": {"job": "REPLACE_JOB", "instance": "REPLACE_INSTANCE", "name": "leafy-backend"},
+      "log_selector": {"site": "test", "service": "backend", "source": "jh-backend", "runtime": "container"},
+      "runner": {"mode": "ssh", "host": "JH", "shell": "powershell", "repo": "C:\\REPLACE\\graduation-project", "python": ".venv-tui\\Scripts\\python.exe"}
+    },
+    "gc-jh": {
+      "pipeline_url": "http://127.0.0.1:18000",
+      "remediation_url": "http://127.0.0.1:18001",
+      "prometheus_url": "http://127.0.0.1:19090",
+      "loki_url": "http://127.0.0.1:13100",
+      "airflow_url": "http://127.0.0.1:18090",
+      "identity": {"site": "gc", "service": "backend", "source": "gc-backend", "runtime": "container", "target": "leafy-backend"},
+      "metric_selector": {"job": "gc-cadvisor", "instance": "REPLACE_INSTANCE", "name": "leafy-backend"},
+      "log_selector": {"site": "gc", "service": "backend", "source": "gc-backend", "runtime": "container"},
+      "runner": {"mode": "ssh", "host": "GC", "shell": "powershell", "repo": "C:\\REPLACE\\graduation-project", "python": ".venv-tui\\Scripts\\python.exe"}
+    }
+  }
+}

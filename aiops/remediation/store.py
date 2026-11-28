@@ -195,6 +195,8 @@ class RemediationRecord:
     alert_context: dict = field(default_factory=dict)
     service_verification: dict = field(default_factory=dict)
     service_recovered_at: str | None = None
+    slack_message_url: str | None = None
+    slack_dispatch_status: str | None = None
     # Pipeline RCA 의 사건 분류 (attack|failure|benign). 보안 사고 ISOLATE 의 DB 백업 판단에 쓴다.
     incident_class: str | None = None
 

@@ -1,0 +1,29 @@
+Screen { background: #11191f; color: #e1e9e6; }
+Header { background: #1d2a30; color: #a2efc5; }
+Footer { background: #1d2a30; }
+#home { align: center middle; padding: 2 4; }
+#brand { text-style: bold; color: #a2efc5; text-align: center; height: 3; }
+#tagline { text-align: center; color: #ee8658; height: 3; }
+#home Button { width: 45; margin: 1 0; }
+.home-action { height: 5; }
+ScenarioScreen { overflow-y: auto; }
+#home .muted { text-align: center; }
+.muted { color: #899ca1; height: auto; padding: 0 1; }
+.title { color: #a2efc5; text-style: bold; padding: 1; height: 3; }
+.section { color: #a2efc5; text-style: bold; margin-bottom: 1; height: auto; }
+.panel { border: round #3d6263; padding: 0 1; height: auto; }
+#picker, #airflow-body { margin: 1 3; }
+#picker Select, #picker Button { margin: 1 0; }
+#dashboard { height: 1fr; min-height: 10; }
+#observations, #reasoning { width: 1fr; border: round #3d6263; padding: 0 1; }
+#metrics, #logs, #rca, #execution-logs { height: auto; }
+#spark { height: 3; color: #a2efc5; }
+#execution { height: 9; border: round #3d6263; }
+#pet { width: 30%; min-width: 16; height: 6; padding-top: 1; }
+#stop { height: 3; }
+.buttons { height: 3; margin: 1 0; }
+.buttons Button { margin-right: 1; }
+#dag-state, #tasks { margin-top: 1; }
+.narrow #dashboard { layout: vertical; }
+.narrow #observations, .narrow #reasoning { width: 100%; height: 1fr; }
+.narrow #timings { max-height: 6; overflow-y: auto; }

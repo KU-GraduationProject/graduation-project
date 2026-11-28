@@ -172,6 +172,8 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv-tui/
+.local/presentation.json
 env/
 venv/
 ENV/

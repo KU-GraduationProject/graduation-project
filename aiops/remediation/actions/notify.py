@@ -276,6 +276,8 @@ class Notifier:
     async def _send_slack(self, alert_name: str, payload: dict) -> dict:
         """SLACK_WEBHOOK_URL이 설정된 경우 Slack webhook dispatch 결과를 반환."""
         dispatched_at = datetime.utcnow().isoformat() + "Z"
+        if os.getenv("SLACK_BOT_TOKEN"):
+            return await self._send_bot(payload, dispatched_at)
         if not SLACK_WEBHOOK_URL:
             logger.debug("[Notifier] SLACK_WEBHOOK_URL not set, skipping Slack notification")
             return {
@@ -318,3 +320,35 @@ class Notifier:
                 "response_text": error_type,
                 "dispatched_at": dispatched_at,
             }
+
+    async def _send_bot(self, payload, dispatched_at):
+        """Same HITL buttons, Web API transport so a real message permalink exists.
+
+        Never retry posting after an uncertain response: that could duplicate an
+        approval message. The durable remediation ID remains the approval gate.
+        """
+        result = {"sent": False, "status": "FAILED", "response_code": None,
+                  "response_text": "slack_bot_dispatch_failed", "dispatched_at": dispatched_at}
+        try:
+            async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
+                headers = {"Authorization": "Bearer " + os.environ["SLACK_BOT_TOKEN"]}
+                response = await client.post("https://slack.com/api/chat.postMessage", headers=headers,
+                    json={**payload, "channel": os.getenv("SLACK_CHANNEL_ID", ""),
+                          "text": "Leafy AIOps · 승인 요청 / 분석 결과"})
+                body = response.json()
+                if response.status_code != 200 or body.get("ok") is not True:
+                    return result
+                result.update(sent=True, status="SUCCESS", response_code=200, response_text="ok")
+                link = await client.get("https://slack.com/api/chat.getPermalink", headers=headers,
+                                        params={"channel": body["channel"], "message_ts": body["ts"]})
+                data = link.json()
+                url = data.get("permalink", "")
+                from urllib.parse import urlsplit
+                parsed = urlsplit(url)
+                if (data.get("ok") is True and parsed.scheme == "https"
+                        and (parsed.hostname or "").endswith(".slack.com")
+                        and not parsed.username and not parsed.password and not parsed.query):
+                    result["message_url"] = url
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            pass
+        return result
