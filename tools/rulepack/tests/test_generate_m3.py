@@ -214,7 +214,7 @@ class M3ContractTest(unittest.TestCase):
     def test_existing_sql_rule_overlap_and_intended_differences(self):
         source = yaml.safe_load((m3.ROOT / "monitoring/loki/rules/fake/security-rules.yml").read_text())
         baseline = next(rule for group in source["groups"] for rule in group["rules"] if rule.get("alert") == "SQLInjectionAttempt")
-        query = re.fullmatch(r"\s*sum\(count_over_time\(\s*(.*?)\s*\[2m\]\s*\)\)\s*>\s*5\s*", baseline["expr"], re.S)[1]
+        query = re.fullmatch(r"\s*sum(?:\s+by\s*\([^)]*\))?\s*\(count_over_time\(\s*(.*?)\s*\[2m\]\s*\)\)\s*>\s*5\s*", baseline["expr"], re.S)[1]
         rows = [row for row in sql_fixtures() if row["id"] in {"union", "encoded-keyword", "comments", "user-agent-only"}]
         self.assertEqual(native_matches(query, rows), {"union", "user-agent-only"})
         self.assertEqual(native_matches(m3.pipeline("SQLInjection", defaults()["web_targets"][0]), rows), {"union", "encoded-keyword", "comments"})

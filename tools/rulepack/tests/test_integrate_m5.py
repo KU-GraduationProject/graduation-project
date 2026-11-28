@@ -210,7 +210,7 @@ class M5AssemblyTest(unittest.TestCase):
     @unittest.skipUnless(LOGCLI, "M5_LOGCLI not set; native synthetic log regression skipped")
     def test_native_integrated_sql_db_and_http_pipelines(self):
         def pipeline(source):
-            match = re.fullmatch(r"\s*sum\(count_over_time\(\s*(.*?)\s*\[(?:1|2)m\]\s*\)\)\s*>\s*\d+\s*", source["expr"], re.S)
+            match = re.fullmatch(r"\s*sum(?:\s+by\s*\([^)]*\))?\s*\(count_over_time\(\s*(.*?)\s*\[(?:1|2)m\]\s*\)\)\s*>\s*\d+\s*", source["expr"], re.S)
             self.assertIsNotNone(match, source["alert"])
             return match[1]
         with patch.object(log_tests, "LOGCLI", LOGCLI):

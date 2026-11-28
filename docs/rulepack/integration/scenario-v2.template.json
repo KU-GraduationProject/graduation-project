@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "thresholds": {
+    "external_connections": 3,
+    "internal_endpoints": 6,
+    "login_failures": 6,
+    "dependency_errors": 5,
+    "db_rows_per_second": 10000
+  },
+  "network": {
+    "observer": "REPLACE_VERIFIED_OBSERVER_NAME",
+    "observer_instance": "REPLACE_VERIFIED_OBSERVER_INSTANCE",
+    "mapping_verified": false
+  },
+  "postgres_exporter": null
+}
