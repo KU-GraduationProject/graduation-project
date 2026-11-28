@@ -42,7 +42,7 @@ def settings(**over):
 def fixture_envelope() -> tuple[dict, dict]:
     sources = FixtureSources()
     rows = sources._loki_rows('{job="aiops-llm"}')
-    assert len(rows) == 1
+    assert len(rows) == 4  # one alert episode, four RCA envelopes (#77); the first one is the template
     _, labels, line, _ = rows[0]
     return labels, json.loads(line)
 
@@ -168,7 +168,7 @@ class DiscoverTest(unittest.TestCase):
         result = phases.run_all(due[0]["conf"], self.lake,
                                 lambda task: fx.run_context(clock=clock, hex8=hex8, task_id=task),
                                 transport=mock_transport(self.sources))
-        self.assertEqual((result["incident_id"], len(result["bronze"])), (FIXTURE_INCIDENT, 16))
+        self.assertEqual((result["incident_id"], len(result["bronze"])), (FIXTURE_INCIDENT, 28))  # 16 + 12 remediation chunks
         dsc.mark_triggered(self.lake, due, READY, "run-1")
         report = checks.summarize(checks.run_checks(self.lake), checks.find_orphans(self.lake))
         self.assertEqual((report["status"], report["orphans"]), ("passed", []))  # discover state is not an orphan

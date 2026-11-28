@@ -23,7 +23,8 @@ from storage.manifest import output_rows  # noqa: E402
 from storage.store import LocalFsStore  # noqa: E402
 
 GOLD_FILES = ("gold.incident", "gold.incident_channel", "gold.evidence_log", "gold.evidence_metric",
-              "gold.evidence_network_flow", "gold.rca_link", "gold.scenario_link", "lineage.edge")
+              "gold.evidence_network_flow", "gold.rca_link", "gold.scenario_link", "gold.remediation_link",
+              "lineage.edge")
 SCENARIO_FIXTURES = Path(HERE).resolve().parents[2] / "scenarios" / "v2" / "fixtures.py"
 
 
@@ -47,9 +48,9 @@ class GoldTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    # ① fixture -> 30~35 + Gold edges, byte for byte (the replay clock returns the fixture instants)
+    # ① fixture -> 30~37 + Gold edges, byte for byte (the replay clock returns the fixture instants)
     def test_current_build_equals_fixture(self):
-        want = fx.manifest("gb_20261110T034045Z_124c3f4f")
+        want = fx.manifest(fx.CURRENT_GOLD)
         self.assertEqual(self.current, want)
         for dataset in GOLD_FILES:
             self.assertEqual(self.rows[dataset], fx.build_rows(dataset, want["build_id"]), dataset)
@@ -153,9 +154,10 @@ class GoldTest(unittest.TestCase):
         incident = self.rows["gold.incident"][0]
         self.assertEqual((incident["overall_status"], incident["evidence_count"], incident["rca_count"],
                           incident["transport_check_status"], incident["transport_loss_suspected"]),
-                         ("partial", 12, 1, "empty_unverified", False))
+                         ("partial", 12, 4, "empty_unverified", False))
+        # linked_from: 4 rca_link + 4 remediation_link -> RCA + 8 remediation events of the 2 linked RCAs (#77)
         self.assertEqual(Counter(e["relation"] for e in self.rows["lineage.edge"]),
-                         {"selected_from": 10, "aggregated_from": 43, "linked_from": 1, "anchored_on": 2,
+                         {"selected_from": 10, "aggregated_from": 43, "linked_from": 16, "anchored_on": 2,
                           "run_candidate": 1})
 
     # the fixture incident pairs with exactly one ok run of 02_scenario_runs.jsonl (#71)

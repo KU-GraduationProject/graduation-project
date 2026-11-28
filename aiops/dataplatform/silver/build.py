@@ -7,7 +7,9 @@ PK are merged into one row; every parent stays as a `normalized_from` edge (DQ-S
 """
 from __future__ import annotations
 
+from bronze.plan import remediation_window
 from contracts import canonical, enums, schemas
+from contracts.canonical import fmt_ts
 from contracts.runtime import RunContext
 from silver.normalize import NORMALIZERS, Normalized, Quarantine
 from storage import lineage_writer, paths
@@ -17,19 +19,26 @@ from storage.store import LocalFsStore
 PK = {"silver.db_log": "db_log_id", "silver.app_log": "log_id", "silver.network_event": "network_event_id",
       "silver.metric_point": "metric_point_id", "silver.alert_event": "alert_event_id",
       "silver.rca_result": "rca_id", "silver.transport_issue": "transport_issue_id",
-      "silver.scenario_run": "scenario_run_id", "silver.quarantine": "quarantine_id"}
+      "silver.scenario_run": "scenario_run_id", "silver.remediation_event": "remediation_event_id",
+      "silver.quarantine": "quarantine_id"}
 BRONZE_ROWS = {"loki": "bronze.loki_entry", "prometheus": "bronze.prometheus_sample",
                "scenario_run_log": "bronze.scenario_run_entry"}
 
 
 # ---- coverage ----------------------------------------------------------------------------
 
+CHUNKED = {"silver.remediation_event"}  # coverage = the whole remediation window, inputs = its chunks (09 §3.3)
+
+
 def coverage(dataset: str, plan: dict) -> dict:
+    window_start, window_end = plan["window_start"], plan["window_end"]
+    if dataset in CHUNKED:
+        window_start, window_end = (fmt_ts(t) for t in remediation_window(plan["request"]))
     return {"dataset": dataset, "plan_id": plan["plan_id"], "incident_id": plan["incident_id"],
             "plan_binding_sha256": plan["plan_binding_sha256"], "binding_set": plan["binding_set"],
-            "window_start": plan["window_start"], "window_end": plan["window_end"],
+            "window_start": window_start, "window_end": window_end,
             "coverage_id": canonical.coverage_id(dataset, plan["plan_id"], plan["plan_binding_sha256"],
-                                                 plan["window_start"], plan["window_end"])}
+                                                 window_start, window_end)}
 
 
 def acquisition_rows(store: LocalFsStore) -> list[tuple[dict, dict]]:
@@ -41,9 +50,15 @@ def acquisition_rows(store: LocalFsStore) -> list[tuple[dict, dict]]:
 def coverage_inputs(store: LocalFsStore, cov: dict, streams=None) -> list[str]:
     streams = streams or enums.SILVER_SOURCES[cov["dataset"]]
     allowed = set(cov["binding_set"])
+    chunked = cov["dataset"] in CHUNKED
+
+    def in_window(a):  # timestamps are fixed-width C-3 strings: string order = time order
+        if chunked:
+            return cov["window_start"] <= a["window_start"] and a["window_end"] <= cov["window_end"]
+        return a["window_start"] == cov["window_start"] and a["window_end"] == cov["window_end"]
+
     return [m["manifest_id"] for m, a in acquisition_rows(store)
-            if a["plan_id"] == cov["plan_id"] and a["window_start"] == cov["window_start"]
-            and a["window_end"] == cov["window_end"] and a["stream_class"] in streams
+            if a["plan_id"] == cov["plan_id"] and in_window(a) and a["stream_class"] in streams
             and (a["binding_sha256"] is None or a["binding_sha256"] in allowed)]
 
 
@@ -133,7 +148,7 @@ def build_silver(dataset: str, coverage: dict, inputs: list[str], store: LocalFs
         values, flags = _merge(dataset, [(n, a) for n, a, _, _ in group])
         acquired = sorted(a["requested_at"] for _, a, _, _ in group)
         rows.append(schemas.project(dataset, {
-            **values, "_schema_version": schemas.SCHEMA_VERSION, "_dataset_version": build_id,
+            **values, "_schema_version": schemas.schema_version(dataset), "_dataset_version": build_id,
             "_run_id": run.run_id, "_quality_flags": sorted(flags), "_dup_count": len(group),
             "_first_acquired_at": acquired[0], "_last_acquired_at": acquired[-1]}))
         for _, acq, parent_dataset, row in group:

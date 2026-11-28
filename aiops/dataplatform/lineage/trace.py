@@ -16,7 +16,7 @@ PK = {"bronze.loki_entry": "bronze_id", "bronze.prometheus_sample": "bronze_id",
       "silver.db_log": "db_log_id", "silver.network_event": "network_event_id",
       "silver.metric_point": "metric_point_id", "silver.alert_event": "alert_event_id",
       "silver.rca_result": "rca_id", "silver.transport_issue": "transport_issue_id",
-      "silver.quarantine": "quarantine_id"}
+      "silver.remediation_event": "remediation_event_id", "silver.quarantine": "quarantine_id"}
 
 
 class Lake:
@@ -116,7 +116,7 @@ def integrity(store: LocalFsStore, require_runs: bool = True) -> list[str]:
                 continue
             for row in output_rows(store, manifest, dataset):
                 key = (row[PK[dataset]] if dataset in PK else
-                       f"{row['incident_id']}:{row['rca_id']}" if dataset == "gold.rca_link" else
+                       f"{row['incident_id']}:{row['rca_id']}" if dataset in ("gold.rca_link", "gold.remediation_link") else
                        row["incident_id"] if dataset in ("gold.incident", "gold.scenario_link") else
                        row.get("evidence_id"))
                 if dataset == "gold.incident_channel":

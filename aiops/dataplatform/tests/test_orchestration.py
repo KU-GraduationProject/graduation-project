@@ -55,8 +55,8 @@ class PhaseTest(unittest.TestCase):
     # ⑤ (in-process) fixture HTTP -> A -> B -> C -> validate PASS
     def test_chain_commits_and_validate_passes(self):
         result = self.run_all()
-        self.assertEqual(len(result["bronze"]), 16)
-        self.assertEqual(len(result["silver"]), 8)
+        self.assertEqual(len(result["bronze"]), 28)  # 16 + 6 remediation chunks x 2 selectors (#77)
+        self.assertEqual(len(result["silver"]), 9)
         self.assertEqual([g["build_status"] for g in result["gold"]], ["partial"])
         report = checks.summarize(checks.run_checks(self.lake), checks.find_orphans(self.lake))
         self.assertEqual((report["status"], report["orphans"]), ("passed", []))

@@ -135,6 +135,7 @@ v1 메트릭 plan은 **실시간 Pipeline과 같은 PromQL·step**(`query_range`
 | `fluentd_internal` | `{log_type="fluentd_internal"} \|= "failed to write post"` | global |
 | `fluentd_error` | `{log_type="fluentd_error"}` | global |
 | `scenario_run` | 질의 없음. `DP_SCENARIO_RUN_LOG` 파일(`scenarios/v2` `runs.jsonl`)을 통째로 읽음 (§2.5) | global |
+| `remediation_event` | `{job="aiops-remediation", alert=…}` · `{job="aiops-timeline", alert=…, event=~"remediation_decision_started\|manual_approval_executed\|auto_remediation_completed\|recovery_approval_required"}`. 창 = `anchor−5m−pad ~ anchor+80m+pad`를 15분 이하 chunk로 나눔(DEC-19, [09](09_REMEDIATION_LINK.md) §3) | global |
 
 **금지:** `{job="network-experiment"}`, Heldout 경로, binding이 없는 identity에 대한 넓은 selector([00](00_EXISTING_SYSTEM_ANALYSIS.md) §9). binding이 없으면 `status=scope_unavailable` 행만 남기고 질의하지 않는다.
 
@@ -258,6 +259,8 @@ MAJOR가 `1`이 아니거나 필수 필드가 없으면 quarantine(`unsupported_
 
 ### 3.6 `silver.rca_result`
 
+> `_schema_version` **1.1**: `remediation_id` 추가(DEC-19, MINOR — 저장 경로 `v1` 유지). 1.0 build에는 이 컬럼이 없고 null로 읽는다.
+
 | 컬럼 | 타입 | Null | 설명 |
 |---|---|---|---|
 | `rca_id` | string | N | PK = Bronze `record_key` |
@@ -279,6 +282,7 @@ MAJOR가 `1`이 아니거나 필수 필드가 없으면 quarantine(`unsupported_
 | `fallback_reason` | string | Y | `source_unresolved`([main.py:300](../../aiops/pipeline/main.py#L300)) · `llm_parse_failure`([main.py:888](../../aiops/pipeline/main.py#L888)) — root_cause 문자열 **완전 일치**로만 판정 |
 | `handoff_status` | string | Y | |
 | `remediation_dispatched`,`notification_dispatched` | bool | Y | |
+| `remediation_id` | string | Y | envelope `remediation_id` 원문(handoff `approval_pending`·`auto_*`). 없거나 문자열이 아니면 null |
 
 ### 3.7 `silver.transport_issue`
 
@@ -324,6 +328,36 @@ MAJOR가 `1`이 아니거나 필수 필드가 없으면 quarantine(`unsupported_
 | `status` | string | N | 원문(`run.py`: `ok` · `error`). 짝짓기는 `ok`만 쓴다 |
 
 필수 키(`scenario_id`·`started_at`·`ended_at`·`status`)가 없으면 `missing_required_field`, 타입이 다르면 `invalid_value`로 quarantine한다. 그 밖의 키는 읽지 않는다(Bronze 원문에는 남음).
+
+### 3.11 `silver.remediation_event`
+
+Remediation(`aiops-remediation`)·timeline(`aiops-timeline`) Loki 이벤트 1건당 1행. 원문을 보존하고 Gold 연결은 하지 않는다([09](09_REMEDIATION_LINK.md) §4). coverage 창은 remediation 창 전체다(chunk 획득을 모음).
+
+| 컬럼 | 타입 | Null | 설명 |
+|---|---|---|---|
+| `remediation_event_id` | string | N | PK = Bronze `record_key` |
+| `event_time` | timestamp | N | 본문 `timestamp`(C-4). 해석 실패 시 Loki entry 시각 + `event_time_fallback` |
+| `event_time_source` | string | N | `body_timestamp` · `receiver_fallback` |
+| `loki_ts_ns` | int64 | N | |
+| `stream_job` | string | N | stream label `job` 원문: `aiops-remediation` · `aiops-timeline` |
+| `event` | string | N | 본문 `event`(없으면 quarantine `missing_required_field`) |
+| `status` | string | Y | 본문 `status` |
+| `alertname` | string | Y | 본문 `alert` |
+| `remediation_id` | string | Y | 본문 값. null이면 Gold에서 연결하지 않는다(`auto_remediation` 등). `policy_decision`은 값이 있어도(#81) v1 Gold에 연결하지 않는다 |
+| `action_type` | string | Y | |
+| `targets` | list<string> | N | 본문 `targets` 또는 `[target]`, 없으면 `[]` |
+| `record_state` | string | Y | 레코드 이벤트(`aiops-remediation`, 본문에 `state`)의 `state` |
+| `alert_active_at` | timestamp | Y | 레코드 이벤트의 `alert_active_at`(= 경보 `startsAt`) C-4 해석값. 해석 불가면 null |
+| `alert_active_at_raw` | string | Y | 원문 |
+| `approved_by` | string | Y | `manual_approval_executed`의 Slack user id |
+| `result` | string | Y | 실행 결과 요약(`auto_remediation`·`manual_approval_executed`) |
+| `verified` | bool | Y | |
+| `reason` | string | Y | `*_blocked`·`db_backup_failed`·`duplicate_execution_suppressed` 사유 |
+| `policy` | string(JSON) | Y | `policy_decision`의 `decision.as_dict()` 필드 묶음(`timestamp`·`event`·`alert`·`source`·`status` 제외) |
+| `timings` | string(JSON) | Y | 레코드 이벤트의 시각 지표(`approval_requested_at`…`service_recovery_sec`, `alert_active_at` 제외) |
+| `event_body` | string(JSON) | N | 본문 전체(C-1). C-12: Silver는 원문 보존 |
+
+JSON 아님·객체 아님은 기존 사유로 quarantine한다. 알 수 없는 `event` 이름도 행으로 남긴다.
 
 ## 4. Gold — 사건별 RCA Evidence Mart (사건 단위 build, 버전 보존)
 
@@ -465,6 +499,34 @@ MAJOR가 `1`이 아니거나 필수 필드가 없으면 quarantine(`unsupported_
 - **LLM 입력 금지(제안)**: `scenario_id`는 사실상 정답 힌트다. RCA가 Gold를 입력으로 쓰게 되더라도(DEC-07) 이 테이블은 프롬프트에 넣지 않기를 LLM 담당에게 제안한다. 데이터 플랫폼은 프롬프트 코드를 바꾸지 않는다.
 - 실행 기록은 실행이 **끝날 때** 쓰인다. 사건 획득 시점에 아직 끝나지 않은 실행은 `no_run`으로 남으므로, 평가 전에 실행 기록을 다시 획득해 Gold를 재빌드한다([aiops/dataplatform/README.md](../../aiops/dataplatform/README.md)).
 
+### 4.8 `gold.remediation_link` — 사건 × build × RCA 당 1행
+
+`gold.rca_link`의 RCA마다 1행(DQ-G10). RCA envelope의 `remediation_id`로 **정확히** 잇는 것만 연결하고, 경보 이름·시각 근접 추정 연결은 만들지 않는다(DEC-19). 판정 규칙은 [09](09_REMEDIATION_LINK.md) §5.
+
+| 컬럼 | 타입 | Null | 설명 |
+|---|---|---|---|
+| `incident_id`,`gold_build_id` | string | N | |
+| `rca_id` | string | N | `gold.rca_link` 행과 1:1 |
+| `rca_time` | timestamp | N | |
+| `handoff_status` | string | Y | RCA envelope 원문(왜 `remediation_id`가 없는지 설명) |
+| `remediation_id` | string | Y | `silver.rca_result.remediation_id` |
+| `link_basis` | string | Y | v1 어휘 `rca_remediation_id` 하나. `linked`가 아니면 null |
+| `link_status` | string | N | `linked` · `no_remediation_id` · `events_not_found` · `cross_check_failed`(`alertname` 또는 `alert_active_at ≠ anchor_time`) |
+| `policy_decision_link` | string | N | v1 고정값 `unlinked_no_key` — `policy_decision`은 연결하지 않음. #81로 생긴 키를 쓰는 연결은 DEC-19 개정 |
+| `action_type`,`final_state` | string | Y | `linked`일 때만. 마지막 레코드 이벤트의 값 |
+| `targets` | list<string> | N | `linked`가 아니면 `[]` |
+| `approval_requested_at`,`approved_at`,`action_started_at`,`action_verified_at`,`recovery_due_at`,`recovery_verified_at`,`service_recovered_at` | timestamp | Y | 마지막 레코드 이벤트의 `timings` |
+| `approved_by` | string | Y | `manual_approval_executed`(같은 `remediation_id`) |
+| `execution_results` | string(JSON) | N | `[{target,status,result,verified}]`, 없으면 `[]` |
+| `block_events` | string(JSON) | N | `[{event,reason,event_time}]`(`evidence_gate_blocked`·`capture_blocked`·`db_backup_failed`·`duplicate_execution_suppressed`), 없으면 `[]` |
+| `mttr_sec`,`approval_latency_sec` | double | Y | `timings` 값 그대로 |
+| `remediation_status` | string | N | `complete` · `partial` · `unlinked` |
+| `partial_reasons` | list<string> | N | `window_open` · `acquisition_incomplete` · `beyond_window` |
+| `remediation_window_start`,`remediation_window_end` | timestamp | N | remediation 창([09](09_REMEDIATION_LINK.md) §3.2) |
+
+- `linked`가 아니면 상세 컬럼은 null·`[]`이다(Silver 행을 끌어오지 않음, DQ-G11).
+- `gold.incident`·`overall_status`는 이 테이블로 바뀌지 않는다.
+
 ## 5. 기존 계약 보존 확인
 
 | 기존 계약 | 이 문서의 처리 |
@@ -474,6 +536,7 @@ MAJOR가 `1`이 아니거나 필수 필드가 없으면 quarantine(`unsupported_
 | RCA envelope v2.0 | Loki `aiops-llm` 원문을 Bronze에 그대로, Silver는 읽기만. Pipeline 쓰기 경로 변경 없음 |
 | LLMAnalysisResult | Silver 검증에 그대로 사용. action_type 어휘 변경 없음 |
 | scenarios/v2 실행 기록·레지스트리 | `runs.jsonl`은 읽기만(Bronze 원문 보존). `run.py`·`fixtures.py`·`registry.py` 변경 없음, 정답 레이블은 Gold에 없음 |
+| Remediation 감사·timeline 이벤트 | Loki `aiops-remediation`·`aiops-timeline`을 읽기만(Bronze 원문 보존). Remediation 코드·SQLite·이벤트 필드 변경 없음(필드 보강은 #81) |
 
 ## 6. Data Dictionary로 넘길 항목 (이번 범위 제외)
 

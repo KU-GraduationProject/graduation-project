@@ -40,6 +40,8 @@ class BronzeTest(unittest.TestCase):
     def run_item(self, item, fixture_row=None, transport=None, clock="2026-11-10T03:20:00.000000Z", run=None):
         hex8 = fx.Hex([fixture_row["acquisition_id"][-8:]]) if fixture_row else self.hex
         start = fixture_row["requested_at"] if fixture_row else clock
+        # Loki holds only what was pushed before the request (remediation events, #77)
+        self.sources.now_ns = canonical.ns_of(canonical.parse_ts(fixture_row["requested_at"])) if fixture_row else None
         context = fx.run_context(fx.runs()[run or fx.FIRST_RUN], clock=fx.Clock(start), hex8=hex8)
         result = acquire(item, self.store, context, transport=transport or mock_transport(self.sources),
                          page_delay_s=0, run_log_path=str(fx.FIXTURE_DIR / "02_scenario_runs.jsonl"))
@@ -99,7 +101,7 @@ class BronzeTest(unittest.TestCase):
 
     # ③ page 2 timeout -> partial, received rows kept (fixture reprocess acquisition)
     def test_second_page_timeout_is_partial(self):
-        expected = fx.jsonl("10_bronze_acquisition.jsonl")[-1]
+        expected = next(a for a in fx.jsonl("10_bronze_acquisition.jsonl") if a["run_id"] == fx.REPROCESS_RUN)
         request = {**fx.request(), "force_reacquire": True, "page_limit": 3, "stream_classes": ["db_log"]}
         item = plan_incident(request, fx.bindings_raw())[0]
         calls = {"n": 0}

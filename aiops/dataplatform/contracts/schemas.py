@@ -207,6 +207,7 @@ DOC_TABLES = {
         ('handoff_status', 'string', True),
         ('remediation_dispatched', 'bool', True),
         ('notification_dispatched', 'bool', True),
+        ('remediation_id', 'string', True),
     ],
     "silver.scenario_run": [
         ('scenario_run_id', 'string', False),
@@ -218,6 +219,29 @@ DOC_TABLES = {
         ('started_at_raw', 'string', False),
         ('ended_at_raw', 'string', False),
         ('status', 'string', False),
+    ],
+    "silver.remediation_event": [
+        ('remediation_event_id', 'string', False),
+        ('event_time', 'timestamp', False),
+        ('event_time_source', 'string', False),
+        ('loki_ts_ns', 'int64', False),
+        ('stream_job', 'string', False),
+        ('event', 'string', False),
+        ('status', 'string', True),
+        ('alertname', 'string', True),
+        ('remediation_id', 'string', True),
+        ('action_type', 'string', True),
+        ('targets', 'list<string>', False),
+        ('record_state', 'string', True),
+        ('alert_active_at', 'timestamp', True),
+        ('alert_active_at_raw', 'string', True),
+        ('approved_by', 'string', True),
+        ('result', 'string', True),
+        ('verified', 'bool', True),
+        ('reason', 'string', True),
+        ('policy', 'json', True),
+        ('timings', 'json', True),
+        ('event_body', 'json', False),
     ],
     "silver.transport_issue": [
         ('transport_issue_id', 'string', False),
@@ -375,6 +399,36 @@ DOC_TABLES = {
         ('run_ended_at', 'timestamp', True),
         ('run_log_status', 'string', False),
     ],
+    "gold.remediation_link": [
+        ('incident_id', 'string', False),
+        ('gold_build_id', 'string', False),
+        ('rca_id', 'string', False),
+        ('rca_time', 'timestamp', False),
+        ('handoff_status', 'string', True),
+        ('remediation_id', 'string', True),
+        ('link_basis', 'string', True),
+        ('link_status', 'string', False),
+        ('policy_decision_link', 'string', False),
+        ('action_type', 'string', True),
+        ('final_state', 'string', True),
+        ('targets', 'list<string>', False),
+        ('approval_requested_at', 'timestamp', True),
+        ('approved_at', 'timestamp', True),
+        ('action_started_at', 'timestamp', True),
+        ('action_verified_at', 'timestamp', True),
+        ('recovery_due_at', 'timestamp', True),
+        ('recovery_verified_at', 'timestamp', True),
+        ('service_recovered_at', 'timestamp', True),
+        ('approved_by', 'string', True),
+        ('execution_results', 'json', False),
+        ('block_events', 'json', False),
+        ('mttr_sec', 'double', True),
+        ('approval_latency_sec', 'double', True),
+        ('remediation_status', 'string', False),
+        ('partial_reasons', 'list<string>', False),
+        ('remediation_window_start', 'timestamp', False),
+        ('remediation_window_end', 'timestamp', False),
+    ],
     "lineage.run": [
         ('run_id', 'string', False),
         ('orchestrator', 'string', False),
@@ -431,6 +485,12 @@ SILVER_ENVELOPE = [("_dup_count", "int64", False), ("_first_acquired_at", "times
                    ("_last_acquired_at", "timestamp", False)]
 
 SCHEMA_VERSION = "1.0"
+# C-10 MINOR bumps per dataset (storage path stays v1). silver.rca_result 1.1: + remediation_id (#77, DEC-19).
+SCHEMA_VERSIONS = {"silver.rca_result": "1.1"}
+
+
+def schema_version(dataset: str) -> str:
+    return SCHEMA_VERSIONS.get(dataset, SCHEMA_VERSION)
 
 
 def columns(dataset: str) -> list[tuple[str, str, bool]]:

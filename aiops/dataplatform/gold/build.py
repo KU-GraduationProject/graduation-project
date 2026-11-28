@@ -12,12 +12,13 @@ import math
 from collections import Counter, defaultdict
 from datetime import timedelta
 
-from bronze.plan import WINDOW
+from bronze.plan import REMEDIATION_SELECTORS, WINDOW, remediation_chunks, remediation_window
 from contracts import canonical, enums, pipeline_compat, schemas
 from contracts.canonical import canonical_str, fmt_ts, parse_ts
 from contracts.runtime import RunContext
 from gold import render
 from silver.build import coverage, coverage_inputs
+from silver.normalize import instant_or_none
 from storage import lineage_writer, paths
 from storage.manifest import commit_build, flag_counts, manifest_by_id, output_rows, ref
 from storage.store import LocalFsStore
@@ -42,7 +43,8 @@ def plan_gold(store: LocalFsStore, plan: dict) -> dict | None:
     if "silver.alert_event" not in silver:
         return None  # v1: the incident is anchored on its RCA envelope (01 §3.5)
     gold_cov = coverage("gold.incident", plan)
-    acquisitions = coverage_inputs(store, gold_cov, streams=enums.STREAM_CLASSES)
+    acquisitions = (coverage_inputs(store, gold_cov, streams=enums.STREAM_CLASSES)
+                    + coverage_inputs(store, coverage("silver.remediation_event", plan)))  # chunks (09 §3.3)
     inputs = [m for d in sorted(silver) for m in silver[d]] + acquisitions
     pointer = store.read_pointer("gold", incident_id=plan["incident_id"])
     if pointer:
@@ -271,6 +273,8 @@ def build_gold(incident: dict, silver_inputs: dict, acquisitions: list[str], sto
 
     scenario_link, scenario_edges = _scenario_link(incident_id, build_id, run, alert, alert_build, anchor, rows,
                                                    quarantine, acq_rows)
+    remediation, remediation_edges, remediation_used = _remediation_links(incident_id, build_id, run, request, alert,
+                                                                          anchor, rca_rows, rows, acq_rows)
 
     transport = [r for r, _, _ in rows["silver.transport_issue"] if in_window_ns(r["loki_ts_ns"])]
     fluentd = [a["status"] for a in acq_rows if a["stream_class"] == "fluentd_internal"]
@@ -292,13 +296,14 @@ def build_gold(incident: dict, silver_inputs: dict, acquisitions: list[str], sto
         "built_at": fmt_ts(run.now()), **_envelope(build_id, run, set())})
     anchor_edge = lineage_writer.edge("gold.incident", incident_id, build_id, "silver.alert_event",
                                       alert["alert_event_id"], alert_build, "anchored_on", run.run_id)
-    edges = log_edges + metric_edges + flow_edges + link_edges + [anchor_edge] + scenario_edges
+    edges = log_edges + metric_edges + flow_edges + link_edges + [anchor_edge] + scenario_edges + remediation_edges
 
     gold_rows = {"gold.incident": [incident_row], "gold.incident_channel": channels, "gold.evidence_log": ev_log,
                  "gold.evidence_metric": ev_metric, "gold.evidence_network_flow": ev_flow, "gold.rca_link": links,
-                 "gold.scenario_link": [scenario_link]}
+                 "gold.scenario_link": [scenario_link], "gold.remediation_link": remediation}
     from gold.checks import check_build
-    check_build(gold_rows, edges, resolved)
+    check_build(gold_rows, edges, resolved,
+                remediation={"alertname": alert["alertname"], "anchor": anchor, "events": remediation_used})
 
     date = paths.date_of(alert["starts_at"])
     outputs = [(d, paths.gold_file(d, incident_id, date, build_id), gold_rows[d]) for d in enums.GOLD_DATASETS]
@@ -350,6 +355,125 @@ def _scenario_link(incident_id, build_id, run, alert, alert_build, anchor, rows,
                                      h["scenario_run_id"], runs[h["scenario_run_id"]][1], "run_candidate", run.run_id)
                  for h in hits)
     return row, edges
+
+
+# ---- gold.remediation_link (#77, DEC-19, docs/data-platform/09 §5) ------------------------
+
+_NO_DETAIL = {"link_basis": None, "action_type": None, "final_state": None, "targets": [],
+              "approval_requested_at": None, "approved_at": None, "action_started_at": None,
+              "action_verified_at": None, "recovery_due_at": None, "recovery_verified_at": None,
+              "service_recovered_at": None, "approved_by": None, "execution_results": "[]", "block_events": "[]",
+              "mttr_sec": None, "approval_latency_sec": None}
+_DETAIL_TIMES = ("approval_requested_at", "approved_at", "action_started_at", "action_verified_at", "recovery_due_at",
+                 "recovery_verified_at", "service_recovered_at")
+
+
+def is_record_event(event: dict) -> bool:
+    """`_push_record` rows: the only events that carry the record state and `alert_active_at`."""
+    return event["stream_job"] == "aiops-remediation" and event["record_state"] is not None
+
+
+def cross_check(event: dict, alertname: str, anchor) -> bool:
+    """09 §5.1: same alert name and `alert_active_at` == anchor as instants (C-4), never as strings."""
+    return (event["alertname"] == alertname and event["alert_active_at"] is not None
+            and parse_ts(event["alert_active_at"]) == anchor)
+
+
+def remediation_chunk_reasons(acqs: list[dict], expected: list[tuple]) -> list[str]:
+    """`window_open` / `acquisition_incomplete` over the planned (query_name, window_start, window_end) chunks."""
+    by_chunk = defaultdict(list)
+    for a in acqs:
+        by_chunk[(a["query_name"], a["window_start"], a["window_end"])].append(a)
+    reasons = set()
+    for chunk in expected:
+        got = by_chunk.get(tuple(chunk))
+        if not got:
+            reasons.add("acquisition_incomplete")
+            continue
+        if not any(a["window_closed"] for a in got):
+            reasons.add("window_open")
+        if enums.best_status(a["status"] for a in got) not in ("ok", "empty_verified"):
+            reasons.add("acquisition_incomplete")
+    return [r for r in enums.REMEDIATION_PARTIAL_REASONS if r in reasons]
+
+
+def _number(value):
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _remediation_detail(used: list[dict], records: list[dict]) -> dict:
+    last = records[-1]
+    timings = json.loads(last["timings"]) if last["timings"] else {}
+    times = {k: fmt_ts(t) if (t := instant_or_none(timings.get(k))) else None for k in _DETAIL_TIMES}
+    approvals = [e for e in used if e["event"] == "manual_approval_executed"]
+    blocks = [e for e in used if e["event"] in enums.REMEDIATION_BLOCK_EVENTS]
+    return {"link_basis": "rca_remediation_id", "action_type": last["action_type"], "final_state": last["record_state"],
+            "targets": list(last["targets"]), **times,
+            "approved_by": next((e["approved_by"] for e in approvals if e["approved_by"] is not None), None),
+            "execution_results": canonical_str([{"target": e["targets"][0] if e["targets"] else None,
+                                                 "status": e["status"], "result": e["result"],
+                                                 "verified": e["verified"]} for e in approvals]),
+            "block_events": canonical_str([{"event": e["event"], "reason": e["reason"], "event_time": e["event_time"]}
+                                           for e in blocks]),
+            "mttr_sec": _number(timings.get("mttr_sec")),
+            "approval_latency_sec": _number(timings.get("approval_latency_sec"))}
+
+
+def remediation_link(rca: dict, events: list[dict], chunk_reasons: list[str], alertname: str, anchor,
+                     window) -> tuple[dict, list[dict]]:
+    """One RCA's link values and the Silver events it used. Only the exact `remediation_id` key links (DEC-19):
+    never an alert name or time proximity. `policy_decision` is never attached in v1, even when it carries a
+    `remediation_id` (#81): its link is the DEC-19 revision (`policy_decision_link=unlinked_no_key`)."""
+    start, end = window
+    rid = rca.get("remediation_id")  # null in silver.rca_result 1.0 builds
+    used = sorted((e for e in events if rid is not None and e["remediation_id"] == rid
+                   and e["event"] != "policy_decision" and start <= canonical.from_ns(e["loki_ts_ns"]) <= end),
+                  key=lambda e: (e["event_time"], e["loki_ts_ns"], e["remediation_event_id"]))
+    records = [e for e in used if is_record_event(e)]
+    status = ("no_remediation_id" if rid is None else "events_not_found" if not records
+              else "cross_check_failed" if not all(cross_check(e, alertname, anchor) for e in records) else "linked")
+    detail = _remediation_detail(used, records) if status == "linked" else dict(_NO_DETAIL)
+    if status == "linked":
+        reasons = set(chunk_reasons)
+        due = detail["recovery_due_at"]
+        unsettled = detail["final_state"] not in enums.RECORD_STATES_SETTLED
+        if (due is not None and parse_ts(due) > end) or (unsettled and "window_open" not in chunk_reasons):
+            reasons.add("beyond_window")  # the outcome is decided after the window (09 §5.2)
+        reasons = [r for r in enums.REMEDIATION_PARTIAL_REASONS if r in reasons]
+        overall = "partial" if reasons else "complete"
+    elif status == "events_not_found" and chunk_reasons:
+        reasons, overall = list(chunk_reasons), "partial"  # the events may not have arrived yet
+    else:
+        reasons, overall = [], "unlinked"
+    values = {"rca_id": rca["rca_id"], "rca_time": rca["rca_time"], "handoff_status": rca.get("handoff_status"),
+              "remediation_id": rid, "link_status": status, "policy_decision_link": "unlinked_no_key", **detail,
+              "remediation_status": overall, "partial_reasons": reasons,
+              "remediation_window_start": fmt_ts(start), "remediation_window_end": fmt_ts(end)}
+    return values, used if status == "linked" else []
+
+
+def _remediation_links(incident_id, build_id, run, request, alert, anchor, rca_rows, rows, acq_rows):
+    """gold.remediation_link: one row per gold.rca_link RCA (DQ-G10), edges to the RCA and every used event."""
+    start, end = remediation_window(request)
+    expected = [(name, fmt_ts(s), fmt_ts(e)) for s, e in remediation_chunks(start, end)
+                for name, _ in REMEDIATION_SELECTORS]
+    reasons = remediation_chunk_reasons([a for a in acq_rows if a["stream_class"] == "remediation_event"], expected)
+    events = [r for r, _, _ in rows["silver.remediation_event"]]
+    event_build = {r["remediation_event_id"]: b for r, b, _ in rows["silver.remediation_event"]}
+    flags = {"window_open"} if "window_open" in reasons else set()
+    out, edges, used_by = [], [], {}
+    for r, b in rca_rows:
+        values, used = remediation_link(r, events, reasons, alert["alertname"], anchor, (start, end))
+        out.append(schemas.project("gold.remediation_link", {"incident_id": incident_id, "gold_build_id": build_id,
+                                                             **values, **_envelope(build_id, run, flags)}))
+        key = f"{incident_id}:{r['rca_id']}"
+        edges.append(lineage_writer.edge("gold.remediation_link", key, build_id, "silver.rca_result", r["rca_id"], b,
+                                         "linked_from", run.run_id))
+        edges.extend(lineage_writer.edge("gold.remediation_link", key, build_id, "silver.remediation_event",
+                                         e["remediation_event_id"], event_build[e["remediation_event_id"]],
+                                         "linked_from", run.run_id) for e in used)
+        used_by[r["rca_id"]] = used
+    return out, edges, used_by
 
 
 def _envelope(build_id, run, flags) -> dict:

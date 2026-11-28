@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 
 from bronze import acquire as bronze_acquire
-from bronze.plan import plan_incident
+from bronze.plan import incident_window, plan_incident
 from contracts.canonical import fmt_ts
 from contracts.runtime import RunContext, from_env
 from gold.build import build_gold as gold_build, plan_gold
@@ -61,10 +61,12 @@ def plan(request: dict, lake: LocalFsStore, run: RunContext) -> dict[str, list[d
     if not items:
         raise ValueError("empty acquisition plan")
     first = items[0]
+    # the incident acquisition window, not the first item's: a remediation chunk has its own window (#77)
+    _, _, (window_start, window_end) = incident_window(request)
     lake.write_plan({"plan_id": first["plan_id"], "incident_id": first["incident_id"],
                      "binding_set": first["binding_set"],
-                     "plan_binding_sha256": first["plan_binding_sha256"], "window_start": first["window_start"],
-                     "window_end": first["window_end"], "request": request, "updated_at": fmt_ts(run.now()),
+                     "plan_binding_sha256": first["plan_binding_sha256"], "window_start": fmt_ts(window_start),
+                     "window_end": fmt_ts(window_end), "request": request, "updated_at": fmt_ts(run.now()),
                      "run_id": run.run_id})
     lineage_writer.write_run(lake, run, "success")
     grouped = {"loki": [], "prometheus": [], "scenario_run_log": []}
@@ -74,7 +76,9 @@ def plan(request: dict, lake: LocalFsStore, run: RunContext) -> dict[str, list[d
 
 
 def label(item: dict) -> str:
-    return f"{item['scope_role']}:{item['stream_class']}:{item['query_name']}"
+    name = f"{item['scope_role']}:{item['stream_class']}:{item['query_name']}"
+    # remediation chunks share query names; the chunk start keeps one name (Airflow map / local run) per chunk
+    return f"{name}@{item['window_start']}" if item["stream_class"] == "remediation_event" else name
 
 
 def acquire(item: dict, lake: LocalFsStore, run: RunContext, transport=None) -> dict:
