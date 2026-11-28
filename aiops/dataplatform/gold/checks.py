@@ -12,9 +12,10 @@ def check_build(rows: dict, edges: list[dict], resolved: bool) -> list[str]:
     errors, warnings = [], []
     parents = {(e["child_dataset"], e["child_key"]) for e in edges}
     keys = {"gold.incident": "incident_id", "gold.rca_link": None, "gold.evidence_log": "evidence_id",
-            "gold.evidence_metric": "evidence_id", "gold.evidence_network_flow": "evidence_id"}
+            "gold.evidence_metric": "evidence_id", "gold.evidence_network_flow": "evidence_id",
+            "gold.scenario_link": "incident_id"}
     for dataset, key in keys.items():
-        for row in rows[dataset]:
+        for row in rows.get(dataset, []):
             child = f"{row['incident_id']}:{row['rca_id']}" if key is None else row[key]
             if (dataset, child) not in parents:
                 errors.append(f"DQ-G01 {dataset} {child} has no Silver parent edge")
@@ -46,6 +47,13 @@ def check_build(rows: dict, edges: list[dict], resolved: bool) -> list[str]:
         limit = {"log": 30 if key[2] is True else 20, "metric": 5, "flow": 8}[key[0]]
         if len(items) > limit:
             warnings.append(f"DQ-G06 {key[0]} {key[1]} selection {len(items)} > {limit}")
+    labels = set(enums.ANSWER_LABEL_KEYS)
+    for dataset, items in rows.items():
+        for row in items:
+            if labels & set(row):
+                errors.append(f"DQ-G08 {dataset} carries answer labels {sorted(labels & set(row))}")
+    if "gold.scenario_link" in rows and len(rows["gold.scenario_link"]) != 1:
+        errors.append(f"DQ-G09 gold.scenario_link has {len(rows['gold.scenario_link'])} rows (exactly 1)")
     if errors:
         raise GoldCheckError("; ".join(errors))
     return warnings

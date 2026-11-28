@@ -153,7 +153,7 @@ validate(store: ObjectStore, manifests: list[ManifestRef]) -> ValidationReport
 | 항목 | 내용 |
 |---|---|
 | 책임 | DAG, task 래퍼, 설정 주입, pool·동시성, `dp_validate`, 통합 E2E, 데이터 플랫폼 Compose(신규), CI/공유 파일 PR |
-| DAG | **Phase별 DAG 4개를 Asset으로 연결**(#38): `dp_bronze_acquire`(conf=IncidentRequest, 수동/외부 trigger) → `dp_bronze` → `dp_silver_transform` → `dp_silver` → `dp_gold_build` → `dp_gold` → `dp_validate`(manifest·포인터·lineage 검사, orphan 경고). Phase마다 DAG를 나눠 Track A~C가 자기 Phase의 진입점만 교체하고, 한 Phase만 다시 실행하면 하위 Phase가 Asset으로 이어진다. `dp_incident_discover`·`dp_reprocess`·일 1회 `dp_validate` 스케줄은 후속 |
+| DAG | **Phase별 DAG 4개를 Asset으로 연결**(#38): `dp_bronze_acquire`(conf=IncidentRequest, 수동/외부 trigger) → `dp_bronze` → `dp_silver_transform` → `dp_silver` → `dp_gold_build` → `dp_gold` → `dp_validate`(manifest·포인터·lineage 검사, orphan 경고). Phase마다 DAG를 나눠 Track A~C가 자기 Phase의 진입점만 교체하고, 한 Phase만 다시 실행하면 하위 Phase가 Asset으로 이어진다. **배치화(#68)**: `dp_incident_discover`(10분마다 Loki `aiops-llm` 읽기 전용 스캔, `loki_read` pool, 15분 이하 창, 획득 창 종료 + `lateness_margin_s`(10분) 뒤 사건마다 `dp_bronze_acquire` 1회 trigger)와 `dp_validate` 일 1회(19:00 UTC, `dp_gold` asset 조건과 OR). `dp_reprocess`는 후속 |
 | 입력 | 각 Track 진입점, 설정(엔드포인트·버킷·binding 경로·지연값) |
 | 출력 | `lineage.run`, 검증 보고서, Airflow 실행 기록 |
 | 의존 | STEP 0.5 시그니처. A~C 구현 전에는 **stub 진입점**(fixture manifest를 그대로 commit)으로 DAG 구조를 개발 |

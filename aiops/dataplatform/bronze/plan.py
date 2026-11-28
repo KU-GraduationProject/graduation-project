@@ -225,4 +225,7 @@ def _global_items(ctx, alert, identity) -> list[dict]:
     fluentd.update(query_text='{log_type="fluentd_internal"} |= "failed to write post"',
                    query_params=_loki_params(ctx), expected_labels={"log_type": "fluentd_internal"},
                    preflight_selector='{log_type="fluentd_internal"}')
-    return [rca, fluentd]
+    # scenarios/v2 run log (runs.jsonl): read whole at acquire time from DP_SCENARIO_RUN_LOG (#71)
+    runs = _base(ctx, "global", dict(UNKNOWN_SCOPE), None, "scenario_run_log", "scenario_run", "runs")
+    runs.update(api="file.read", query_params={})
+    return [rca, fluentd, runs]

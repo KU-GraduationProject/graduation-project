@@ -1,0 +1,53 @@
+# 분리 구성 E2E용 Leafy 장비 컨테이너 지표 수집기 (#61). Leafy compose와 별개 프로젝트로 띄운다.
+#
+#   cadvisor  : 내부 네트워크에만 둔다. Docker API를 쓰지 않는 raw cgroup 모드
+#               (Docker 29 containerd 이미지 저장소에서는 cAdvisor Docker 모드가 컨테이너를 못 읽는다. 맥 실측)
+#               -> /docker/<id> 별 CPU·메모리·네트워크만 내고 이름은 없다.
+#   collector : exporter.py. Docker 소켓(GET 전용)으로 id -> 이름·compose 서비스를 붙이고
+#               config.json의 site/source를 모든 시계열에 붙여 :9108/metrics로 낸다.
+#               AIOps Prometheus는 이것만 수집한다 (cAdvisor를 직접 수집하지 않는다).
+#
+# 준비: config.example.json 형식으로 실제 값(site, source, compose project, 컨테이너 이름)을 채운 파일을 저장소 밖에 둔다.
+#   site 는 Leafy 로그의 LEAFY_SITE, AIOps 쪽 대상 파일·관측 바인딩의 site 와 같아야 한다.
+# 실행·확인 (macOS bash / Windows PowerShell): README.md "분리 구성 E2E" 절
+name: leafy-telemetry
+services:
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    privileged: true
+    command:
+      - --housekeeping_interval=5s
+      - --allow_dynamic_housekeeping=false
+      - --store_container_labels=false
+    # Docker 소켓과 /var/lib/docker 를 넣지 않는다 -> Docker 모드가 등록되지 않고 항상 raw 모드로 동작한다.
+    volumes:
+      - /:/rootfs:ro
+      - /sys:/sys:ro
+    networks: [telemetry]
+    restart: unless-stopped
+
+  collector:
+    build:
+      context: .
+      args:
+        PYTHON_IMAGE: python:3.11-slim
+    command: ["--config", "/config/config.json", "--listen", "0.0.0.0"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      # Tailscale IP에만 연다. AIOps Prometheus만 접근하도록 Tailscale ACL로 제한한다.
+      - "${LEAFY_TAILSCALE_IP:?LEAFY_TAILSCALE_IP 를 설정 (이 Leafy 장비의 tailscale ip -4)}:9108:9108"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${TELEMETRY_CONFIG:?TELEMETRY_CONFIG 를 설정 (채운 config.json 절대 경로)}:/config/config.json:ro
+    networks: [telemetry, publish]
+    depends_on: [cadvisor]
+    restart: unless-stopped
+
+networks:
+  # cAdvisor는 밖으로 나가지 않는다.
+  telemetry:
+    internal: true
+  # internal 네트워크에서는 포트를 열 수 없어 collector만 이 네트워크에 붙인다.
+  publish: {}

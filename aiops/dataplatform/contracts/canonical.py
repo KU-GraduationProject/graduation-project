@@ -107,6 +107,10 @@ def loki_record_key(stream_labels: dict, entry_ts_ns: int, line: str) -> str:
     return h([stream_labels, str(entry_ts_ns), line])
 
 
+def scenario_run_record_key(line: str) -> str:
+    return h(["scenario_run", line])
+
+
 def prom_record_key(query_text_sha256: str, series_labels: dict, sample_ts_ms: int, value_raw: str) -> str:
     return h([query_text_sha256, series_labels, sample_ts_ms, value_raw])
 

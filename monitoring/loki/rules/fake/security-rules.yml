@@ -1,3 +1,5 @@
+# 집계는 sum by (site, target): 분리 구성에서 경보에 출처 장비(site)와 컨테이너(target)가 실린다.
+# site/target 라벨이 없는 로그(all-in-one 등)는 기존처럼 하나의 합계가 된다.
 groups:
   - name: security-log-alerts
     rules:
@@ -9,7 +11,7 @@ groups:
       # [시나리오] lateral_movement.py, brute_force.py
       - alert: UnauthorizedDBAccess
         expr: |
-          sum(count_over_time(
+          sum by (site, target) (count_over_time(
             {service="db"} |= "authentication failed" [2m]
           )) > 3
         for: 0m
@@ -30,7 +32,7 @@ groups:
       # 실제 사건: 2023 CircleCI 침해 — MITRE ATT&CK T1552.001
       - alert: SecretDumpAttempt
         expr: |
-          sum(count_over_time(
+          sum by (site, target) (count_over_time(
             {service="backend"} |= "printenv" |= "[ATTACK]" [2m]
           )) > 0
         for: 0m
@@ -49,7 +51,7 @@ groups:
       # 실제 근거: FBI/CISA 2024, OWASP 2025 A05
       - alert: SQLInjectionAttempt
         expr: |
-          sum(count_over_time(
+          sum by (site, target) (count_over_time(
             {service="frontend"} |~ "(?i)(union.{0,3}select|or.{0,3}1=1|drop.{0,3}table|sleep\\(|extractvalue|information_schema|admin'--|and.{0,3}1=1)" [2m]
           )) > 5
         for: 0m
@@ -74,7 +76,7 @@ groups:
       #        log_format="json": Fluentd가 붙이는 라벨. stderr error_log(text)와 깨진 JSON(json_invalid)은 제외된다.
       - alert: HighNginxErrorRate
         expr: |
-          sum(count_over_time(
+          sum by (site, target) (count_over_time(
             {service="frontend", log_format="json"} | json | status >= 500 [1m]
           )) > 10
         for: 0m
@@ -90,7 +92,7 @@ groups:
       # MITRE ATT&CK T1059 (Command and Scripting Interpreter)
       - alert: SuspiciousProcessExecution
         expr: |
-          sum(count_over_time(
+          sum by (site, target) (count_over_time(
             {service=~"backend|frontend"}
             |~ "(?i)(wget http|wget -|curl http[^s]|curl -o |nc -|netcat|/bin/bash -i|/bin/sh -i)" [2m]
           )) > 0
@@ -106,7 +108,7 @@ groups:
       # suspicious_process_exec.py가 /proc/1/fd/1 에 "suspicious_outbound" 기록
       - alert: SuspiciousProcessExec
         expr: |
-          sum(count_over_time(
+          sum by (site, target) (count_over_time(
             {service="backend"} |~ "suspicious_outbound" [2m]
           )) > 0
         for: 0m
@@ -124,7 +126,7 @@ groups:
       #        frontend nginx는 점(.)으로 시작하는 경로와 없는 파일에 404를 준다 (index.html 폴백 없음)
       - alert: VulnerabilityScanningDetected
         expr: |
-          sum(count_over_time(
+          sum by (site, target) (count_over_time(
             {service="frontend", log_format="json"} | json | status >= 400 and status < 500 [1m]
           )) > 50
         for: 0m
@@ -140,7 +142,7 @@ groups:
       # [임계값] 1회라도 발생 시 즉시 발화
       - alert: PathTraversalAttempt
         expr: |
-          sum(count_over_time(
+          sum by (site, target) (count_over_time(
             {service="frontend"} |~ "(?i)(\\.\\.\\/|\\.\\.\\\\|/etc/passwd|\\.env|/\\.git/)" [2m]
           )) > 0
         for: 0m
@@ -155,7 +157,7 @@ groups:
       # container_escape_attempt.py가 /proc/1/fd/1 에 "container_escape_attempt" 기록
       - alert: ContainerEscapeAttempt
         expr: |
-          sum(count_over_time(
+          sum by (site, target) (count_over_time(
             {service="backend"} |~ "container_escape_attempt" [2m]
           )) > 0
         for: 0m

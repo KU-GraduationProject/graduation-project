@@ -4,7 +4,7 @@ groups:
   rules:
   - alert: HighNginxErrorRate
     expr: |
-      sum(count_over_time(
+      sum by (site, target) (count_over_time(
         {log_format="json", service="frontend"} | json | status >= 500 | __error__="" [1m]
       )) > 10
     for: 0m
@@ -17,7 +17,7 @@ groups:
       container: leafy-frontend
   - alert: VulnerabilityScanningDetected
     expr: |
-      sum(count_over_time(
+      sum by (site, target) (count_over_time(
         {log_format="json", service="frontend"} | json | status >= 400 and status < 500 | __error__="" [1m]
       )) > 50
     for: 0m
@@ -30,7 +30,7 @@ groups:
       container: leafy-frontend
   - alert: UnauthorizedDBAccess
     expr: |
-      sum(count_over_time(
+      sum by (site, target) (count_over_time(
         {service="db"} |= "authentication failed" [2m]
       )) > 3
     for: 0m

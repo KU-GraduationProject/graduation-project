@@ -7,9 +7,10 @@
 | 추적 항목 | 저장 위치 | 키 |
 |---|---|---|
 | 원천 시스템·관측 대상 | `bronze.acquisition` (`source_system`, `api`, `query_text`, `scope_identity`, `scope_selector`, `binding_sha256`) | `acquisition_id` |
-| Bronze 원천 레코드 | `bronze.loki_entry` / `bronze.prometheus_sample` + raw page (`raw_sha256`) | `bronze_id` (페이지·행 위치 포함) |
+| Bronze 원천 레코드 | `bronze.loki_entry` / `bronze.prometheus_sample` / `bronze.scenario_run_entry` + raw page (`raw_sha256`) | `bronze_id` (페이지·행 위치 포함) |
 | Silver 결과와 부모 레코드 | `lineage.edge` (`normalized_from`, `quarantined_from`) | (child, parent) |
-| Gold 집계에 사용한 Silver 레코드 | `lineage.edge` (`selected_from`, `aggregated_from`, `anchored_on`, `linked_from`) | 다대다 |
+| Gold 집계에 사용한 Silver 레코드 | `lineage.edge` (`selected_from`, `aggregated_from`, `anchored_on`, `linked_from`, `run_candidate`) | 다대다 |
+| 사건 ↔ 시나리오 실행 | `gold.scenario_link` + `lineage.edge` (`anchored_on`, `run_candidate`) | (`incident_id`, `gold_build_id`) |
 | 변환 코드 버전·Git SHA | `lineage.run` + manifest (`code_version`, `git_sha`, `git_dirty`, `image_ref`) | `run_id` |
 | Airflow 실행 ID | `lineage.run` (`dag_id`, `airflow_run_id`, `task_id`, `try_number`, `map_index`) | `run_id` |
 | 데이터셋 버전 | manifest (`build_id`, `inputs`, `supersedes`) → DuckDB view | `manifest_id` |
@@ -48,10 +49,11 @@
 |---|---|---|
 | `normalized_from` | silver 행 ← bronze 행 | 1 ← N (중복 병합) |
 | `quarantined_from` | silver.quarantine ← bronze 행 | 1 ← N |
-| `anchored_on` | gold.incident ← silver.alert_event | 1 ← 1 |
+| `anchored_on` | gold.incident / gold.scenario_link ← silver.alert_event | 1 ← 1 |
 | `selected_from` | gold.evidence_log ← silver 로그 행 | 1 ← 1 |
 | `aggregated_from` | gold.evidence_metric / evidence_network_flow ← silver 행 | 1 ← N |
 | `linked_from` | gold.rca_link ← silver.rca_result | 1 ← 1 |
+| `run_candidate` | gold.scenario_link ← silver.scenario_run (짝짓기 규칙에 걸린 실행마다) | 1 ← 0..N |
 
 - **다대다**: Silver 한 행은 겹치는 여러 사건의 Gold에 동시에 쓰일 수 있고(사건 창 겹침, primary/related 동시 사용), Gold 한 행은 여러 Silver 행을 집계한다. edge 테이블이 두 방향을 모두 표현한다.
 - Raw page → Bronze 행은 `bronze_id`에 `{acquisition_id}:{page}:{row}`가 들어 있어 edge를 따로 만들지 않는다.
@@ -117,6 +119,6 @@ WHERE e.parent_dataset = 'silver.network_event' AND e.parent_key = :network_even
 
 - 모든 Silver 행과 quarantine 행은 ≥1개의 Bronze 부모 edge를 가진다.
 - 모든 Bronze 행은 정확히 하나의 Silver 행 또는 quarantine 행의 부모다(같은 coverage의 현재 build 기준). 사건 창 밖 패딩 영역의 행도 Silver에 들어가므로 예외가 없다.
-- 모든 Gold evidence·rca_link·incident 행은 ≥1개의 Silver 부모 edge를 가진다.
+- 모든 Gold evidence·rca_link·incident·scenario_link 행은 ≥1개의 Silver 부모 edge를 가진다(scenario_link는 실행이 없어도 `anchored_on`).
 - edge의 `parent_version`은 해당 build manifest의 `inputs` 체인 안에 있어야 한다.
 - `lineage.run.git_sha`는 40자 hex, `git_dirty=false`(운영 DAG).

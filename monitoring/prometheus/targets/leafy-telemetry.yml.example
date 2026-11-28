@@ -1,0 +1,7 @@
+# 복사해서 leafy-telemetry.yml 로 저장하고 값을 바꾼다. leafy-telemetry.yml 은 커밋하지 않는다.
+# Leafy 장비 collector (deploy/leafy-pc/telemetry/compose.remote.yml). 장비마다 대상 하나.
+# site: collector config.json 의 site 와 같은 값 (LEAFY_SITE, 관측 바인딩 site 와도 같다).
+#   컨테이너 지표의 site 는 collector가 붙이고(honor_labels), 이 값은 up 같은 대상 지표에 쓰인다.
+- targets: ["<LEAFY_TAILSCALE_IP>:9108"]
+  labels:
+    site: gc-mac

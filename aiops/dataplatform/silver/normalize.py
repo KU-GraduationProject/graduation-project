@@ -276,6 +276,20 @@ def alert_event(row: dict, acq: dict) -> Normalized:
     return Normalized(pk, values, set(), (fmt_ts(starts), pk))
 
 
+def _llm_result(raw: dict) -> dict:
+    """Revalidate with the Pipeline's `LLMAnalysisResult` unchanged. Two shapes lack `incident_class`:
+    envelopes written before the field existed (key absent) and the Pipeline's own failed analysis
+    (`LLMAnalysisResult.invalid()`: null + `analysis_status="invalid"`). Every other field is still
+    validated by the same model, and the class stays null — it is never guessed."""
+    model = pipeline_compat.llm_output().LLMAnalysisResult
+    missing = "incident_class" not in raw
+    if not missing and not (raw["incident_class"] is None and raw.get("analysis_status") == "invalid"):
+        return model(**raw).model_dump()
+    # any valid class lets the model check the rest; the placeholder is discarded below
+    probe = model(**{**raw, "incident_class": pipeline_compat.load("schemas.actions").INCIDENT_CLASSES[0]})
+    return {**probe.model_dump(), "incident_class": None}
+
+
 def rca_result(row: dict, acq: dict) -> Normalized:
     rec = _envelope(row)
     try:
@@ -283,19 +297,23 @@ def rca_result(row: dict, acq: dict) -> Normalized:
         alert_event_id = _alert_event_id(rec)
     except (ValueError, TypeError) as exc:
         raise Quarantine("invalid_timestamp", str(exc)) from exc
+    raw = rec["result"]
     try:
-        result = pipeline_compat.llm_output().LLMAnalysisResult(**rec["result"]).model_dump()
+        result = _llm_result(raw)
     except Exception as exc:  # pydantic ValidationError or a non-dict result
         raise Quarantine("invalid_value", f"result: {exc}") from exc
     flags = set() if rec.get("schema_version") else {"legacy_unversioned"}
+    if "incident_class" not in raw:
+        flags.add("llm_output_legacy")
     evidence = rec.get("evidence_sources")
     values = {"rca_id": row["record_key"], "rca_time": fmt_ts(rca_time), "loki_ts_ns": row["entry_ts_ns"],
               "envelope_schema_version": rec.get("schema_version"), "alert_event_id": alert_event_id,
               "alert_name": rec["alert_name"], "alert_fingerprint": rec.get("alert_fingerprint"),
               **_envelope_identity(rec), "identity_status": rec.get("identity_status"),
               "evidence_sources": canonical_str(evidence) if evidence is not None else None,
-              "root_cause": result["root_cause"], "action_type": result["action_type"],
-              "action_description": result["action_description"], "threat_level": result["threat_level"],
+              "root_cause": result["root_cause"], "incident_class": result["incident_class"],
+              "analysis_status": raw.get("analysis_status"), "action_type": result["action_type"],
+              "action_description": raw.get("action_description"), "threat_level": result["threat_level"],
               "action_targets": list(result["action_targets"]), "evidence": list(result["evidence"]),
               "confidence": float(result["confidence"]),
               "fallback_reason": enums.FALLBACK_ROOT_CAUSES.get(result["root_cause"]),
@@ -314,8 +332,31 @@ def transport_issue(row: dict, acq: dict) -> Normalized:
     return Normalized(row["record_key"], values, set(), (row["entry_ts_ns"], row["record_key"]))
 
 
+def scenario_run(row: dict, acq: dict) -> Normalized:
+    """One record of scenarios/v2/run.py (`fixtures.append_run_record`). Other keys are not read (#71)."""
+    rec = _json_object(row["line"])
+    for key in ("scenario_id", "started_at", "ended_at", "status"):
+        if rec.get(key) is None:
+            raise Quarantine("missing_required_field", f"missing: {key}")
+    seed = rec.get("seed")
+    if not all(isinstance(rec[k], str) for k in ("scenario_id", "started_at", "ended_at", "status")) \
+            or not isinstance(rec.get("variant_id"), (str, type(None))) \
+            or not (seed is None or (isinstance(seed, int) and not isinstance(seed, bool))):
+        raise Quarantine("invalid_value", "scenario_id/started_at/ended_at/status str, variant_id str|null, "
+                                          "seed int|null")
+    try:
+        started = pipeline_compat.correlation().to_instant(rec["started_at"])
+        ended = pipeline_compat.correlation().to_instant(rec["ended_at"])
+    except (ValueError, TypeError) as exc:
+        raise Quarantine("invalid_timestamp", str(exc)) from exc
+    values = {"scenario_run_id": row["record_key"], "scenario_id": rec["scenario_id"], "variant_id": rec.get("variant_id"),
+              "seed": seed, "started_at": fmt_ts(started), "ended_at": fmt_ts(ended),
+              "started_at_raw": rec["started_at"], "ended_at_raw": rec["ended_at"], "status": rec["status"]}
+    return Normalized(row["record_key"], values, set(), (fmt_ts(started), row["record_key"]))
+
+
 NORMALIZERS = {
     "silver.db_log": db_log, "silver.app_log": app_log, "silver.network_event": network_event,
     "silver.metric_point": metric_point, "silver.alert_event": alert_event, "silver.rca_result": rca_result,
-    "silver.transport_issue": transport_issue,
+    "silver.transport_issue": transport_issue, "silver.scenario_run": scenario_run,
 }

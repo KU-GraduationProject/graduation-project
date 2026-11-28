@@ -58,10 +58,11 @@ module Fluent::Plugin
       )
       # Only Docker driver metadata establishes source; app JSON is untrusted.
       %w[_lbl_site _lbl_observation_source _lbl_target].each { |key| out.delete(key) }
-      if record["aiops.site"] && record["aiops.source"]
+      # aiops.site만 있어도 site/target을 붙인다 (분리 구성). 없으면 site 없이 저장 = 출처 미확인.
+      if record["aiops.site"]
         out["_lbl_site"] = record["aiops.site"]
-        out["_lbl_observation_source"] = record["aiops.source"]
         out["_lbl_target"] = container_name && container_name.sub(%r{\A/}, "")
+        out["_lbl_observation_source"] = record["aiops.source"] if record["aiops.source"]
       end
       out
     end

@@ -3,7 +3,7 @@
 데이터 티어링(Bronze/Silver/Gold) 배치 플랫폼. 계약은 [docs/data-platform](../../docs/data-platform/README.md)이다.
 
 ```text
-dp_bronze_acquire ─▶ (dp_bronze) ─▶ dp_silver_transform ─▶ (dp_silver) ─▶ dp_gold_build ─▶ (dp_gold) ─▶ dp_validate
+dp_incident_discover ─(trigger)─▶ dp_bronze_acquire ─▶ (dp_bronze) ─▶ dp_silver_transform ─▶ (dp_silver) ─▶ dp_gold_build ─▶ (dp_gold) ─▶ dp_validate
 ```
 
 ## 현재 상태
@@ -12,12 +12,13 @@ dp_bronze_acquire ─▶ (dp_bronze) ─▶ dp_silver_transform ─▶ (dp_silve
 |---|---|---|
 | STEP 0.5 계약 코드 | `contracts/` (canonical JSON·해시·ID 식·어휘·스키마), `storage/` (LocalFsStore·manifest commit·current 포인터·lineage writer) | 01 §1, 02 §3·§4, 03 §2·§3 |
 | Track A Bronze | `bronze/plan.py` (`plan_incident`), `bronze/acquire.py` (`acquire`: series·lookback preflight, Loki 페이지네이션, 반환 label·본문 검증, 부분 실패 보존, 금지 스트림 차단) | 01 §2, 02 §5~§7, 04 §1 |
-| Track B Silver | `silver/normalize.py` (데이터셋 7종 + quarantine), `silver/build.py` (coverage, dedup, edge) | 01 §3, DQ-S01~S06 |
-| Track C Gold·Lineage | `gold/build.py` (사건 창·scope 매칭·채널 상태·evidence·rca_link), `gold/render.py` (Pipeline 렌더 포팅), `gold/checks.py` (DQ-G), `lineage/trace.py` (`trace`, DQ-L01) | 01 §4, 03, 04 §4·§5 |
+| Track B Silver | `silver/normalize.py` (데이터셋 8종 + quarantine), `silver/build.py` (coverage, dedup, edge) | 01 §3, DQ-S01~S06 |
+| Track C Gold·Lineage | `gold/build.py` (사건 창·scope 매칭·채널 상태·evidence·rca_link·scenario_link), `gold/render.py` (Pipeline 렌더 포팅), `gold/checks.py` (DQ-G), `lineage/trace.py` (`trace`, DQ-L01) | 01 §4, 03, 04 §4·§5 |
 | Track D Airflow | DAG 4개가 `orchestration/phases.py`의 실제 진입점을 호출(#38의 `fixture_stubs` 대체), `dp_validate` 검사 5종 | 05 §5 Track D |
+| 배치화 (#68) | `orchestration/discover.py` + `dp_incident_discover`: 10분마다 Loki `{job="aiops-llm"}` envelope에서 IncidentRequest를 만들고, 획득 창 종료 + 10분 뒤 `dp_bronze_acquire`를 run id `discover__{incident_id}`로 1회 trigger(`lake-meta/discover/`에 cursor·pending·triggered 기록, plan이 이미 있으면 건너뜀). `dp_validate`는 `dp_gold` 갱신 또는 매일 19:00 UTC | 05 §5·§6 |
 | E2E용 원천 | `mock_sources/` — fixture Bronze 행으로 답하는 mock Loki/Prometheus (Compose `dp-mock-sources`, 테스트의 `httpx.MockTransport`) | 07 |
 
-**fixture 파리티:** Bronze 10건, Silver 8 build(대체된 1차 db_log 포함), Gold 2 build(대체된 1차 포함)를 fixture의
+**fixture 파리티:** Bronze 11건, Silver 9 build(대체된 1차 db_log 포함), Gold 2 build(대체된 1차 포함)를 fixture의
 요청·binding·실행 시각으로 다시 만들면 행·edge·manifest(bytes·sha256 포함)가 `docs/data-platform/examples`와
 **바이트 단위로 같다**(`tests/test_bronze.py`, `test_silver.py`, `test_gold.py`). 대체된 두 build는 fixture에 행이 없어
 manifest의 `inputs`·`quality`·출력 행 수만 비교한다.
@@ -53,8 +54,31 @@ docker exec dp-airflow airflow dags trigger dp_bronze_acquire             # 하�
 docker exec dp-airflow airflow dags trigger dp_bronze_acquire --conf '{…요청…, "force_reacquire": true, "page_limit": 3, "stream_classes": ["db_log"]}'
 ```
 
+사건 자동 발견: `dp_incident_discover`가 10분마다 돈다. 과거 범위를 다시 스캔하려면(cursor는 그대로)
+`docker exec dp-airflow airflow dags trigger dp_incident_discover --conf '{"scan_start": "2026-11-10T02:45:00Z", "scan_end": "2026-11-10T03:30:00Z"}'`.
+설정은 `DP_DISCOVER_START`(첫 cursor), `DP_DISCOVER_LOOKBACK_S`, `DP_DISCOVER_RELATED`(related scope 규칙 JSON) 등이다(`orchestration/discover.py`).
+
 `DP_LOKI_URL`/`DP_PROMETHEUS_URL`을 주지 않으면 `dp-mock-sources`(fixture)를 읽는다. 실제 Loki/Prometheus 연결은
 OI-09 binding 인수 이후 사용자 승인 단계다(05 §7).
+
+### 시나리오 실행 기록 연결 (#71)
+
+`gold.scenario_link`는 사건마다 `scenarios/v2` 실행 기록(`runs.jsonl`)과의 짝짓기 결과를 1행으로 남긴다(01 §4.7).
+정답 레이블은 Gold에 없고, 평가할 때 `scenario_id`로 `scenarios/v2/registry.py`에서 조회한다.
+
+- **읽는 파일:** `DP_SCENARIO_RUN_LOG`. Compose는 `DP_SCENARIO_RUNS_DIR` 폴더를 읽기 전용으로 마운트하고 그 안의
+  `DP_SCENARIO_RUN_FILE`을 읽는다(기본값은 fixture `02_scenario_runs.jsonl`).
+  - 같은 호스트(맥 all-in-one): `DP_SCENARIO_RUNS_DIR=./scenarios/v2/fixtures_data DP_SCENARIO_RUN_FILE=runs.jsonl`
+  - 분리 구성(Leafy 장비 ↔ AIOps 장비): Leafy 장비의 `scenarios/v2/fixtures_data/runs.jsonl`을 AIOps 장비의 한 폴더로
+    **직접 복사**한 뒤 그 폴더를 `DP_SCENARIO_RUNS_DIR`로 준다. 자동 전송은 없다. 파일이 없으면 획득은
+    `failed`(`file_not_found`), 경로 미설정은 `not_attempted`이고 링크는 `run_log_unavailable`로 남는다.
+- **평가 전 절차:** `run.py`는 실행이 **끝날 때** 기록을 쓰므로, 사건 획득 시점에 진행 중이던 실행은 `no_run`으로
+  남는다. 평가 직전에 (분리 구성이면 최신 `runs.jsonl`을 다시 복사한 뒤) 실행 기록만 강제 재획득하면 Silver
+  `scenario_run` → Gold가 Asset으로 재빌드된다. 이전 build는 보존된다.
+
+```sh
+docker exec dp-airflow airflow dags trigger dp_bronze_acquire --conf '{…요청…, "force_reacquire": true, "stream_classes": ["scenario_run"]}'
+```
 
 ### E2E 화면 (2026-11-18, Airflow 3.3.2, mock 원천)
 
@@ -71,7 +95,7 @@ OI-09 binding 인수 이후 사용자 승인 단계다(05 §7).
 | `tests/test_contracts.py` | S-01~S-06 재검증: 스키마 ↔ 문서 표 ↔ fixture, 어휘, ID·해시 재계산, manifest bytes/sha256, fixture lake에 DQ 적용, Pipeline 파리티 |
 | `tests/test_bronze.py` | Track A ①~⑧ + 실패·불일치·재사용·열린 창 |
 | `tests/test_silver.py` | Track B ①~⑥ + value_revised |
-| `tests/test_gold.py` | Track C ①~⑥ + 채널 규칙 1~8, DQ-G05, lineage 무결성 |
+| `tests/test_gold.py` | Track C ①~⑥ + 채널 규칙 1~8, DQ-G05, lineage 무결성, `pair_context` 동등성·정답 레이블 금지(DQ-G08) |
 | `tests/test_orchestration.py` | Track D ①~⑤: E2E(MockTransport·loopback HTTP 서버), 재실행 보존, 실패 시 manifest 없음, git_dirty 거부, 필터 재처리, 검증기 오류 탐지, DAG 구조(Airflow 있을 때) |
 
 테스트 디렉터리를 `tests/<track>/` 패키지로 나누지 않은 이유: `discover -s tests`에서 `tests/contracts`가 실제

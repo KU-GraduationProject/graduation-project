@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(HERE, ".."))
 sys.path.insert(0, HERE)
 
 import fixture_data as fx  # noqa: E402
-from contracts import canonical  # noqa: E402
+from contracts import canonical, pipeline_compat  # noqa: E402
 from silver.build import build_silver, check_coverage, coverage, coverage_inputs, plan_silver  # noqa: E402
 from storage.manifest import commit_build, output_rows  # noqa: E402
 from storage.store import LocalFsStore  # noqa: E402
@@ -158,6 +158,93 @@ class SilverTest(unittest.TestCase):
                              for r in output_rows(self.store, m, "silver.network_event")])
         self.assertNotEqual(builds[0]["build_id"], builds[1]["build_id"])
         self.assertEqual(contents[0], contents[1])
+
+
+class RcaEnvelopeTest(unittest.TestCase):
+    """`silver.rca_result` keeps every LLM output shape the Pipeline has written (#70): never a silent drop."""
+
+    CURRENT = {"root_cause": "connection slots exhausted", "incident_class": "failure", "action_type": "NOTIFY",
+               "action_targets": [], "threat_level": "high", "evidence": ["L1"], "confidence": 0.7,
+               "analysis_status": "valid", "invalid_reasons": []}
+
+    def normalize(self, result):
+        from silver.normalize import rca_result
+        envelope = {**json.loads(fx.build_rows("bronze.loki_entry", "acq_20261110T032007Z_ba6da055")[0]["line"]),
+                    "result": result}
+        line = json.dumps(envelope)
+        return rca_result({"line": line, "record_key": canonical.sha256_text(line), "entry_ts_ns": 1}, {})
+
+    def test_current_output_shape(self):
+        out = self.normalize(self.CURRENT)
+        self.assertEqual((out.values["incident_class"], out.values["analysis_status"],
+                          out.values["action_description"]), ("failure", "valid", None))
+        self.assertNotIn("llm_output_legacy", out.flags)
+
+    def test_pre_incident_class_output_is_kept_and_flagged(self):
+        legacy = {k: v for k, v in self.CURRENT.items() if k not in ("incident_class", "analysis_status",
+                                                                     "invalid_reasons")}
+        out = self.normalize({**legacy, "action_description": "Notify the DB operator."})
+        self.assertEqual((out.values["incident_class"], out.values["analysis_status"],
+                          out.values["action_description"], out.values["threat_level"]),
+                         (None, None, "Notify the DB operator.", "high"))
+        self.assertIn("llm_output_legacy", out.flags)
+
+    def test_pipeline_invalid_analysis_is_kept(self):
+        invalid = pipeline_compat.llm_output().LLMAnalysisResult.invalid(["truncated"]).model_dump()
+        out = self.normalize(invalid)
+        self.assertEqual((out.values["incident_class"], out.values["analysis_status"], out.values["action_type"]),
+                         (None, "invalid", "NOTIFY"))
+        self.assertNotIn("llm_output_legacy", out.flags)
+
+    def test_null_class_on_a_valid_analysis_is_quarantined(self):
+        from silver.normalize import Quarantine
+        with self.assertRaises(Quarantine) as ctx:
+            self.normalize({**self.CURRENT, "incident_class": None})
+        self.assertEqual(ctx.exception.reason, "invalid_value")
+
+    def test_legacy_output_still_validates_other_fields(self):
+        from silver.normalize import Quarantine
+        legacy = {k: v for k, v in self.CURRENT.items() if k != "incident_class"}
+        with self.assertRaises(Quarantine) as ctx:
+            self.normalize({**legacy, "threat_level": "extreme"})
+        self.assertEqual(ctx.exception.reason, "invalid_value")
+
+
+
+class ScenarioRunTest(unittest.TestCase):
+    """`silver.scenario_run` (#71): one row per run record of scenarios/v2/run.py; bad lines are quarantined."""
+
+    LINE = {"scenario_id": "f2_c_db_pool_exhaustion", "variant_id": None, "seed": None,
+            "started_at": "2026-11-10T02:58:00.000000+00:00", "ended_at": "2026-11-10T03:02:30.000000+00:00",
+            "status": "ok"}
+
+    def normalize(self, rec):
+        from silver.normalize import scenario_run
+        line = rec if isinstance(rec, str) else json.dumps(rec)
+        return scenario_run({"line": line, "record_key": canonical.scenario_run_record_key(line), "line_no": 1}, {})
+
+    def test_run_record(self):
+        line = json.dumps({**self.LINE, "variant_id": "v2", "seed": 7})
+        out = self.normalize(line)
+        self.assertEqual(out.pk, canonical.scenario_run_record_key(line))
+        self.assertEqual(out.values, {
+            "scenario_run_id": out.pk, "scenario_id": "f2_c_db_pool_exhaustion", "variant_id": "v2", "seed": 7,
+            "started_at": "2026-11-10T02:58:00.000000Z", "ended_at": "2026-11-10T03:02:30.000000Z",
+            "started_at_raw": "2026-11-10T02:58:00.000000+00:00", "ended_at_raw": "2026-11-10T03:02:30.000000+00:00",
+            "status": "ok"})
+        self.assertEqual(out.flags, set())
+
+    def test_bad_lines_are_quarantined(self):
+        from silver.normalize import Quarantine
+        cases = [("not json", "invalid_json"), ("[1]", "not_object"),
+                 ({k: v for k, v in self.LINE.items() if k != "scenario_id"}, "missing_required_field"),
+                 ({**self.LINE, "status": None}, "missing_required_field"),
+                 ({**self.LINE, "started_at": "2026-11-10T02:58:00"}, "invalid_timestamp"),  # no offset (C-4)
+                 ({**self.LINE, "seed": "7"}, "invalid_value"), ({**self.LINE, "scenario_id": 3}, "invalid_value")]
+        for rec, reason in cases:
+            with self.subTest(rec=rec), self.assertRaises(Quarantine) as ctx:
+                self.normalize(rec)
+            self.assertEqual(ctx.exception.reason, reason)
 
 
 if __name__ == "__main__":

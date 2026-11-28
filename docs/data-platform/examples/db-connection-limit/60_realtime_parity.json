@@ -49,15 +49,21 @@
   },
   "llm_result_model_dump": {
     "root_cause": "PostgreSQL host fixture-pg17 rejected new connections with FATAL 53300 (too many clients). The server connection slots were exhausted, so new sessions could not be opened.",
+    "incident_class": "failure",
     "action_type": "NOTIFY",
     "action_targets": [],
-    "action_description": "Notify the DB operator to inspect sessions holding connection slots.",
+    "target_evidence": [],
     "threat_level": "high",
     "evidence": [
       "db log: FATAL 53300 sorry, too many clients already (2 lines)",
       "db log: remaining connection slots are reserved",
       "metrics unavailable for host target (collector_unmapped)"
     ],
-    "confidence": 0.74
+    "confidence": 0.74,
+    "analysis_status": "valid",
+    "invalid_reasons": [],
+    "target_validation": "unchecked",
+    "target_reason": null,
+    "proposed_action": null
   }
 }

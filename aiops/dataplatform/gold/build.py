@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 from collections import Counter, defaultdict
+from datetime import timedelta
 
 from bronze.plan import WINDOW
 from contracts import canonical, enums, pipeline_compat, schemas
@@ -25,6 +26,7 @@ IDENTITY = ("site", "source", "service", "runtime", "target")
 UNCOLLECTED = {"scope_unavailable", "not_attempted"}
 INCOMPLETE = {"partial", "truncated", "failed", "source_mismatch", "scope_unavailable", "not_attempted"}
 MAX_PRIORITY, MAX_OTHER, MAX_SERIES = 30, 20, 5
+GRACE_S = 300  # scenarios/v2/fixtures.pair_context default: alerts up to 5 min after a run ends
 
 
 # ---- inputs ------------------------------------------------------------------------------
@@ -267,6 +269,9 @@ def build_gold(incident: dict, silver_inputs: dict, acquisitions: list[str], sto
         link_edges.append(lineage_writer.edge("gold.rca_link", f"{incident_id}:{r['rca_id']}", build_id, "silver.rca_result",
                                               r["rca_id"], b, "linked_from", run.run_id))
 
+    scenario_link, scenario_edges = _scenario_link(incident_id, build_id, run, alert, alert_build, anchor, rows,
+                                                   quarantine, acq_rows)
+
     transport = [r for r, _, _ in rows["silver.transport_issue"] if in_window_ns(r["loki_ts_ns"])]
     fluentd = [a["status"] for a in acq_rows if a["stream_class"] == "fluentd_internal"]
     primary = [c["status"] for c in channels if c["scope_role"] == "primary"]
@@ -287,10 +292,11 @@ def build_gold(incident: dict, silver_inputs: dict, acquisitions: list[str], sto
         "built_at": fmt_ts(run.now()), **_envelope(build_id, run, set())})
     anchor_edge = lineage_writer.edge("gold.incident", incident_id, build_id, "silver.alert_event",
                                       alert["alert_event_id"], alert_build, "anchored_on", run.run_id)
-    edges = log_edges + metric_edges + flow_edges + link_edges + [anchor_edge]
+    edges = log_edges + metric_edges + flow_edges + link_edges + [anchor_edge] + scenario_edges
 
     gold_rows = {"gold.incident": [incident_row], "gold.incident_channel": channels, "gold.evidence_log": ev_log,
-                 "gold.evidence_metric": ev_metric, "gold.evidence_network_flow": ev_flow, "gold.rca_link": links}
+                 "gold.evidence_metric": ev_metric, "gold.evidence_network_flow": ev_flow, "gold.rca_link": links,
+                 "gold.scenario_link": [scenario_link]}
     from gold.checks import check_build
     check_build(gold_rows, edges, resolved)
 
@@ -306,6 +312,44 @@ def build_gold(incident: dict, silver_inputs: dict, acquisitions: list[str], sto
                  "quarantined": 0, "skipped": 0},
         supersedes=previous["manifest_id"] if previous else None, created_at=run.now())
     return {**ref(manifest), "incident_id": incident_id}
+
+
+def pair_runs(runs: list[dict], anchor, grace_s: int = GRACE_S) -> tuple[str, list[dict]]:
+    """`scenarios/v2/fixtures.pair_context` over `silver.scenario_run` rows: the `ok` runs with
+    started_at <= anchor <= ended_at + grace (both ends inclusive). Exactly one -> `paired`."""
+    grace = timedelta(seconds=grace_s)
+    hits = sorted((r for r in runs if r["status"] == "ok"
+                   and parse_ts(r["started_at"]) <= anchor <= parse_ts(r["ended_at"]) + grace),
+                  key=lambda r: (r["started_at"], r["scenario_run_id"]))
+    return ("paired" if len(hits) == 1 else "ambiguous_run" if hits else "no_run"), hits
+
+
+def _scenario_link(incident_id, build_id, run, alert, alert_build, anchor, rows, quarantine, acq_rows):
+    """gold.scenario_link: always one row, so an incident without a run is recorded, never dropped (#71).
+    Answer labels are not here; evaluation looks them up in scenarios/v2/registry.py by `scenario_id`."""
+    log_status = enums.best_status([a["status"] for a in acq_rows if a["stream_class"] == "scenario_run"]) \
+        or "not_attempted"
+    runs = {r["scenario_run_id"]: (r, b) for r, b, _ in rows["silver.scenario_run"]}
+    if log_status in ("ok", "empty_verified"):
+        status, hits = pair_runs([r for r, _ in runs.values()], anchor)
+    else:
+        status, hits = "run_log_unavailable", []
+    paired = hits[0] if status == "paired" else {}
+    flags = {"run_log_quarantined"} if any(q["target_dataset"] == "silver.scenario_run" for q, _ in quarantine) \
+        else set()
+    row = schemas.project("gold.scenario_link", {
+        "incident_id": incident_id, "gold_build_id": build_id, "link_status": status,
+        "pair_time": alert["starts_at"], "pair_time_source": "alert_starts_at", "grace_s": GRACE_S,
+        "candidate_run_ids": [h["scenario_run_id"] for h in hits], "scenario_run_id": paired.get("scenario_run_id"),
+        "scenario_id": paired.get("scenario_id"), "variant_id": paired.get("variant_id"), "seed": paired.get("seed"),
+        "run_started_at": paired.get("started_at"), "run_ended_at": paired.get("ended_at"),
+        "run_log_status": log_status, **_envelope(build_id, run, flags)})
+    edges = [lineage_writer.edge("gold.scenario_link", incident_id, build_id, "silver.alert_event",
+                                 alert["alert_event_id"], alert_build, "anchored_on", run.run_id)]
+    edges.extend(lineage_writer.edge("gold.scenario_link", incident_id, build_id, "silver.scenario_run",
+                                     h["scenario_run_id"], runs[h["scenario_run_id"]][1], "run_candidate", run.run_id)
+                 for h in hits)
+    return row, edges
 
 
 def _envelope(build_id, run, flags) -> dict:

@@ -1,0 +1,3 @@
+{"scenario_id": "s1_a_input_attack", "variant_id": null, "seed": null, "started_at": "2026-11-10T02:30:04.118532+00:00", "ended_at": "2026-11-10T02:40:12.904417+00:00", "status": "ok"}
+{"scenario_id": "f2_c_db_pool_exhaustion", "variant_id": "fill-burst", "seed": 3, "started_at": "2026-11-10T02:52:10.731205+00:00", "ended_at": "2026-11-10T02:55:44.093318+00:00", "status": "error"}
+{"scenario_id": "f2_c_db_pool_exhaustion", "variant_id": "fill-steady", "seed": 7, "started_at": "2026-11-10T02:58:30.514006+00:00", "ended_at": "2026-11-10T03:03:39.128847+00:00", "status": "ok"}

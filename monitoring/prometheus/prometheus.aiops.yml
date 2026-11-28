@@ -7,7 +7,7 @@
 #     job 이름은 기존과 같게 유지한다 (rule/dashboard가 metric 이름으로만 조회하므로 job 이름 변경 불필요).
 #   - node-exporter / cadvisor는 뺐다. AIOps PC에서 돌리면 AIOps PC의 호스트·컨테이너 지표가 수집되어
 #     Leafy 지표처럼 해석된다 (HighNetworkReceive, Pipeline 프롬프트의 host_cpu/host_mem 등).
-#     Leafy 쪽 cAdvisor/호스트 지표는 팀원 PC 수집 경로가 정해진 뒤 site 라벨과 함께 추가한다.
+#     Leafy 컨테이너 지표는 팀원 PC collector(leafy-telemetry job)로 site 라벨과 함께 수집한다 (#61).
 
 global:
   scrape_interval: 5s
@@ -45,3 +45,11 @@ scrape_configs:
   - job_name: "postgres-exporter"
     file_sd_configs:
       - files: ["/etc/prometheus/targets/postgres-exporter*.yml"]
+
+  # Leafy 장비 컨테이너 지표 (#61): deploy/leafy-pc/telemetry/compose.remote.yml 의 collector.
+  # cAdvisor 지표(/docker/<id>)에 컨테이너 이름·서비스·site·source를 붙이고 container_name_info·재시작 지표도 낸다.
+  # 이 라벨들은 collector가 정하므로 honor_labels로 그대로 둔다. 장비마다 collector 하나만 수집한다 (cAdvisor 직접 수집 금지: 중복 시계열).
+  - job_name: "leafy-telemetry"
+    honor_labels: true
+    file_sd_configs:
+      - files: ["/etc/prometheus/targets/leafy-telemetry*.yml"]

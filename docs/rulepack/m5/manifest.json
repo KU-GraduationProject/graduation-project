@@ -42,7 +42,7 @@
       "origin": "monitoring/loki/rules/fake/security-rules.yml",
       "origin_group": "security-log-alerts",
       "origin_index": 1,
-      "rule_sha256": "d2ea0dc08d3c1133ff3334165db8cf3c51c321316b537dca1f78a0c216f5de2f"
+      "rule_sha256": "64268827ad5b816c214cf1131304a6b77356b82ec24320c8dbaa2e2936216867"
     },
     {
       "alert": "SuspiciousProcessExecution",
@@ -55,7 +55,7 @@
       "origin": "monitoring/loki/rules/fake/security-rules.yml",
       "origin_group": "security-log-alerts",
       "origin_index": 4,
-      "rule_sha256": "136c3872ea2f18764bbeb8ba3350a98266c3cecef28fb126b5da1c89db466f2f"
+      "rule_sha256": "a520f29e045920bc0ef29bc5f4782d5a9102e71a7b825794c8916082b628ad66"
     },
     {
       "alert": "SuspiciousProcessExec",
@@ -68,7 +68,7 @@
       "origin": "monitoring/loki/rules/fake/security-rules.yml",
       "origin_group": "security-log-alerts",
       "origin_index": 5,
-      "rule_sha256": "cd7935d35be35d3718e62d3d7b7928dc682faa4efb338327057ab00e209e8a4f"
+      "rule_sha256": "e7d57cccb2cd9205b9851a04b810402cd7436fe044d57139e24cfdcb6994a42a"
     },
     {
       "alert": "PathTraversalAttempt",
@@ -81,7 +81,7 @@
       "origin": "monitoring/loki/rules/fake/security-rules.yml",
       "origin_group": "security-log-alerts",
       "origin_index": 7,
-      "rule_sha256": "0114ce2e6722c6f594615fcaad0cb90920f89a93196424afb89224aaa2cf3340"
+      "rule_sha256": "41394046edb346987edc037069374dd256ce9d2e13a9a86988a3f63479ddd9cd"
     },
     {
       "alert": "ContainerEscapeAttempt",
@@ -94,7 +94,7 @@
       "origin": "monitoring/loki/rules/fake/security-rules.yml",
       "origin_group": "security-log-alerts",
       "origin_index": 8,
-      "rule_sha256": "452e0b65ee10ad5d5f9a7516daa6bb876fad1146124e346ba09b7bb6af3a382a"
+      "rule_sha256": "d4d1ba8bd4ffa60b713eb75b024aced087d7e2c9e4a242344238077ae2b0bab9"
     },
     {
       "alert": "UnauthorizedDataTransfer",
@@ -149,7 +149,7 @@
       "origin": "docs/rulepack/m2/generated/loki.rules.yml",
       "origin_group": "m2-static-loki",
       "origin_index": 0,
-      "rule_sha256": "c7afc40cd9edd9417af7fbf6454311922d63516540895478551cadbf2c908b2a"
+      "rule_sha256": "d27aff3c59f22e6bf955388df034663343a1505b49515d7112a67c7a3b7d20fc"
     },
     {
       "alert": "VulnerabilityScanningDetected",
@@ -163,7 +163,7 @@
       "origin": "docs/rulepack/m2/generated/loki.rules.yml",
       "origin_group": "m2-static-loki",
       "origin_index": 1,
-      "rule_sha256": "75c1c961132c6956c82c78f738db46dbf1055050bf1345aba65308f98204ba52"
+      "rule_sha256": "614bb02da1dbd29a912f1ff1fe7c20f24fbcab3ee4de8a074ef6b736bdad94d1"
     },
     {
       "alert": "UnauthorizedDBAccess",
@@ -177,7 +177,7 @@
       "origin": "docs/rulepack/m2/generated/loki.rules.yml",
       "origin_group": "m2-static-loki",
       "origin_index": 2,
-      "rule_sha256": "6d33c71d7933d5e20a582d8602f7a8f058dccd5048675851a0f7a9340069c607"
+      "rule_sha256": "6211eb728b1f63f9f4877847e759278e9dd37b8ae6c5130b73e4f1138aa53b91"
     },
     {
       "alert": "HighNginxRequestRate",
@@ -205,7 +205,7 @@
       "origin": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
       "origin_group": "m2-2-static-infra",
       "origin_index": 0,
-      "rule_sha256": "ba76f79cbd70034140b2c42cd01a5cbc6bf79ffc6d39bf0414646b95f98bc162"
+      "rule_sha256": "8324b0596d310958890f9e397b02cfa969a2eec83eae445533023e037963026f"
     },
     {
       "alert": "HighCpuUsage",
@@ -219,7 +219,7 @@
       "origin": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
       "origin_group": "m2-2-static-infra",
       "origin_index": 1,
-      "rule_sha256": "ceb94f2479af5660fe01f0ed6c336c8b0cfc891fc76252554aa38c0b7ef4621d"
+      "rule_sha256": "71d3254b3f8a7a3eecf043ccb2156322054d38863183434ae7b411a508f9fb6e"
     },
     {
       "alert": "ContainerRestarted",
@@ -233,7 +233,7 @@
       "origin": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
       "origin_group": "m2-2-static-infra",
       "origin_index": 2,
-      "rule_sha256": "24698ad686793a004547511afef3af8c997c230d61da17d81a7933cab9228295"
+      "rule_sha256": "6aaf41dcda043dbeda9e70f898cdbb409b36a3014b97b0213238427f70795d2b"
     },
     {
       "alert": "HighCpuUsage",
@@ -247,7 +247,7 @@
       "origin": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
       "origin_group": "m2-2-static-infra",
       "origin_index": 3,
-      "rule_sha256": "338555e295c73023bcb238bd6667b323eec0afd2d42c574b4a7e8854c6cfa5f9"
+      "rule_sha256": "56799dcfad85b1f922986ef1b4d3329d7e559c0bc0ed968878e16a9b741e2a50"
     },
     {
       "alert": "HighCpuUsage",
@@ -261,7 +261,7 @@
       "origin": "docs/rulepack/m2/generated/prometheus.infra.rules.yml",
       "origin_group": "m2-2-static-infra",
       "origin_index": 4,
-      "rule_sha256": "5b058e745df26ef36a02bd0361e254e4abbf4cc910995df4e3ffbf96b9631c97"
+      "rule_sha256": "d92698f9a01b2df4feefb9f0c1711bcb8e19c05ef6a786331cdf0e6190be9be5"
     },
     {
       "alert": "HighMemoryUsage",
@@ -275,7 +275,7 @@
       "origin": "docs/rulepack/m2/generated/prometheus.resources.rules.yml",
       "origin_group": "m2-3-static-resources",
       "origin_index": 0,
-      "rule_sha256": "ef8961fbefd9dedd290e5c35d4ab1ec7fa22cff5f8cb5e8152332da379008e16"
+      "rule_sha256": "876c2e414a6f40ee1ac4fd6a91d010a88a4a914f34ac051ae0dcb02c6f9b88f6"
     },
     {
       "alert": "HighNetworkReceive",
@@ -322,9 +322,9 @@
   ],
   "group_timing": "Preserved from each input group; unspecified intervals still inherit the server setting. M3 interval=5s remains explicit.",
   "inputs_sha256": {
-    "docs/rulepack/m2/generated/loki.rules.yml": "68d49782dc6a7aa95a50cb4748a6c69b811f5d8b238813c92645e5db8ab36f25",
-    "docs/rulepack/m2/generated/prometheus.infra.rules.yml": "02403acbd975eae750771d6d10858031511fc041f49de0bdf682e9770f6a5df4",
-    "docs/rulepack/m2/generated/prometheus.resources.rules.yml": "ed336d2a6b8081bdb35b0a4e4b9c64db5d38caa02f91b2ffd066c03451da55d6",
+    "docs/rulepack/m2/generated/loki.rules.yml": "26547b511d1bd481a1384df197024b381dfa80b874c836a6ad391634ca78ab10",
+    "docs/rulepack/m2/generated/prometheus.infra.rules.yml": "490663df4872d37bb881eaa2a208a17d610d6bf13cccce3277a1798494a1f7a0",
+    "docs/rulepack/m2/generated/prometheus.resources.rules.yml": "770b03fa9885c55500b241f81eca5b45cede76f25be9609fbb09fc06b3ff71c6",
     "docs/rulepack/m2/generated/prometheus.rules.yml": "670479fcaaf12e67464fe7587390c42f3aa17746a02f7ae529b4d7663eb9ec14",
     "docs/rulepack/m2/infra_targets.yml": "7678abd5d46850955a985c8d38e7214def27a82213c88330f8220df37e1a7695",
     "docs/rulepack/m2/resource_targets.yml": "8f1250d1f84168a574296bf84a7f5a20e1038a94fb4a3b80ef7a7a437ad4b115",
@@ -332,8 +332,8 @@
     "docs/rulepack/m3/generated/loki.rules.yml": "01d88bce66f5df4828c85d5300a079170785d4cf0bc962083cef74f610f273c0",
     "docs/rulepack/m3/targets.yml": "9266bbd3bd3016691135047eb044124e6747b88e927735a74aa57c95685ff181",
     "monitoring/loki/rules/fake/network-allowlist.yml": "d693dd8bd02efdbe279bf34c8b7f3520160aa180803d8595af0149fc59baac43",
-    "monitoring/loki/rules/fake/security-rules.yml": "9d0b46a6f1843f3ab99778aefcfee4800729dfa5ba79215ee5c8a3f4a0e3d391",
-    "monitoring/prometheus/rules/alert.rules.yml": "3e5e391abc161ec0d5d5f5261f216b5493c517f67d99d3c2f32cdeea59bc2e65",
+    "monitoring/loki/rules/fake/security-rules.yml": "800ce1ed591ab24a9da79f7e00a1a93087560dedd8236904471e7ccded166784",
+    "monitoring/prometheus/rules/alert.rules.yml": "e39c0bc8cd29e89f4afadbeee853c367b6ba294d88792ca92b62b8133d175028",
     "tools/rulepack/generate_m2.py": "4a028d7565c3d3bc638c5833b5a15655fc0e66e21255747c6a8488cb947bf77e",
     "tools/rulepack/generate_m2_2.py": "dacf243757e5198233a2631d5586dd1268295dee7749f3aa01f07c9e856c4b6e",
     "tools/rulepack/generate_m2_3.py": "4342fd74ea0847235fa540755e57b57c93515a1f82459c41f160ed681cc48228",
@@ -428,9 +428,9 @@
     }
   ],
   "outputs_sha256": {
-    "generated/loki.rules.yml": "f96b927313e31492ef0f4daf228562f9bf2851301b022c6cc548e44087527aa6",
-    "generated/prometheus.rules.yml": "a44cdf682e38a293595f2492a17f51371f88d88bca80e685ad70dd4a2c8ad96b",
-    "reference/loki.legacy-sqli.rules.yml": "5fd7a6f10023870ea933061f1ae758b6f1a662fabaaffbbf065999c628db3932"
+    "generated/loki.rules.yml": "dd66ab3afa908733fcca9b7a988d00b079321bef4bd43482a8c3e2fa54f1ebf1",
+    "generated/prometheus.rules.yml": "c7d628be979bd0c327bcda723e330f155674f9fe66e4bc901542973a52c68a5d",
+    "reference/loki.legacy-sqli.rules.yml": "2a8f90b25d73c98b2597f48b6b492089fd4e7b3df188ca6e8e3195641114af19"
   },
   "policy": {
     "sql_injection_policy": "m3_primary_legacy_reference",

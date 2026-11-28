@@ -393,6 +393,9 @@ services:
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
       # Remediation /notify 및 /action 서명 공유키 (remediation 과 같은 값). 미설정이면 전달 생략.
       REMEDIATION_API_KEY: ${REMEDIATION_API_KEY:-}
+      # 관측 바인딩(JSON 배열). 경보의 site/target을 검증된 로그·지표 범위로 연결한다. 미설정이면 [] = source 미확인 RCA.
+      # 예제: deploy/aiops-pc/observation-bindings.remote.example.json (.env 에는 한 줄 JSON을 작은따옴표로 감싼다)
+      OBSERVATION_BINDINGS: ${OBSERVATION_BINDINGS:-[]}
       # P3: Loki 규칙과 같은 Allowlist 정책을 LLM Network Context 가 읽어 일관성 유지
       ALLOWLIST_PATH: /app/config/allowlist.yml
     ports:

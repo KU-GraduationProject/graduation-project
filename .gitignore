@@ -11,6 +11,9 @@ certs/*.key
 ## Prometheus 원격 수집 대상 (실제 Tailscale 주소) ##
 monitoring/prometheus/targets/*.yml
 
+## 분리 구성 설정 생성 결과 (tools/split_setup.py, 실제 IP·컨테이너 id) ##
+/split-setup/
+
 ### macOS ###
 # General
 .DS_Store

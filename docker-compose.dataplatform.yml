@@ -11,6 +11,12 @@
 #   UI: http://127.0.0.1:18080   (loopback 전용, 로컬 개발용으로 로그인 생략)
 #   docker compose -f docker-compose.dataplatform.yml down      # 데이터 유지
 #   docker compose -f docker-compose.dataplatform.yml down -v   # lake·메타DB 삭제
+#
+# 시나리오 실행 기록(scenarios/v2 runs.jsonl, #71)은 DP_SCENARIO_RUNS_DIR 폴더의 DP_SCENARIO_RUN_FILE 을 읽기 전용으로
+# 읽는다. 기본값은 fixture 의 02_scenario_runs.jsonl 이다.
+#   같은 호스트(맥 all-in-one): DP_SCENARIO_RUNS_DIR=./scenarios/v2/fixtures_data DP_SCENARIO_RUN_FILE=runs.jsonl
+#   분리 구성: Leafy 장비의 runs.jsonl 을 AIOps 장비의 폴더로 복사한 뒤 그 폴더를 DP_SCENARIO_RUNS_DIR 로 준다(자동 전송 없음).
+#   파일이 없으면 획득은 failed(file_not_found) 로 남고 gold.scenario_link 는 run_log_unavailable 이 된다.
 name: leafy-datalake
 
 x-airflow-env: &airflow-env
@@ -29,9 +35,15 @@ x-airflow-env: &airflow-env
   DP_ALLOWLIST_PATH: /opt/airflow/policy/allowlist.yml
   DP_LOKI_URL: ${DP_LOKI_URL:-http://dp-mock-sources:3100}
   DP_PROMETHEUS_URL: ${DP_PROMETHEUS_URL:-http://dp-mock-sources:3100}
+  DP_SCENARIO_RUN_LOG: /opt/airflow/scenario_runs/${DP_SCENARIO_RUN_FILE:-02_scenario_runs.jsonl}
   DP_GIT_SHA: ${DP_GIT_SHA:-}
   DP_GIT_DIRTY: ${DP_GIT_DIRTY:-false}
   DP_ENV: ${DP_ENV:-development}
+  # dp_incident_discover (#68): Loki {job="aiops-llm"} 스캔. 기본 15분 창·실행당 8창·첫 실행 1시간 lookback.
+  # DP_DISCOVER_RELATED 는 JSON 규칙 [{"match": {...}, "related_scopes": [...]}] (없으면 alert identity 만).
+  DP_DISCOVER_START: ${DP_DISCOVER_START:-}
+  DP_DISCOVER_LOOKBACK_S: ${DP_DISCOVER_LOOKBACK_S:-3600}
+  DP_DISCOVER_RELATED: ${DP_DISCOVER_RELATED:-}
 
 services:
   dp-airflow-db:
@@ -112,6 +124,7 @@ services:
       - ./aiops/pipeline:/opt/airflow/pipeline:ro
       - ./aiops/policy:/opt/airflow/policy:ro
       - ./docs/data-platform/examples/db-connection-limit:/opt/airflow/fixtures:ro
+      - ${DP_SCENARIO_RUNS_DIR:-./docs/data-platform/examples/db-connection-limit}:/opt/airflow/scenario_runs:ro
       - dp_lake:/opt/airflow/lake
     networks: [datalake-net]
     mem_limit: 3g
